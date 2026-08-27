@@ -8,15 +8,6 @@ static sb_block_device_t *g_devices[SB_MAX_BLOCK_DEVICES];
 static uint32_t g_device_count;
 static uint8_t g_test_disk[SB_SELFTEST_SECTORS * SB_BLOCK_SECTOR_SIZE];
 
-static void block_debug_char(char c) {
-    while (1) {
-        uint8_t status;
-        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
-        if (status & 0x20u) break;
-    }
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
-}
-
 static sb_block_status_t test_disk_read(sb_block_device_t *device,
                                         uint64_t lba,
                                         uint32_t count,
@@ -86,47 +77,29 @@ sb_block_status_t sb_block_selftest(void) {
         test_disk_write,
         0,
     };
-    static uint8_t write_buffer[SB_BLOCK_SECTOR_SIZE];
-    static uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
+    uint8_t write_buffer[SB_BLOCK_SECTOR_SIZE];
+    uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
 
-    block_debug_char('A');
     for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         write_buffer[i] = (uint8_t)(i ^ 0xA5u);
         read_buffer[i] = 0;
     }
-    block_debug_char('B');
 
     if (sb_block_register(&test_device) != SB_BLOCK_OK) {
-        block_debug_char('R');
         return SB_BLOCK_INVALID_ARGUMENT;
     }
-    block_debug_char('C');
 
     sb_block_device_t *device = sb_block_get(sb_block_count() - 1u);
-    if (device == 0) {
-        block_debug_char('D');
+    if (device == 0 || device->write(device, 2, 1, write_buffer) != SB_BLOCK_OK ||
+        device->read(device, 2, 1, read_buffer) != SB_BLOCK_OK) {
         return SB_BLOCK_NOT_READY;
     }
-    block_debug_char('E');
-
-    if (device->write(device, 2, 1, write_buffer) != SB_BLOCK_OK) {
-        block_debug_char('W');
-        return SB_BLOCK_NOT_READY;
-    }
-    block_debug_char('F');
-
-    if (device->read(device, 2, 1, read_buffer) != SB_BLOCK_OK) {
-        block_debug_char('Q');
-        return SB_BLOCK_NOT_READY;
-    }
-    block_debug_char('G');
 
     for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         if (read_buffer[i] != write_buffer[i]) {
-            block_debug_char('V');
             return SB_BLOCK_INVALID_ARGUMENT;
         }
     }
-    block_debug_char('H');
+
     return SB_BLOCK_OK;
 }
