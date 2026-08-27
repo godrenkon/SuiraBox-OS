@@ -84,10 +84,6 @@ long_mode_entry:
     movw %ax, %fs
     movw %ax, %gs
 
-    /* First-boot setup accepts a NULL config and safely uses defaults. */
-    xorq %rdi, %rdi
-    call sb_setup_run
-
     /* Restore Multiboot2 arguments into the x86_64 C ABI registers. */
     movl multiboot_magic_saved, %edi
     movl multiboot_info_saved, %esi
@@ -129,3 +125,5 @@ pdpt:
     .skip 4096
 pd:
     .skip 4096
+
+.section .note.GNU-stack,"",@progbits
