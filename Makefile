@@ -1,6 +1,7 @@
 BUILD := build
 ISO := $(BUILD)/suirabox.iso
 KERNEL := $(BUILD)/suirabox.elf
+USER_ELF := $(BUILD)/user-hello.elf
 
 CC ?= gcc
 AS ?= as
@@ -8,6 +9,7 @@ LD ?= ld
 
 CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -Wall -Wextra -Werror -O2
 LDFLAGS := -nostdlib -z max-page-size=0x1000 -T linker.ld
+USER_LDFLAGS := -nostdlib -z max-page-size=0x1000 -T userspace/user.ld
 
 BOOT_OBJ := $(BUILD)/boot.o
 KERNEL_OBJ := $(BUILD)/kernel.o
@@ -35,10 +37,11 @@ ELF_OBJ := $(BUILD)/elf.o
 ELF_LOADER_OBJ := $(BUILD)/elf_loader.o
 GDT_OBJ := $(BUILD)/gdt.o
 USERMODE_OBJ := $(BUILD)/user_mode.o
+USER_OBJ := $(BUILD)/user-hello.o
 
-.PHONY: all clean iso check
+.PHONY: all clean iso userspace check
 
-all: iso
+all: iso userspace
 
 $(BUILD):
 	mkdir -p $(BUILD)
@@ -121,17 +124,27 @@ $(GDT_OBJ): kernel/arch/x86_64/gdt.c kernel/arch/x86_64/gdt.h | $(BUILD)
 $(USERMODE_OBJ): kernel/arch/x86_64/user_mode.S kernel/arch/x86_64/user_mode.h | $(BUILD)
 	$(AS) --64 $< -o $@
 
+$(USER_OBJ): userspace/hello.S | $(BUILD)
+	$(AS) --64 $< -o $@
+
+$(USER_ELF): $(USER_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
+
+userspace: $(USER_ELF)
+
 $(KERNEL): $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ)
 
-iso: $(KERNEL) boot/grub.cfg
+iso: $(KERNEL) $(USER_ELF) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub
 	cp $(KERNEL) $(BUILD)/iso/boot/suirabox.elf
+	cp $(USER_ELF) $(BUILD)/iso/boot/user-hello.elf
 	cp boot/grub.cfg $(BUILD)/iso/boot/grub/grub.cfg
 	grub-mkrescue -o $(ISO) $(BUILD)/iso >/dev/null
 
-check: $(KERNEL)
+check: $(KERNEL) $(USER_ELF)
 	grub-file --is-x86-multiboot2 $(KERNEL)
+	readelf -h $(USER_ELF) | grep -q 'Class:.*ELF64'
 
 clean:
 	rm -rf $(BUILD)
