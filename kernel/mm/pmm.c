@@ -34,6 +34,24 @@ static uint64_t low_bits_mask(uint32_t count) {
     return (1ull << count) - 1ull;
 }
 
+static uint32_t count_bits64(uint64_t value) {
+    uint32_t count = 0u;
+    while (value != 0u) {
+        value &= value - 1u;
+        ++count;
+    }
+    return count;
+}
+
+static uint32_t first_set_bit64(uint64_t value) {
+    uint32_t bit = 0u;
+    while ((value & 1u) == 0u) {
+        value >>= 1;
+        ++bit;
+    }
+    return bit;
+}
+
 static void recount_free_pages(void) {
     uint64_t count = 0u;
     for (uint32_t word = 0u; word < PMM_BITMAP_WORDS; ++word) {
@@ -41,7 +59,7 @@ static void recount_free_pages(void) {
         if (word == PMM_BITMAP_WORDS - 1u && (PMM_MAX_PAGES & 63u) != 0u) {
             available &= low_bits_mask(PMM_MAX_PAGES & 63u);
         }
-        count += (uint64_t)__builtin_popcountll(available);
+        count += (uint64_t)count_bits64(available);
     }
     free_count = count;
 }
@@ -113,7 +131,7 @@ void *pmm_alloc_page(void) {
         }
         if (available == 0u) continue;
 
-        const uint32_t bit = (uint32_t)__builtin_ctzll(available);
+        const uint32_t bit = first_set_bit64(available);
         const uint64_t index = (uint64_t)word * 64u + bit;
         if (!page_index_valid(index) || !is_free(index)) continue;
 
