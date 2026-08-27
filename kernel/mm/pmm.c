@@ -5,6 +5,11 @@
 
 /* Bootstrap allocator state. Keep it bounded and independent of firmware maps. */
 static uint64_t bitmap[PMM_BITMAP_WORDS];
+/* A page may be unavailable because it is permanently reserved or because
+ * pmm_alloc_page() handed it to a caller.  Keep those causes separate so a
+ * caller can never free kernel, firmware, or boot-owned memory. */
+static uint64_t reserved_bitmap[PMM_BITMAP_WORDS];
+static uint64_t allocated_bitmap[PMM_BITMAP_WORDS];
 static uint64_t page_count;
 static uint64_t free_count;
 
@@ -58,32 +63,56 @@ static void set_range_bits(uint64_t start, uint64_t end, int make_free) {
         const uint32_t first_bit = (uint32_t)(first_page % 64u);
         const uint32_t bit_count = (uint32_t)(last_page - first_page);
         const uint64_t mask = low_bits_mask(bit_count) << first_bit;
-        if (make_free) bitmap[first_word] &= ~mask;
-        else bitmap[first_word] |= mask;
+        if (make_free) {
+            bitmap[first_word] &= ~mask;
+            bitmap[first_word] |= (reserved_bitmap[first_word] | allocated_bitmap[first_word]) & mask;
+        } else {
+            bitmap[first_word] |= mask;
+            reserved_bitmap[first_word] |= mask;
+        }
         return;
     }
 
     if ((first_page % 64u) != 0u) {
         const uint32_t first_bit = (uint32_t)(first_page % 64u);
         const uint64_t mask = UINT64_MAX << first_bit;
-        if (make_free) bitmap[first_word] &= ~mask;
-        else bitmap[first_word] |= mask;
+        if (make_free) {
+            bitmap[first_word] &= ~mask;
+            bitmap[first_word] |= (reserved_bitmap[first_word] | allocated_bitmap[first_word]) & mask;
+        } else {
+            bitmap[first_word] |= mask;
+            reserved_bitmap[first_word] |= mask;
+        }
         ++first_word;
     }
 
-    for (uint32_t word = first_word; word < last_word; ++word)
-        bitmap[word] = make_free ? 0u : UINT64_MAX;
+    for (uint32_t word = first_word; word < last_word; ++word) {
+        if (make_free) bitmap[word] = reserved_bitmap[word] | allocated_bitmap[word];
+        else {
+            bitmap[word] = UINT64_MAX;
+            reserved_bitmap[word] = UINT64_MAX;
+        }
+    }
 
     {
         const uint32_t last_bits = (uint32_t)(last_page % 64u);
         const uint64_t mask = last_bits == 0u ? UINT64_MAX : low_bits_mask(last_bits);
-        if (make_free) bitmap[last_word] &= ~mask;
-        else bitmap[last_word] |= mask;
+        if (make_free) {
+            bitmap[last_word] &= ~mask;
+            bitmap[last_word] |= (reserved_bitmap[last_word] | allocated_bitmap[last_word]) & mask;
+        } else {
+            bitmap[last_word] |= mask;
+            reserved_bitmap[last_word] |= mask;
+        }
     }
 }
 
 void pmm_reset(void) {
-    for (uint32_t i = 0u; i < PMM_BITMAP_WORDS; ++i) bitmap[i] = UINT64_MAX;
+    for (uint32_t i = 0u; i < PMM_BITMAP_WORDS; ++i) {
+        bitmap[i] = UINT64_MAX;
+        reserved_bitmap[i] = 0u;
+        allocated_bitmap[i] = 0u;
+    }
     page_count = PMM_MAX_PAGES;
     free_count = 0u;
 }
@@ -113,6 +142,7 @@ void *pmm_alloc_page(void) {
         const uint32_t bit = first_set_bit64(available);
         const uint64_t index = (uint64_t)word * 64u + bit;
         bitmap[word] |= 1ull << bit;
+        allocated_bitmap[word] |= 1ull << bit;
         if (free_count != 0u) --free_count;
         return (void *)(uintptr_t)(index * SB_PAGE_SIZE);
     }
@@ -127,7 +157,9 @@ void pmm_free_page(void *page) {
     const uint32_t word = (uint32_t)(index / 64u);
     const uint32_t bit = (uint32_t)(index % 64u);
     const uint64_t mask = 1ull << bit;
-    if ((bitmap[word] & mask) == 0u) return;
+    if ((allocated_bitmap[word] & mask) == 0u) return;
+    allocated_bitmap[word] &= ~mask;
+    if ((reserved_bitmap[word] & mask) != 0u) return;
     bitmap[word] &= ~mask;
     ++free_count;
 }

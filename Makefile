@@ -2,6 +2,7 @@ BUILD := build
 ISO := $(BUILD)/suirabox.iso
 KERNEL := $(BUILD)/suirabox.elf
 USER_ELF := $(BUILD)/user-hello.elf
+PMM_HOST_TEST := $(BUILD)/pmm-host-test
 
 CC ?= gcc
 AS ?= as
@@ -43,7 +44,7 @@ USERMODE_OBJ := $(BUILD)/user_mode.o
 MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
 
-.PHONY: all clean iso userspace check
+.PHONY: all clean iso userspace check host-pmm-test
 
 all: iso userspace
 
@@ -158,8 +159,18 @@ iso: $(KERNEL) $(USER_ELF) boot/grub.cfg
 	cp boot/grub.cfg $(BUILD)/iso/boot/grub/grub.cfg
 	grub-mkrescue -o $(ISO) $(BUILD)/iso >/dev/null
 
-check: $(KERNEL) $(USER_ELF)
-	grub-file --is-x86-multiboot2 $(KERNEL)
+$(PMM_HOST_TEST): tests/pmm_host_test.c kernel/mm/pmm.c kernel/mm/pmm.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel/mm tests/pmm_host_test.c kernel/mm/pmm.c -o $@
+
+host-pmm-test: $(PMM_HOST_TEST)
+	$(PMM_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) host-pmm-test
+	@if command -v grub-file >/dev/null 2>&1; then \
+		grub-file --is-x86-multiboot2 $(KERNEL); \
+	else \
+		printf '%s\n' 'warning: grub-file is unavailable; skipping Multiboot2 artifact validation'; \
+	fi
 	readelf -h $(USER_ELF) | grep -q 'Class:.*ELF64'
 
 clean:
