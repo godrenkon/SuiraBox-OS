@@ -8,6 +8,8 @@
 #include "mm/heap.h"
 #include "timer.h"
 #include "scheduler.h"
+#include "process.h"
+#include "syscall.h"
 #include "arch/x86_64/interrupts.h"
 
 extern int scheduler_add_kernel_task(uint64_t id, uint32_t priority);
@@ -203,6 +205,31 @@ static int scheduler_selftest(void) {
     return 1;
 }
 
+static int process_syscall_selftest(void) {
+    sb_process_t *process;
+    sb_thread_t *thread;
+    const uint64_t ticks = syscall_dispatch(SB_SYS_GET_TICKS, 0, 0, 0, 0, 0);
+
+    process_init();
+    syscall_init();
+
+    process = process_create(100u);
+    if (process == 0 || process_count() != 1u) {
+        return 0;
+    }
+
+    thread = process_create_thread(process, 1001u, 128u);
+    if (thread == 0 || process->thread_count != 1u) {
+        return 0;
+    }
+
+    if (process_get(100u) != process) {
+        return 0;
+    }
+
+    return ticks <= timer_ticks() + 1u;
+}
+
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_init();
     serial_write("================================\r\n");
@@ -270,6 +297,11 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write(scheduler_selftest() ?
         "Scheduler: task table/round-robin selection OK\r\n" :
         "Scheduler: task table/round-robin selection FAILED\r\n");
+
+    serial_write("Process: initializing...\r\n");
+    serial_write(process_syscall_selftest() ?
+        "Process/Syscall: model and dispatch OK\r\n" :
+        "Process/Syscall: model and dispatch FAILED\r\n");
 
     serial_write("Timer: initializing PIT at 100 Hz...\r\n");
     timer_init(100u);
