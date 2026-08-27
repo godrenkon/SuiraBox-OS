@@ -17,6 +17,7 @@ VFS_OBJ := $(BUILD)/vfs.o
 STORAGE_TEST_OBJ := $(BUILD)/storage_selftest.o
 ATA_OBJ := $(BUILD)/ata_pio.o
 FAT32_OBJ := $(BUILD)/fat32.o
+PMM_OBJ := $(BUILD)/pmm.o
 
 .PHONY: all clean iso check
 
@@ -53,8 +54,11 @@ $(ATA_OBJ): kernel/ata_pio.c kernel/ata_pio.h kernel/block.h | $(BUILD)
 $(FAT32_OBJ): kernel/fs/fat32.c kernel/fs/fat32.h kernel/vfs.h kernel/block.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
 
-$(KERNEL): $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ)
+$(PMM_OBJ): kernel/mm/pmm.c kernel/mm/pmm.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel/mm -c $< -o $@
+
+$(KERNEL): $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ)
 
 iso: $(KERNEL) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub
