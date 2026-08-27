@@ -8,8 +8,9 @@
 #define CR3_PML4_MASK 0x000FFFFFFFFFF000ull
 
 /* Bootstrap-only page-table chain. These live in kernel BSS, which is already
- * identity-mapped by boot.S. Keeping the first dynamic mapping on BSS avoids
- * making the VMM bootstrap depend on allocating page-table pages from PMM. */
+ * identity-mapped by boot.S. Keep the first dynamic mapping independent of
+ * allocating/clearing a page-table page from PMM. BSS is expected to be
+ * zero-filled by the ELF loader, so only the entries we need are written. */
 static uint64_t bootstrap_pd[PT_ENTRIES] __attribute__((aligned(4096)));
 static uint64_t bootstrap_pt[PT_ENTRIES] __attribute__((aligned(4096)));
 static int bootstrap_ready;
@@ -49,10 +50,6 @@ static uint64_t *current_pml4(void) {
     return (uint64_t *)(uintptr_t)(cr3 & CR3_PML4_MASK);
 }
 
-static void zero_page(uint64_t *page) {
-    for (uint32_t i = 0; i < PT_ENTRIES; ++i) page[i] = 0;
-}
-
 static uint64_t *table_from_entry(uint64_t entry) {
     return (uint64_t *)(uintptr_t)(entry & ENTRY_ADDR_MASK);
 }
@@ -78,8 +75,6 @@ static uint64_t *ensure_table(uint64_t *table, uint16_t index, uint64_t flags) {
     debug_write_hex((uint64_t)(uintptr_t)page);
     debug_write("\r\n");
 
-    zero_page((uint64_t *)page);
-    debug_write("[VMM] zero complete\r\n");
     table[index] = ((uint64_t)(uintptr_t)page & ENTRY_ADDR_MASK) |
                    SB_VMM_PRESENT |
                    (flags & (SB_VMM_WRITABLE | SB_VMM_USER));
@@ -175,8 +170,7 @@ void vmm_init(void) {
     if ((pml4e & SB_VMM_PRESENT) == 0u || (pml4e & 0x80u) != 0u) return;
     uint64_t *pdpt = table_from_entry(pml4e);
 
-    zero_page(bootstrap_pd);
-    zero_page(bootstrap_pt);
+    /* BSS-backed tables are ELF-zeroed. Do not clear them here. */
     bootstrap_pd[0] = ((uint64_t)(uintptr_t)bootstrap_pt & ENTRY_ADDR_MASK) |
                       SB_VMM_PRESENT | SB_VMM_WRITABLE;
     pdpt[pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
