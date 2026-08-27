@@ -8,7 +8,9 @@ CC ?= gcc
 AS ?= as
 LD ?= ld
 
-CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -Wall -Wextra -Werror -O2
+# The kernel has no early FPU/SIMD context management. Disable MMX/SSE/SSE2
+# so GCC cannot emit SIMD stores during bootstrap and exception paths.
+CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2
 LDFLAGS := -nostdlib -z max-page-size=0x1000 -T linker.ld
 USER_LDFLAGS := -nostdlib -z max-page-size=0x1000 -T userspace/user.ld
 
