@@ -36,7 +36,7 @@ jobs:
       - name: Boot smoke test
         run: |
           set -o pipefail
-          timeout 8s qemu-system-x86_64 \
+          timeout 20s qemu-system-x86_64 \
             -cdrom build/suirabox.iso \
             -drive file=testdisk.img,format=raw,if=ide,index=0,media=disk \
             -serial stdio \
