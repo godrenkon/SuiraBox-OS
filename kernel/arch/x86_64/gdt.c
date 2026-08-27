@@ -25,8 +25,6 @@ struct __attribute__((packed)) gdt_ptr {
     uint64_t base;
 };
 
-/* Volatile prevents GCC from combining the tiny descriptor writes into a
- * bulk BSS store during the fragile early bootstrap phase. */
 static volatile uint64_t gdt[8] __attribute__((aligned(8)));
 static struct tss64 tss __attribute__((aligned(16)));
 static struct gdt_ptr descriptor;
@@ -91,12 +89,9 @@ void gdt_init(void) {
     __asm__ volatile ("lgdt %0" : : "m"(descriptor) : "memory");
     gdt_debug("[GDT] lgdt returned\r\n");
 
-    __asm__ volatile ("movw %0, %%ax\n\t"
-                      "movw %%ax, %%ds\n\t"
-                      "movw %%ax, %%es\n\t"
-                      "movw %%ax, %%ss\n\t"
-                      : : "i"(SB_KERNEL_DATA_SELECTOR) : "ax", "memory");
-    gdt_debug("[GDT] data selectors reloaded\r\n");
+    /* The boot-time CS/DS caches are already valid. Avoid reloading them here;
+       the new GDT retains compatible kernel selectors. */
+    gdt_debug("[GDT] segment caches retained\r\n");
 
     gdt_debug("[GDT] ltr begin\r\n");
     __asm__ volatile ("movw %0, %%ax\n\t"
