@@ -1,6 +1,6 @@
 #include "pmm.h"
 
-/* Bootstrap PMM tracks a 64 MiB physical address window in 4 KiB pages. */
+/* Bootstrap PMM tracks the first 64 MiB of physical memory in 4 KiB pages. */
 #define PMM_MAX_PAGES (64u * 1024u * 1024u / SB_PAGE_SIZE)
 #define PMM_BITMAP_WORDS ((PMM_MAX_PAGES + 63u) / 64u)
 
@@ -109,7 +109,6 @@ void pmm_free_page(void *page) {
         return;
     }
 
-    /* Free only pages previously made available by the memory-map parser. */
     mark_free(index);
     ++free_count;
 }
