@@ -1,5 +1,6 @@
 #include "address_space.h"
 #include "pmm.h"
+#include "vmm.h"
 
 #define PT_ENTRIES 512u
 #define ENTRY_ADDR_MASK 0x000FFFFFFFFFF000ull
@@ -44,14 +45,10 @@ static uint16_t pd_index(uint64_t address) { return (uint16_t)((address >> 21) &
 static uint16_t pt_index(uint64_t address) { return (uint16_t)((address >> 12) & 0x1FFu); }
 
 int address_space_create(sb_address_space_t *space) {
-    if (space == 0) {
-        return -1;
-    }
+    if (space == 0) return -1;
 
     void *pml4_page = pmm_alloc_page();
-    if (pml4_page == 0) {
-        return -1;
-    }
+    if (pml4_page == 0) return -1;
 
     uint64_t *new_pml4 = (uint64_t *)pml4_page;
     zero_page(new_pml4);
@@ -60,7 +57,7 @@ int address_space_create(sb_address_space_t *space) {
     __asm__ volatile ("mov %%cr3, %0" : "=r"(current_cr3));
     uint64_t *current = (uint64_t *)(uintptr_t)(current_cr3 & ENTRY_ADDR_MASK);
 
-    /* Kernel identity mapping is supervisor-only and remains shared. */
+    /* Keep the current kernel identity mapping supervisor-only. */
     new_pml4[0] = current[0];
     space->pml4_physical = (uint64_t)(uintptr_t)pml4_page;
     return 0;
@@ -88,7 +85,7 @@ int address_space_map_user(sb_address_space_t *space,
     uint64_t *pt = ensure_table(pd, pd_index(virtual_address), user_flags);
     if (pt == 0) return -1;
 
-    uint16_t index = pt_index(virtual_address);
+    const uint16_t index = pt_index(virtual_address);
     if ((pt[index] & SB_VMM_PRESENT) != 0u) return -2;
 
     pt[index] = (physical_address & ENTRY_ADDR_MASK) |
