@@ -7,15 +7,15 @@
 - [ ] License decision
 - [ ] Contribution guidelines
 - [ ] Code of Conduct
-- [ ] Build system
-- [ ] GitHub Actions CI
+- [x] Build system
+- [x] GitHub Actions CI
 
 ## Phase 1 — Bootable kernel
 
-- [ ] x86_64 boot environment
-- [ ] Linker script
-- [ ] Kernel entry point
-- [ ] Serial console
+- [x] x86_64 bootstrap path
+- [x] Linker script
+- [x] Kernel entry point
+- [x] Serial console
 - [ ] Basic framebuffer/text output
 - [ ] Boot success test in QEMU
 
