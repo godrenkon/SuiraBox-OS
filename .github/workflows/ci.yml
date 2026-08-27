@@ -48,6 +48,8 @@ jobs:
           grep -F "PCI: scan complete." qemu.log
           grep -F "Storage: ATA device registered" qemu.log
           grep -F "Storage: real disk read OK" qemu.log
+          grep -F "Userspace: ELF + address-space + stack preparation OK" qemu.log
+          grep -F "Syscall: int 0x80 user gate ready" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
 
       - name: Upload kernel artifacts
