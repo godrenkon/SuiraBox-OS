@@ -31,3 +31,5 @@ sb_timer_irq_stub:
     popq %rcx
     popq %rax
     iretq
+
+.section .note.GNU-stack,"",@progbits
