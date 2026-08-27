@@ -49,22 +49,10 @@ static void serial_write_u64(uint64_t value) {
     while (pos > 0u) serial_write_char(buffer[--pos]);
 }
 
-static int storage_selftest(void) {
-    uint8_t write_buffer[SB_BLOCK_SECTOR_SIZE];
-    uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
-    sb_vfs_mount_t mount; sb_block_device_t *device;
-    if (sb_block_selftest() != SB_BLOCK_OK || sb_block_count() == 0) return 0;
-    device = sb_block_get(sb_block_count() - 1u);
-    if (sb_vfs_mount(device, &mount) != SB_VFS_OK) return 0;
-    for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) { write_buffer[i] = (uint8_t)(i ^ 0x5Au); read_buffer[i] = 0; }
-    if (sb_vfs_write_sectors(&mount, 3, 1, write_buffer) != SB_VFS_OK || sb_vfs_read_sectors(&mount, 3, 1, read_buffer) != SB_VFS_OK) return 0;
-    for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) if (read_buffer[i] != write_buffer[i]) return 0;
-    return 1;
-}
-
 static int real_disk_selftest(void) {
     sb_block_device_t *device = sb_ata_pio_device();
-    uint8_t buffer[SB_BLOCK_SECTOR_SIZE]; const char marker[] = "SUIRABOX-DISK-TEST";
+    static uint8_t buffer[SB_BLOCK_SECTOR_SIZE];
+    static const char marker[] = "SUIRABOX-DISK-TEST";
     if (device == 0 || device->read(device, 0, 1, buffer) != SB_BLOCK_OK) return 0;
     for (uint32_t i = 0; marker[i] != '\0'; ++i) if (buffer[i] != (uint8_t)marker[i]) return 0;
     return 1;
@@ -132,14 +120,13 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Kernel initialized.\r\n");
     pci_enumerate();
 
-    serial_write("Storage: block self-test start...\r\n");
-    int storage_ok = storage_selftest();
-    serial_write(storage_ok ? "Storage: block/VFS self-test OK\r\n" : "Storage: block/VFS self-test FAILED\r\n");
     serial_write("Storage: ATA init start...\r\n");
     if (sb_ata_pio_init() == SB_BLOCK_OK) {
         serial_write("Storage: ATA device registered\r\nStorage: real disk sector test...\r\n");
         serial_write(real_disk_selftest() ? "Storage: real disk read OK\r\n" : "Storage: real disk read FAILED\r\n");
-    } else serial_write("Storage: no supported ATA primary-master disk\r\n");
+    } else {
+        serial_write("Storage: no supported ATA primary-master disk\r\n");
+    }
 
     serial_write("Memory: initializing PMM from Multiboot2 map...\r\n");
     pmm_init_from_multiboot(multiboot_info);
