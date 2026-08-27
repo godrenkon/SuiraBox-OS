@@ -1,8 +1,11 @@
 #include "pmm.h"
 
-#define PMM_MAX_PAGES (256u * 1024u * 1024u / SB_PAGE_SIZE)
-#define PMM_FIRST_PAGE (192u * 1024u * 1024u / SB_PAGE_SIZE)
-#define PMM_LAST_PAGE  (224u * 1024u * 1024u / SB_PAGE_SIZE)
+/* Bootstrap pool: all allocator-owned pages stay inside the identity-mapped
+ * first 1 GiB established by boot.S. The bitmap-backed Multiboot allocator
+ * is deliberately deferred until the later memory-map integration step. */
+#define PMM_MAX_PAGES (64u * 1024u * 1024u / SB_PAGE_SIZE)
+#define PMM_FIRST_PAGE (16u * 1024u * 1024u / SB_PAGE_SIZE)
+#define PMM_LAST_PAGE  (64u * 1024u * 1024u / SB_PAGE_SIZE)
 
 static uint64_t page_count;
 static uint64_t free_count;
