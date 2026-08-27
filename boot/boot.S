@@ -25,10 +25,10 @@ _start:
 
     movl $stack_top, %esp
 
-    /* Clear the page tables. */
+    /* Clear exactly the three 4 KiB page-table pages. */
     movl $pml4, %edi
     xorl %eax, %eax
-    movl $(4096 * 3), %ecx
+    movl $(1024 * 3), %ecx
     rep stosl
 
     /* PML4[0] -> PDPT. */
