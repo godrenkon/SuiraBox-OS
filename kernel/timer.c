@@ -8,6 +8,10 @@
 #define PIT_BASE_HZ 1193182u
 #define SB_SCHED_QUANTUM_TICKS 10u
 
+extern int scheduler_task_count(void);
+extern void scheduler_tick(void);
+extern sb_task_t *scheduler_pick_next(void);
+
 static volatile uint64_t ticks;
 
 static void outb(uint16_t port, uint8_t value) {
