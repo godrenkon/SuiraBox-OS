@@ -132,7 +132,10 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Kernel initialized.\r\n");
     pci_enumerate();
 
-    serial_write(storage_selftest() ? "Storage: block/VFS self-test OK\r\n" : "Storage: block/VFS self-test FAILED\r\n");
+    serial_write("Storage: block self-test start...\r\n");
+    int storage_ok = storage_selftest();
+    serial_write(storage_ok ? "Storage: block/VFS self-test OK\r\n" : "Storage: block/VFS self-test FAILED\r\n");
+    serial_write("Storage: ATA init start...\r\n");
     if (sb_ata_pio_init() == SB_BLOCK_OK) {
         serial_write("Storage: ATA device registered\r\nStorage: real disk sector test...\r\n");
         serial_write(real_disk_selftest() ? "Storage: real disk read OK\r\n" : "Storage: real disk read FAILED\r\n");
