@@ -91,6 +91,16 @@ static int vmm_selftest(void) {
     serial_write(page ? "Memory: VMM test allocate OK\r\n" : "Memory: VMM test allocate FAILED\r\n");
     if (page == 0) return 0;
 
+    serial_write("Memory: VMM physical test begin\r\n");
+    *(volatile uint64_t *)(uintptr_t)page = 0x5342554D4D544553ull;
+    serial_write("Memory: VMM physical test write returned\r\n");
+    if (*(volatile uint64_t *)(uintptr_t)page != 0x5342554D4D544553ull) {
+        serial_write("Memory: VMM physical test FAILED\r\n");
+        pmm_free_page(page);
+        return 0;
+    }
+    serial_write("Memory: VMM physical test OK\r\n");
+
     serial_write("Memory: VMM test map begin\r\n");
     result = vmm_map_page(test_virtual, (uint64_t)(uintptr_t)page, SB_VMM_WRITABLE);
     serial_write(result == 0 ? "Memory: VMM test map OK\r\n" : "Memory: VMM test map FAILED\r\n");
