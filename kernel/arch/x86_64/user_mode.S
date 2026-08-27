@@ -1,6 +1,9 @@
 .section .text
 .code64
 
+.equ SB_USER_CODE_SELECTOR, 0x23
+.equ SB_USER_DATA_SELECTOR, 0x2B
+
 .global arch_enter_user
 .type arch_enter_user, @function
 
