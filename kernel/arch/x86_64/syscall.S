@@ -6,10 +6,7 @@
 .extern sb_syscall_dispatch_entry
 
 /*
- * Temporary kernel-side syscall entry through IDT vector 0x80.
- * User mode is intentionally not enabled yet; ring-3 entry and SYSCALL/SYSRET
- * will be added together with process address spaces.
- *
+ * Temporary compatibility syscall entry through IDT vector 0x80.
  * Input ABI:
  *   rax = syscall number
  *   rdi = arg0
@@ -17,6 +14,9 @@
  *   rdx = arg2
  *   r10 = arg3
  *   r8  = arg4
+ *
+ * The C dispatcher uses the SysV ABI:
+ *   rdi, rsi, rdx, rcx, r8, r9
  */
 sb_syscall_int80_stub:
     pushq %r11
@@ -29,11 +29,19 @@ sb_syscall_int80_stub:
     pushq %rdi
     pushq %rax
 
-    movq 0(%rsp), %rdi
-    movq 8(%rsp), %rsi
-    movq 16(%rsp), %rdx
-    movq 56(%rsp), %rcx
-    movq 40(%rsp), %r8
+    /* Stack layout after pushes:
+     *   64: original rax / syscall number
+     *   56: original rdi / arg0
+     *   48: original rsi / arg1
+     *   40: original rdx / arg2
+     *    8: original r10 / arg3
+     *   24: original r8  / arg4
+     */
+    movq 64(%rsp), %rdi
+    movq 56(%rsp), %rsi
+    movq 48(%rsp), %rdx
+    movq 40(%rsp), %rcx
+    movq 8(%rsp), %r8
     movq 24(%rsp), %r9
     call sb_syscall_dispatch_entry
 
