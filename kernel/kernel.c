@@ -178,6 +178,29 @@ static int heap_selftest(void) {
     return pmm_free_pages() == before;
 }
 
+static int scheduler_selftest(void) {
+    if (scheduler_current() == 0 || scheduler_task_count() != 1u) {
+        return 0;
+    }
+    if (scheduler_add_kernel_task(2u, 128u) != 0 ||
+        scheduler_add_kernel_task(3u, 128u) != 0 ||
+        scheduler_task_count() != 3u) {
+        return 0;
+    }
+
+    if (scheduler_pick_next() == 0 || scheduler_current()->id != 2u) {
+        return 0;
+    }
+    if (scheduler_pick_next() == 0 || scheduler_current()->id != 3u) {
+        return 0;
+    }
+    if (scheduler_pick_next() == 0 || scheduler_current()->id != 1u) {
+        return 0;
+    }
+
+    return 1;
+}
+
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_init();
     serial_write("================================\r\n");
@@ -242,7 +265,9 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Scheduler: initializing...\r\n");
     scheduler_init();
     interrupts_init();
-    serial_write("Scheduler: bootstrap task ready\r\n");
+    serial_write(scheduler_selftest() ?
+        "Scheduler: task table/round-robin selection OK\r\n" :
+        "Scheduler: task table/round-robin selection FAILED\r\n");
 
     serial_write("Timer: initializing PIT at 100 Hz...\r\n");
     timer_init(100u);
