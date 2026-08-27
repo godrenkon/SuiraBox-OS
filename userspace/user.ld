@@ -2,7 +2,8 @@ ENTRY(_start)
 
 SECTIONS
 {
-    . = 0x0000004000000000;
+    /* PML4 slot 1: separate from the kernel's low identity-map slot 0. */
+    . = 0x0000008000000000;
 
     .text ALIGN(4K) :
     {
