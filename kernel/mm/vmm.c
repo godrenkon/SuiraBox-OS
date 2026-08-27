@@ -7,6 +7,13 @@
 #define ENTRY_ADDR_MASK 0x000FFFFFFFFFF000ull
 #define CR3_PML4_MASK 0x000FFFFFFFFFF000ull
 
+/* Bootstrap-only page-table chain. These live in kernel BSS, which is already
+ * identity-mapped by boot.S. Keeping the first dynamic mapping on BSS avoids
+ * making the VMM bootstrap depend on allocating page-table pages from PMM. */
+static uint64_t bootstrap_pd[PT_ENTRIES] __attribute__((aligned(4096)));
+static uint64_t bootstrap_pt[PT_ENTRIES] __attribute__((aligned(4096)));
+static int bootstrap_ready;
+
 static void debug_write_char(char c) {
     while (1) {
         uint8_t status;
@@ -156,4 +163,23 @@ uint64_t vmm_translate(uint64_t virtual_address) {
     return (e1 & ENTRY_ADDR_MASK) | (virtual_address & 0xFFFu);
 }
 
-void vmm_init(void) {}
+void vmm_init(void) {
+    if (bootstrap_ready) return;
+
+    uint64_t *pml4 = current_pml4();
+    const uint64_t test_virtual = 0x0000004000000000ull;
+    const uint16_t pml4_i = pml4_index(test_virtual);
+    const uint16_t pdpt_i = pdpt_index(test_virtual);
+
+    uint64_t pml4e = pml4[pml4_i];
+    if ((pml4e & SB_VMM_PRESENT) == 0u || (pml4e & 0x80u) != 0u) return;
+    uint64_t *pdpt = table_from_entry(pml4e);
+
+    zero_page(bootstrap_pd);
+    zero_page(bootstrap_pt);
+    bootstrap_pd[0] = ((uint64_t)(uintptr_t)bootstrap_pt & ENTRY_ADDR_MASK) |
+                      SB_VMM_PRESENT | SB_VMM_WRITABLE;
+    pdpt[pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
+                   SB_VMM_PRESENT | SB_VMM_WRITABLE;
+    bootstrap_ready = 1;
+}
