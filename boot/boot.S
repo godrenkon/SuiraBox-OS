@@ -14,6 +14,7 @@ header_end:
 .section .text
 .code32
 .global _start
+.global stack_top
 .type _start, @function
 _start:
     cli
@@ -42,7 +43,7 @@ _start:
 
     /* Identity-map the first 1 GiB with 2 MiB pages. */
     movl $pd, %edi
-    movl $0x83, %eax              /* present | writable | 2 MiB page */
+    movl $0x83, %eax
     movl $512, %ecx
 1:
     movl %eax, (%edi)
@@ -97,12 +98,11 @@ long_mode_entry:
 .align 8
 gdt64:
     .quad 0x0000000000000000
-    .quad 0x00CF9A000000FFFF   /* 32-bit code */
-    .quad 0x00CF92000000FFFF   /* data */
-    .quad 0x00209A0000000000   /* 64-bit code */
+    .quad 0x00CF9A000000FFFF
+    .quad 0x00CF92000000FFFF
+    .quad 0x00209A0000000000
 gdt64_descriptor:
     .word gdt64_descriptor - gdt64 - 1
-    /* Bootstrap sections are linked below 4 GiB. */
     .long gdt64
     .long 0
 
