@@ -22,3 +22,5 @@ arch_enter_user:
     iretq
 
 .size arch_enter_user, .-arch_enter_user
+
+.section .note.GNU-stack,"",@progbits
