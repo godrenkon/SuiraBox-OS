@@ -29,7 +29,7 @@ Processes / Runtime / JVM
 
 The first implementation manages 4 KiB physical pages using a bitmap and exposes allocation/free counters.
 
-For the bootstrap, the allocator tracks the first 64 MiB of physical memory. Pages start reserved; ranges reported as available by the Multiboot2 memory map are released, and the linked kernel image range is reserved again afterward.
+For the bootstrap, the allocator tracks the first 64 MiB of physical memory. Pages start reserved; physical page zero remains permanently reserved because address zero is the allocation-failure sentinel. Validated ranges reported as available by the Multiboot2 memory map are released, while every non-available map range, the linked kernel image, live Multiboot data and boot modules are reserved afterward.
 
 This is a bootstrap allocator, not the final performance design.
 

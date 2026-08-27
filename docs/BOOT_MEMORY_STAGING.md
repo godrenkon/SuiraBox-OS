@@ -8,13 +8,15 @@ The kernel initializes a small, known-safe physical RAM window before consuming 
 
 ## Stage 2: memory-map integration
 
-The Multiboot memory map must not be imported by calling a resetting PMM initializer after allocations exist. The final implementation must merge discovered usable/reserved ranges into the existing allocator while preserving all pages already allocated or reserved by the kernel.
+The Multiboot memory map is imported by merging it into the bootstrap allocator; it must never reset the PMM. PMM tracks dynamically allocated pages separately from permanently reserved pages, so a map merge cannot release either kind of live ownership.
 
 The merge operation must:
 
 - validate the Multiboot information address and tag sizes;
 - reject malformed or overflowing records;
-- preserve kernel/image/boot-module reservations;
+- make every page touched by a protected range unavailable, even when a range is not page-aligned;
+- apply every non-available firmware memory-map range as a reservation after importing usable ranges;
+- reserve the kernel image, live Multiboot information and boot modules after usable ranges are imported;
 - preserve pages already allocated by the bootstrap allocator;
 - never reset the allocator underneath live allocations;
 - run with bounded work;
