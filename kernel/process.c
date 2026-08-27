@@ -20,10 +20,14 @@ sb_process_t *process_create(uint64_t pid) {
         if (processes[i].state != SB_PROCESS_UNUSED) {
             continue;
         }
-
         processes[i].pid = pid;
         processes[i].state = SB_PROCESS_CREATED;
         processes[i].thread_count = 0;
+        if (address_space_create(&processes[i].address_space) != 0) {
+            processes[i].state = SB_PROCESS_UNUSED;
+            processes[i].pid = 0;
+            return 0;
+        }
         ++process_count_value;
         return &processes[i];
     }
@@ -46,10 +50,7 @@ sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t
 }
 
 sb_process_t *process_get(uint64_t pid) {
-    if (pid == 0u) {
-        return 0;
-    }
-
+    if (pid == 0u) return 0;
     for (uint32_t i = 0; i < SB_MAX_PROCESSES; ++i) {
         if (processes[i].state != SB_PROCESS_UNUSED && processes[i].pid == pid) {
             return &processes[i];
@@ -60,4 +61,20 @@ sb_process_t *process_get(uint64_t pid) {
 
 uint32_t process_count(void) {
     return process_count_value;
+}
+
+int process_activate(sb_process_t *process) {
+    if (process == 0 || process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED) {
+        return -1;
+    }
+    return address_space_activate(&process->address_space);
+}
+
+void process_destroy(sb_process_t *process) {
+    if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
+    address_space_destroy(&process->address_space);
+    process->state = SB_PROCESS_UNUSED;
+    process->pid = 0;
+    process->thread_count = 0;
+    if (process_count_value > 0u) --process_count_value;
 }
