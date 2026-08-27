@@ -113,9 +113,12 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     pci_enumerate();
 
     serial_write("Storage: probing drivers later; bootstrap continues.\r\n");
-    serial_write("Memory: initializing bootstrap PMM...\r\n");
+    serial_write("Memory: PMM init begin\r\n");
     pmm_init(0x01000000ull, 0x04000000ull);
+    serial_write("Memory: PMM init returned\r\n");
+    serial_write("Memory: reserving kernel range\r\n");
     pmm_reserve_range((uint64_t)(uintptr_t)&__kernel_start, (uint64_t)(uintptr_t)&__kernel_end);
+    serial_write("Memory: kernel range reserved\r\n");
     serial_write("Memory: PMM bootstrap free pages = "); serial_write_u64(pmm_free_pages()); serial_write("\r\n");
     void *page = pmm_alloc_page();
     serial_write(page ? "Memory: page allocation OK\r\n" : "Memory: page allocation FAILED\r\n");
