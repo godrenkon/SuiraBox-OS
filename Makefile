@@ -21,7 +21,7 @@ VFS_OBJ := $(BUILD)/vfs.o
 STORAGE_TEST_OBJ := $(BUILD)/storage_selftest.o
 ATA_OBJ := $(BUILD)/ata_pio.o
 FAT32_OBJ := $(BUILD)/fat32.o
-PMM_OBJ := $(BUILD)/pmm.o
+PMM_OBJ := $(BUILD)/pmm_bootstrap.o
 PMM_MB_OBJ := $(BUILD)/pmm_multiboot.o
 VMM_OBJ := $(BUILD)/vmm.o
 HEAP_OBJ := $(BUILD)/heap.o
@@ -78,7 +78,7 @@ $(ATA_OBJ): kernel/ata_pio.c kernel/ata_pio.h kernel/block.h | $(BUILD)
 $(FAT32_OBJ): kernel/fs/fat32.c kernel/fs/fat32.h kernel/vfs.h kernel/block.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
 
-$(PMM_OBJ): kernel/mm/pmm.c kernel/mm/pmm.h | $(BUILD)
+$(PMM_OBJ): kernel/mm/pmm_bootstrap.c kernel/mm/pmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel/mm -c $< -o $@
 
 $(PMM_MB_OBJ): kernel/mm/pmm_multiboot.c kernel/mm/pmm.h kernel/mm/multiboot_memory.h | $(BUILD)
