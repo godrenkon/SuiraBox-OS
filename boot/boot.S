@@ -84,6 +84,9 @@ long_mode_entry:
     movw %ax, %fs
     movw %ax, %gs
 
+    /* Run the tiny first-boot setup before the full kernel starts. */
+    call sb_setup_run
+
     /* Restore Multiboot2 arguments into the x86_64 C ABI registers. */
     movl multiboot_magic_saved, %edi
     movl multiboot_info_saved, %esi
