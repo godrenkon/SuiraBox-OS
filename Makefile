@@ -14,6 +14,7 @@ KERNEL_OBJ := $(BUILD)/kernel.o
 PCI_OBJ := $(BUILD)/pci.o
 BLOCK_OBJ := $(BUILD)/block.o
 VFS_OBJ := $(BUILD)/vfs.o
+STORAGE_TEST_OBJ := $(BUILD)/storage_selftest.o
 
 .PHONY: all clean iso check
 
@@ -37,8 +38,11 @@ $(BLOCK_OBJ): kernel/block.c kernel/block.h | $(BUILD)
 $(VFS_OBJ): kernel/vfs.c kernel/vfs.h kernel/block.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(KERNEL): $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ)
+$(STORAGE_TEST_OBJ): kernel/storage_selftest.c kernel/vfs.h kernel/block.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
+$(KERNEL): $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ)
 
 iso: $(KERNEL) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub
