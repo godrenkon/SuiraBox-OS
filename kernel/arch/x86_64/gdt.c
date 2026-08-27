@@ -36,10 +36,22 @@ struct __attribute__((packed)) gdt_ptr {
     uint64_t base;
 };
 
-/* Null + kernel code/data + user code/data + 16-byte TSS descriptor. */
 static uint64_t gdt[8] __attribute__((aligned(8)));
 static struct tss64 tss __attribute__((aligned(16)));
 static struct gdt_ptr descriptor;
+
+static void gdt_debug_char(char c) {
+    while (1) {
+        uint8_t status;
+        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+        if (status & 0x20u) break;
+    }
+    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
+}
+
+static void gdt_debug(const char *s) {
+    while (*s) gdt_debug_char(*s++);
+}
 
 static uint64_t segment_descriptor(uint8_t access, uint8_t flags) {
     return ((uint64_t)access << 40) |
@@ -48,12 +60,14 @@ static uint64_t segment_descriptor(uint8_t access, uint8_t flags) {
 }
 
 void gdt_init(void) {
+    gdt_debug("[GDT] begin\r\n");
     gdt[0] = 0;
     gdt[1] = segment_descriptor(0x9Au, 0xCu);
     gdt[2] = segment_descriptor(0x92u, 0xCu);
     gdt[3] = segment_descriptor(0x9Au, 0xAu);
     gdt[4] = segment_descriptor(0xFAu, 0xAu);
     gdt[5] = segment_descriptor(0xF2u, 0xCu);
+    gdt_debug("[GDT] segment descriptors ready\r\n");
 
     const uint64_t base = (uint64_t)(uintptr_t)&tss;
     const uint32_t limit = (uint32_t)(sizeof(tss) - 1u);
@@ -67,17 +81,33 @@ void gdt_init(void) {
     tss_desc->base_high = (uint8_t)((base >> 24) & 0xFFu);
     tss_desc->base_upper = (uint32_t)(base >> 32);
     tss_desc->reserved = 0;
+    gdt_debug("[GDT] TSS descriptor ready\r\n");
 
     tss.rsp0 = (uint64_t)(uintptr_t)&stack_top;
     tss.iomap_base = sizeof(tss);
+    gdt_debug("[GDT] TSS state ready\r\n");
 
     descriptor.limit = (uint16_t)(sizeof(gdt) - 1u);
     descriptor.base = (uint64_t)(uintptr_t)&gdt[0];
+    gdt_debug("[GDT] descriptor ready\r\n");
 
+    gdt_debug("[GDT] lgdt begin\r\n");
     __asm__ volatile ("lgdt %0" : : "m"(descriptor) : "memory");
-    __asm__ volatile ("mov %0, %%ax\n\t"
+    gdt_debug("[GDT] lgdt returned\r\n");
+
+    /* Reload data segments against the new GDT before loading TR. */
+    __asm__ volatile ("movw %0, %%ax\n\t"
+                      "movw %%ax, %%ds\n\t"
+                      "movw %%ax, %%es\n\t"
+                      "movw %%ax, %%ss\n\t"
+                      : : "i"(SB_KERNEL_DATA_SELECTOR) : "ax", "memory");
+    gdt_debug("[GDT] data selectors reloaded\r\n");
+
+    gdt_debug("[GDT] ltr begin\r\n");
+    __asm__ volatile ("movw %0, %%ax\n\t"
                       "ltr %%ax\n\t"
                       : : "i"(SB_TSS_SELECTOR) : "ax", "memory");
+    gdt_debug("[GDT] ltr returned\r\n");
 }
 
 void gdt_set_kernel_stack(uint64_t stack_pointer) {
