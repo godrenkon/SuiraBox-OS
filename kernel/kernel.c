@@ -5,6 +5,7 @@
 #include "mm/pmm.h"
 #include "mm/vmm.h"
 #include "mm/heap.h"
+#include "mm/multiboot_memory.h"
 #include "timer.h"
 #include "scheduler.h"
 #include "process.h"
@@ -43,11 +44,40 @@ static void serial_write_char(char c) {
 static void serial_write(const char *s) { while (*s) serial_write_char(*s++); }
 
 static void serial_write_u64(uint64_t value) {
-    static const char digits[] = "0123456789";
-    char buffer[21]; uint32_t pos = 0;
+    static const char digits[] = "0123456789ABCDEF";
+    char buffer[16]; uint32_t pos = 0;
     if (value == 0u) { serial_write_char('0'); return; }
-    while (value != 0u && pos < sizeof(buffer)) { buffer[pos++] = digits[value % 10u]; value /= 10u; }
+    while (value != 0u && pos < sizeof(buffer)) { buffer[pos++] = digits[value & 0xFu]; value >>= 4; }
+    serial_write("0x");
     while (pos > 0u) serial_write_char(buffer[--pos]);
+}
+
+static void report_multiboot_modules(uint64_t multiboot_info) {
+    if (multiboot_info == 0u) return;
+    const uint32_t total_size = *(const uint32_t *)(uintptr_t)multiboot_info;
+    uint32_t offset = 8u;
+    uint32_t count = 0u;
+    if (total_size < 16u || total_size > (64u * 1024u)) return;
+    while (offset <= total_size - 8u && count < 32u) {
+        const struct multiboot2_tag *tag =
+            (const struct multiboot2_tag *)(uintptr_t)(multiboot_info + offset);
+        if (tag->size < 8u || tag->size > total_size - offset) return;
+        if (tag->type == MULTIBOOT2_TAG_TYPE_END) return;
+        if (tag->type == MULTIBOOT2_TAG_TYPE_MODULE &&
+            tag->size >= sizeof(struct multiboot2_module_tag)) {
+            const struct multiboot2_module_tag *module =
+                (const struct multiboot2_module_tag *)tag;
+            serial_write("Boot module: start=");
+            serial_write_u64(module->mod_start);
+            serial_write(" end=");
+            serial_write_u64(module->mod_end);
+            serial_write("\r\n");
+        }
+        const uint32_t next = (tag->size + 7u) & ~7u;
+        if (next < tag->size || offset > total_size - next) return;
+        offset += next;
+        ++count;
+    }
 }
 
 static int vmm_selftest(void) {
@@ -149,6 +179,8 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     pmm_reserve_range((uint64_t)(uintptr_t)&__kernel_start, (uint64_t)(uintptr_t)&__kernel_end);
     serial_write("Memory: kernel range reserved\r\n");
     serial_write("Memory: Multiboot PMM import deferred to dedicated validation path\r\n");
+    serial_write("Memory: Multiboot info = "); serial_write_u64(multiboot_info); serial_write("\r\n");
+    report_multiboot_modules(multiboot_info);
     serial_write("Memory: PMM bootstrap free pages = "); serial_write_u64(pmm_free_pages()); serial_write("\r\n");
     void *page = pmm_alloc_page();
     serial_write(page ? "Memory: page allocation OK\r\n" : "Memory: page allocation FAILED\r\n");
