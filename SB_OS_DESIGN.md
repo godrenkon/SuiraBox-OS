@@ -1,175 +1,1061 @@
-# SuiraBox OS — Master Recovery, Construction, Architecture & Operations Specification
+# SuiraBox OS — Complete Master Specification
 
-> **Document class:** Canonical master specification / recovery manual / implementation blueprint
+> **Document role:** SB Desktop の最上位仕様書・全体設計書・制作計画・復旧用バックアップ。
 >
-> **Purpose:** This document is the long-term backup of the entire SB Desktop project. It is intentionally more detailed than a normal design document. If chat history, planning notes, an AI session, a developer, or a portion of the repository is lost, this document must preserve enough information to reconstruct the intended product and the reasoning behind it.
+> このファイルは「SB OSとは何を作るのか」を最初から最後まで復元するための唯一の最上位資料として扱う。通常の取扱説明書より深く、ユーザー体験、OS内部、データ、状態、境界、失敗時の挙動、実装順序、テスト、リリース、将来拡張までを記録する。
 >
-> **Product currently being built:** **SB Desktop**
+> **現在の製品対象:** SB Desktop
 >
-> **Current scope rule:** Do not spend active development effort designing a separate CUI-only edition. SB Desktop still requires a complete terminal and CLI because command-line operation is an important capability.
+> **現在の開発対象外:** 独立したCUI専用版OS。SB Desktop内部のTerminal/CLIは必須機能として実装する。
 >
-> **Critical distinction:** This document describes the intended architecture and acceptance criteria. It does **not** prove that an item is implemented. Implementation status must be determined from source code, tests, CI and real runtime behavior.
+> **重要:** この文書は「完成品の証明」ではない。実装状態はソースコード、ビルド、テスト、CI、QEMU、実機検証で判定する。
 
 ---
 
-# 0. How this document is to be used
+# 1. SBとは何か
 
-This file has four simultaneous roles:
+## 1.1 製品名
 
-1. **Product constitution** — preserves the reason SB exists and what kind of OS it should become.
-2. **Engineering specification** — defines subsystem responsibilities, interfaces, invariants and implementation order.
-3. **Recovery manual** — provides a path back to the intended architecture if development context is lost.
-4. **AI handoff document** — gives another AI enough context to continue work without inventing architecture.
+- Project: **SuiraBox OS**
+- Short name: **SB**
+- Desktop edition: **SB Desktop**
+- Community/project identity: **Suiram**
+- Repository: `godrenkon/SuiraBox-OS`
 
-## 0.1 Mandatory procedure before changing code
+## 1.2 SBの目的
 
-Every developer or AI must:
+SBは、可能な限り余計なものを削りながら、普通のPCユーザーにも高度なユーザーにも使いやすい、オープンソースの汎用デスクトップOSを作るプロジェクトである。
 
-1. Read this document.
-2. Inspect the repository tree.
-3. Inspect the current implementation of the subsystem being changed.
-4. Inspect the latest CI result relevant to that subsystem.
-5. Determine what is actually implemented, not what the documentation says should exist.
-6. Identify the smallest unfinished prerequisite.
-7. Make the smallest technically justified change that advances the project.
-8. Build it.
-9. Run the relevant runtime test.
-10. Inspect logs rather than assuming success.
-11. Add or update tests.
-12. Update documentation if architecture changed.
-13. Record the real state.
+SBは特定の操作方法や不要な常駐機能をユーザーへ強制しない。基本OSを小さくし、必要な機能を後から選択して追加できる構造を採用する。
 
-Never treat a planned feature as an implemented feature.
+目標は「機能が多いOS」そのものではない。目標は、**必要なものだけを軽く使え、必要なら深く制御でき、壊れたときに原因が分かり、可能な範囲で復旧できるOS**である。
 
-## 0.2 Source-of-truth hierarchy
+## 1.3 設計思想
 
-When information conflicts, use this priority:
+SBの中心思想は次の通り。
 
-1. **Actual source code and build artifacts** for what exists.
-2. **Automated tests and CI logs** for what is verified.
-3. **This master specification** for intended architecture and product requirements.
-4. Other documents, issue comments and conversations for historical context.
+- 最小構成を基本とする。
+- オプション機能は必要な時に追加する。
+- 常時起動する不要なサービスを増やさない。
+- 設定を細かくできるが、画面自体は分かりやすくする。
+- GUIを通常利用の中心にする。
+- Terminal/CLIを完全に捨てない。
+- GUIとCLIは可能な限り同じ基盤/APIを使用する。
+- 普通のエラーと致命的エラーを明確に分ける。
+- 技術情報を必要な人には詳細に見せる。
+- ユーザーデータを勝手に削除しない。
+- ダウンロードと更新を可能な限り軽く・速くする。
+- ハードウェア非依存の基盤を先に作り、その後にGPU等へ拡張する。
+- 性能は測定値で判断する。
+- セキュリティ、安定性、データ保全を性能と同等以上に重視する。
+- 「動いているように見えるだけ」のモックを完成扱いしない。
 
-A CI failure cannot be overridden by a sentence in this document.
+## 1.4 「RPGツクール」のようなOSという考え方
 
----
+SBでは、ベースOSを小さな土台として、その上にユーザーが必要な機能を追加できる感覚を重視する。
 
-# 1. Product identity
+```text
+最小OS
+  ↓
+必要な機能を選ぶ
+  ↓
+必要なコンポーネントだけ取得
+  ↓
+自動設定
+  ↓
+使用
+```
 
-## 1.1 Name
-
-Project: **SuiraBox OS**
-
-Short name: **SB**
-
-Current desktop product: **SB Desktop**
-
-Community/project identity: **Suiram**
-
-The project is intended to be open-source, modular, lightweight, configurable, user-oriented and technically understandable.
-
-## 1.2 Product philosophy
-
-SB should feel more like a flexible toolkit than a monolithic operating system that forces one workflow on every user.
-
-Core ideas:
-
-- Minimal base installation.
-- Optional functionality installed on demand.
-- Detailed but understandable settings.
-- GUI-first ordinary usage.
-- Real terminal retained for advanced users.
-- Fast installation of optional components.
-- Strong diagnostics.
-- Recoverable failures whenever possible.
-- No unnecessary background work.
-- No intentional accumulation of obsolete data.
-- Hardware support through clean abstractions.
-- Open architecture that can later support many hardware classes.
-- User choice without making the system incomprehensible.
-
-## 1.3 The “RPG toolkit” principle
-
-The intended experience is conceptually similar to a system that lets the user assemble the capabilities they need:
-
-`Small base → choose components → install → configure → use`
-
-This does **not** mean every library must be a separate package. Excessive fragmentation creates dependency, update and maintenance problems. Components should be split when the split gives a real benefit in installation size, memory use, security, maintainability or user choice.
-
-## 1.4 Performance principle
-
-“Lightweight” is a measured property, not a marketing word.
-
-Track at least:
-
-- ISO/base image size;
-- installed base footprint;
-- boot time;
-- idle RAM;
-- idle CPU;
-- background wakeups;
-- GUI latency;
-- application startup time;
-- storage I/O;
-- package download size;
-- package installation time;
-- network overhead;
-- update cost.
-
-Never introduce a correctness or security regression merely to save a few bytes.
+ただし、すべてを無意味に細かいパッケージへ分割しない。分割には、サイズ、RAM、更新、安全性、保守性、ユーザー選択性の実益が必要である。
 
 ---
 
-# 2. Non-negotiable engineering rules
+# 2. SB Desktopの完成形
 
-1. Never claim code is implemented when it is only planned.
-2. Never claim hardware support without a reproducible test.
-3. Never call a visual mockup a functional desktop feature.
-4. Never weaken a test solely to make CI pass.
-5. Never remove diagnostics just because they make a failure look bad.
-6. Never silently delete user data.
-7. Never allow a lower architectural layer to depend on a higher layer for convenience.
-8. Keep one source of truth for important configuration values.
-9. Prefer bounded loops and bounded waits.
-10. Avoid busy polling when an event-driven or blocking design is possible.
-11. Normal application errors remain normal application errors.
-12. Only use kernel panic when safe continuation is impossible.
-13. RSOD is reserved for extremely severe early-boot/display/recovery/integrity conditions.
-14. BSOD is reserved for unsafe or unrecoverable system state.
-15. Every user-visible string must be localizable.
-16. Initial GUI languages: Japanese, English, Chinese and Spanish.
-17. First-run language setup is graphical.
-18. First-run language setup uses a select/drop-down control.
-19. The terminal remains a required part of SB Desktop.
-20. Network operations must have explicit timeout and failure behavior.
-21. Optional software should not unnecessarily consume boot resources.
-22. Persistent configuration should use atomic/transactional writes where practical.
-23. Security must be enforced at privileged boundaries, not only in GUI code.
-24. Diagnostic reports must exclude secrets.
-25. Temporary debugging code must be removed or explicitly justified.
-26. Every architectural change needs a reason.
-27. Every major subsystem needs a test strategy.
-28. Runtime behavior determines status, not file existence.
-29. Backward compatibility must be considered before changing persistent formats or public APIs.
-30. Data corruption is treated as a higher-severity failure than a feature being temporarily unavailable.
-31. Recovery paths must not create infinite recovery loops.
-32. A user must be able to understand serious errors without knowing kernel terminology.
-33. Advanced diagnostics must still contain enough technical information for a developer or repair/support process.
-34. Privacy-sensitive information must never be collected merely because it is technically convenient.
+## 2.1 完成時の基本体験
+
+ユーザーは、対応PCへSBをインストールし、電源投入後にGUIデスクトップまで到達し、Terminalを使わず通常の初期設定を完了できる。
+
+基本経路は次の通り。
+
+```text
+電源投入
+ ↓
+BIOS/UEFI
+ ↓
+Bootloader
+ ↓
+Kernel early boot
+ ↓
+CPU / Memory / Interrupt infrastructure
+ ↓
+Kernel services
+ ↓
+Userspace init
+ ↓
+Storage / Configuration
+ ↓
+Display / Input
+ ↓
+Compositor
+ ↓
+Desktop Shell
+ ↓
+First-run check
+ ↓
+Language selector
+ ↓
+Desktop ready
+```
+
+## 2.2 通常ユーザーができること
+
+完成版SB Desktopでは少なくとも次をGUIから行える。
+
+- 起動、再起動、シャットダウン
+- アプリケーション起動・終了
+- ウィンドウ操作
+- キーボード・マウス操作
+- ファイル作成・移動・コピー・削除・名前変更
+- ネットワーク設定
+- 言語設定
+- キーボードレイアウト設定
+- ディスプレイ設定
+- サウンド設定
+- システム詳細設定
+- ユーザー・権限管理
+- ソフトウェア検索・インストール・更新・削除
+- エラー通知の確認
+- サポートレポート生成
+- 回復操作
+- Terminal/CLI利用
+
+## 2.3 高度なユーザーができること
+
+- TerminalからOS機能を操作
+- パッケージ管理
+- システムログ閲覧
+- 診断情報取得
+- プロセス管理
+- ネットワーク診断
+- ストレージ診断
+- 開発者設定
+- Recovery操作
+- 詳細な性能情報取得
 
 ---
 
-# 3. Target user experience
+# 3. OS全体の層構造
 
-## 3.1 Normal cold boot
+```text
+Firmware
+  ├─ BIOS
+  └─ UEFI
+        ↓
+Bootloader
+        ↓
+Early kernel
+        ↓
+Architecture layer
+        ├─ CPU
+        ├─ GDT/TSS/IDT
+        ├─ Paging
+        ├─ Interrupts
+        ├─ Timer
+        ├─ ACPI
+        └─ SMP
+        ↓
+Kernel core
+        ├─ PMM
+        ├─ VMM
+        ├─ Heap
+        ├─ Scheduler
+        ├─ Process/Thread
+        ├─ IPC
+        ├─ Syscall
+        ├─ Security
+        ├─ Logging
+        └─ Panic/Recovery
+        ↓
+Device subsystem
+        ├─ PCI
+        ├─ Storage
+        ├─ USB
+        ├─ Input
+        ├─ Display/GPU
+        ├─ Network
+        ├─ Audio
+        └─ Power
+        ↓
+Filesystem / VFS
+        ↓
+Userspace
+        ├─ Init / Service Manager
+        ├─ Configuration service
+        ├─ Display service
+        ├─ Input service
+        ├─ Network manager
+        ├─ Package manager
+        ├─ Update service
+        ├─ Logging/diagnostic service
+        ├─ Account service
+        └─ Notification service
+        ↓
+GUI platform
+        ├─ Font / text
+        ├─ Toolkit
+        ├─ Compositor
+        ├─ Window system
+        └─ Desktop Shell
+        ↓
+Applications
+        ├─ Settings
+        ├─ File Manager
+        ├─ Terminal
+        ├─ SB Store
+        └─ Other applications
+```
 
-Target flow:
+下位層は上位層に依存しない。特にKernelはGUIを前提にしない。
 
-`Firmware → bootloader → kernel → hardware discovery → memory → interrupts → scheduler → userspace init → storage/config → display/input → compositor → desktop → first-run check → desktop ready`
+---
 
-## 3.2 First boot
+# 4. ハードウェア対象と互換性方針
 
-A clean installation with no valid language configuration must eventually reach the desktop and then show a small centered popup:
+## 4.1 初期ターゲット
+
+最初の安定ターゲットは、**generic x86_64 PC + QEMU** とする。
+
+特定ベンダー製PCだけを前提にしない。
+
+## 4.2 将来的な対応範囲
+
+基盤完成後、同じSBアーキテクチャから段階的に対応範囲を広げる。
+
+- 一般デスクトップPC
+- ノートPC
+- ゲーミングPC
+- ワークステーション
+- 高性能GPU搭載PC
+- Professional GPU搭載PC
+- サーバー
+- データセンター向けハードウェア
+
+NVIDIA RTXなどを含む高性能GPUについても、将来的に実ドライバ実装と検証を行う。ただし、ドライバが未実装なのに「対応済み」と宣言しない。
+
+## 4.3 リリース分岐方針
+
+最初から大量のISOを作らない。
+
+共通基盤を完成させてから、実際の互換性データに基づき、必要ならRelease artifactを用途別に分ける。
+
+例:
+
+```text
+SB Desktop Generic
+SB Desktop Gaming
+SB Desktop Workstation
+SB Desktop Server-oriented
+```
+
+これは第一段階の完成後に行う。
+
+---
+
+# 5. ブートとファームウェア
+
+## 5.1 BIOS/UEFI
+
+SBはファームウェアから直接ハードウェアを操作するのではなく、Bootloaderを境界として利用する。
+
+必要な情報はOS内部形式へ正規化する。
+
+## 5.2 Bootloaderの責務
+
+- CPUをKernelが想定する状態へ移行
+- Kernel entryを呼ぶ
+- Kernel stackを準備
+- Boot protocol情報を引き渡す
+- 必要なboot modulesを引き渡す
+- Kernel imageの範囲を明確化
+- Boot関連メモリ範囲を記録
+
+BootloaderでGUIや通常アプリケーションを起動しない。
+
+## 5.3 Multiboot2情報のライフサイクル
+
+Multiboot2情報そのものをPMMへ即時解放可能な領域として扱わない。
+
+起動時は、
+
+```text
+Boot information received
+ ↓
+Boot information range registered as protected
+ ↓
+Required fields parsed/copy to owned structures
+ ↓
+Dependent subsystems released
+ ↓
+Only after final user is gone, original storage may become reusable
+```
+
+とする。
+
+UEFI Memory Map等を使用する場合も同様に、情報を参照している間は保護する。
+
+## 5.4 Boot failure
+
+- Kernel entry前の失敗 → Boot diagnostic path
+- Kernel初期化中の致命的失敗 → Panic/RSOD decision
+- 通常ユーザー向けエラーUIをEarly Bootへ強制しない
+
+---
+
+# 6. CPUアーキテクチャ
+
+## 6.1 実装言語
+
+Kernelの中心は **C** とする。
+
+低レイヤでは **x86_64 Assembly** を使用する。
+
+必要に応じてLinker Script、Build/CI用スクリプトを使用する。
+
+## 6.2 Assemblyの使用範囲
+
+- Boot entry
+- CPU mode transition
+- Context switch primitives
+- Interrupt entry/exit
+- Syscall entry
+- 特定のCPU命令を直接呼ぶ箇所
+
+Cで安全に記述できる部分を不要にAssembly化しない。
+
+## 6.3 GDT/TSS/IDT
+
+段階的に実装する。
+
+- GDT: kernel/user code/data segments
+- TSS: stack switching / privilege transition support
+- IDT: exception / interrupt routing
+
+状態をコード上の隠れた定数にせず、仕様化された定義として管理する。
+
+---
+
+# 7. 物理メモリ管理 — PMM
+
+## 7.1 目的
+
+PMMは物理ページの所有権を管理する。
+
+## 7.2 基本単位
+
+ページサイズはArchitecture定数として一箇所に定義する。x86_64初期実装では通常4 KiBページを基準とする。
+
+## 7.3 所有権
+
+PMMがfreeとして扱えるのは、OSが安全に利用できる物理メモリだけ。
+
+少なくとも次を予約する。
+
+- Kernel image
+- Bootloader remnants still in use
+- Boot stack
+- Page tables still in use
+- Multiboot2 structures still in use
+- UEFI/ACPI structures still in use
+- PMM bitmap itself
+- Other explicitly allocated boot metadata
+- Hardware reserved regions
+
+## 7.4 Bootstrap PMM
+
+最初は安全な固定範囲を使うBootstrap PMMでよい。
+
+ただし最終版では固定64 MiBを「実メモリそのもの」と見なさず、Boot情報から得た本当のメモリマップを共通内部表現へ変換する。
+
+## 7.5 PMM APIの概念
+
+```text
+pmm_init()
+pmm_add_usable_range(start, end)
+pmm_reserve_range(start, end)
+pmm_alloc_page()
+pmm_free_page(page)
+pmm_total_pages()
+pmm_free_pages()
+```
+
+公開APIでは戻り値・失敗条件・所有権を明確にする。
+
+## 7.6 PMM不変条件
+
+- 同じページを二重にfreeしない
+- 予約領域を返さない
+- アラインメント不正を拒否
+- 範囲外を拒否
+- 枯渇時に明確な失敗を返す
+- 再初期化で既存の所有権を破壊しない
+- allocator自身のメタデータを自分でfreeしない
+
+---
+
+# 8. 仮想メモリ — VMM
+
+## 8.1 目的
+
+Virtual AddressとPhysical Pageの対応を管理する。
+
+## 8.2 必須機能
+
+- Map
+- Unmap
+- Translate
+- Protection flags
+- User/kernel address separation
+- Page fault integration
+- Page-table allocation via PMM
+
+## 8.3 不変条件
+
+- User processからKernel mappingへ勝手に書き込めない
+- Mapping alignmentを検証する
+- Unmap後に参照できない
+- Page-table pageの所有権を追跡する
+- 不要なmappingを残さない
+
+---
+
+# 9. Kernel Heap
+
+## 9.1 目的
+
+小さなKernel objectや可変サイズ構造体用の動的メモリを提供する。
+
+## 9.2 方針
+
+- PMMと役割を分離
+- Alignmentを明示
+- Overflowを検証
+- Allocation failureを明示
+- free後の二重解放を検出可能にする
+- allocator内から危険なLogging依存を作らない
+
+## 9.3 性能
+
+Idle時のHeap処理は発生しない。必要な時だけ動作させる。
+
+---
+
+# 10. CPU例外・割り込み・タイマー
+
+## 10.1 Exception
+
+CPU Exceptionは原因とコンテキストを保存する。
+
+代表例:
+
+- Divide Error
+- Invalid Opcode
+- General Protection Fault
+- Page Fault
+- Double Fault
+- Machine Check
+
+## 10.2 IRQ
+
+デバイス割り込みは共通IRQ dispatcherへ流す。
+
+## 10.3 PIC/APIC
+
+初期ブートではLegacy PIC/PITを使用する経路を許容する。
+
+将来的なSMP対応を前提に、Local APIC / IOAPICを抽象化する。
+
+## 10.4 Timer migration
+
+タイマーを単一の隠れた実装にしない。
+
+```text
+Early single-core
+    ↓
+PIT fallback
+    ↓
+APIC/appropriate timer when platform ready
+    ↓
+Scheduler clock source
+```
+
+切り替え前後でscheduler tickの時間基準が破綻しないよう、内部のmonotonic time sourceを抽象化する。
+
+HPET等の存在を理由に必ず使う必要はない。実際の精度、負荷、互換性を測定して決定する。
+
+---
+
+# 11. ACPI
+
+ACPIは電源管理だけの機能ではない。Platform topologyやCPU/device情報を得るためにも使用する。
+
+## 11.1 対象
+
+- Root tables
+- APIC/MADT
+- CPU topology
+- Power management tables
+- Thermal情報
+- Shutdown/reboot関係
+
+## 11.2 ライフサイクル
+
+ACPI table memoryは参照中にPMMへ戻さない。必要な情報をowned structureへ変換してからrelease可能にする。
+
+---
+
+# 12. SMP / マルチコア
+
+初期版はsingle-coreで完成させてよいが、アーキテクチャはSMPへ拡張可能にする。
+
+後段で実装するもの:
+
+- AP startup
+- Per-CPU data
+- Per-CPU scheduler state
+- Interrupt affinity
+- Cross-CPU IPI
+- Locking
+- CPU hotplug設計
+
+Shared stateとPer-CPU stateを区別する。
+
+---
+
+# 13. 同期プリミティブ
+
+Kernel内では少なくとも概念として以下を整理する。
+
+- Spinlock
+- Mutex
+- Read/write lock
+- Semaphore
+- Wait queue
+- Atomic operations
+- IRQ-safe lock variants
+
+ロック順序を文書化し、循環待ちを作らない。
+
+IRQ contextからsleep可能なmutexを取得しない。
+
+---
+
+# 14. Logging / Debugging Architecture
+
+ログはOSの基盤機能だが、低レイヤのログ出力が低レイヤ自身を壊してはならない。
+
+## 14.1 Logging levels
+
+- Emergency
+- Alert
+- Critical
+- Error
+- Warning
+- Notice
+- Info
+- Debug
+- Trace
+
+## 14.2 Early boot logger
+
+Early bootではmalloc、filesystem、GUI、networkへ依存しない。
+
+## 14.3 Lock-free / low-risk path
+
+PMM、scheduler、spinlock、interrupt handler等からの緊急ログは、可能な場合、固定長・事前確保リングバッファまたは直接non-blocking出力を使う。
+
+Logging関数内で、呼び出し元と同じロックやallocatorを取り直さない。
+
+## 14.4 Serial
+
+QEMUの初期検証ではSerial出力を主診断経路とする。
+
+ただしSerial writeのbusy waitがOS全体を無期限に止めないよう、診断モードと通常モードを分ける。
+
+---
+
+# 15. Panic / BSOD / RSOD / 通常エラー
+
+## 15.1 階層
+
+```text
+通常エラー
+ ↓
+Application recovery
+ ↓
+Service recovery
+ ↓
+Subsystem recovery
+ ↓
+Recovery mode
+ ↓
+BSOD / kernel stop
+ ↓
+RSOD only when normal display/recovery/integrity path itself is unusable
+```
+
+## 15.2 通常エラー
+
+普通のユーザー向け。
+
+最低限:
+
+- 何が起きたか
+- 影響範囲
+- OSはまだ使えるか
+- 自動回復したか
+- 次に何をすればいいか
+- Error ID
+
+「怖い画面」を出さない。
+
+## 15.3 BSOD
+
+意味:
+
+> 動作していたが、Kernelが安全に継続できないため停止した。
+
+含める情報:
+
+- Error ID
+- Failure class
+- Exception/vector
+- CPU error code
+- Instruction pointer
+- Register context
+- Current process/thread
+- Subsystem
+- Kernel version/build
+- Boot/session ID
+- Crash dump state
+- Recovery state
+- Support report ID
+
+表示は一般ユーザーにも意味が分かる説明と、技術情報の展開領域を分ける。
+
+## 15.4 RSOD
+
+意味:
+
+> 通常の画面出力や回復機構そのもの、または起動・システム整合性が信用できない。
+
+RSODは極めて稀であるべきで、普通のクラッシュには絶対に使用しない。
+
+---
+
+# 16. Scheduler
+
+## 16.1 目的
+
+CPU時間をthreadへ安全かつ公平に割り当てる。
+
+## 16.2 基本
+
+初期版:
+
+- Kernel task
+- Runnable state
+- Current task
+- Round-robin
+- Priority field
+- Timer tick
+
+将来:
+
+- Preemptive scheduling
+- Per-CPU run queue
+- Sleep/wakeup
+- Priority classes
+- CPU affinity
+- QoS/policy
+
+## 16.3 Minecraft等の性能最適化
+
+Minecraft向けの最適化をKernel全体へハードコードしない。
+
+将来的にはPolicy/runtime層へ置き、汎用OSとしての挙動を壊さない。
+
+---
+
+# 17. Process / Thread
+
+Processはresources/address spaceの所有単位、Threadは実行単位として扱う。
+
+必要な概念:
+
+- PID
+- TID
+- Parent relation
+- Address space
+- File descriptor table
+- Credentials
+- Environment
+- Thread state
+- Exit code
+- Wait/Join
+
+Process終了時に、memory、fd、IPC object、scheduler state等を確実に解放する。
+
+---
+
+# 18. IPC
+
+将来的に以下を体系化する。
+
+- Pipe
+- Message queue
+- Shared memory
+- Event/signal
+- Socket-based IPC
+- Service RPC
+
+IPC objectにはowner/lifetimeを持たせる。
+
+GUI、Network Manager、Package Manager、Settingsなどは、可能な限りService APIを通して通信する。
+
+---
+
+# 19. Syscall ABI
+
+UserspaceとKernelの境界を明確にする。
+
+## 19.1 原則
+
+- Pointer validation
+- Length validation
+- Handle validation
+- Permission check
+- ABI versioning
+- Stable error return
+- No kernel pointer leakage
+
+## 19.2 系統
+
+- Process/thread
+- Memory map
+- File I/O
+- Directory
+- Time
+- IPC
+- Network
+- Device interface
+- Configuration/service access
+
+## 19.3 CLIとGUI
+
+CLIもGUIも、特権操作を勝手に直接実装せず、同じ正式APIを使用する。
+
+---
+
+# 20. Userspace Init / Service Manager
+
+## 20.1 Init
+
+最小限のuserspace initを起動する。
+
+## 20.2 Service Manager
+
+サービスには、
+
+- name
+- dependency
+- startup condition
+- state
+- restart policy
+- timeout
+- resource policy
+
+を持たせる。
+
+不要なサービスをBoot時に常駐させない。
+
+サービスが死んだ場合は、可能なら他の部分を巻き込まず再起動する。
+
+---
+
+# 21. Storage Architecture
+
+```text
+Physical device
+ ↓
+Block layer
+ ↓
+Partition layer
+ ↓
+Filesystem driver
+ ↓
+VFS
+ ↓
+Path/file API
+ ↓
+Applications/services
+```
+
+## 21.1 Block layer
+
+HDD/SSD/NVMe/virtio等を共通化する。
+
+## 21.2 Partition
+
+パーティション方式を抽象化し、デバイス固有ロジックを上位へ漏らさない。
+
+## 21.3 Filesystem
+
+初期版は最も安全に実装可能な単純なFilesystemから開始してよい。
+
+最終的には、
+
+- File
+- Directory
+- Metadata
+- Permissions
+- Timestamps
+- Atomic write
+- Durable write
+- Recovery
+
+を提供する。
+
+## 21.4 VFS
+
+Path resolution、mount point、file descriptorなどを共通化する。
+
+---
+
+# 22. Persistent Configuration
+
+設定はファイルやサービスごとにバラバラな形式を勝手に作らない。
+
+設定には、
+
+- Stable ID
+- Data type
+- Default
+- Validation
+- Persistence
+- Owner
+- Migration version
+
+を持つ。
+
+書き込みは可能な限りtransactional/atomicにする。
+
+設定破損時には、
+
+```text
+invalid config
+ ↓
+validate failure
+ ↓
+fallback/default
+ ↓
+repair or setup UI
+```
+
+としてBoot loopを防ぐ。
+
+---
+
+# 23. Installer / Live / Recovery
+
+## 23.1 Installer
+
+将来的な正式Installerは、
+
+- Boot mode detection
+- Disk selection
+- Partitioning
+- Filesystem creation
+- Base OS installation
+- Bootloader installation
+- First-run configuration preparation
+
+を行う。
+
+破壊的な操作の前に、対象ディスク・パーティション・データ消去範囲を明示する。
+
+## 23.2 Live environment
+
+インストール前に最低限のHardware/Network/Storageを確認できるLive環境を将来的に用意する。
+
+## 23.3 Recovery
+
+通常Bootが失敗した場合、Recovery pathへ入れる。
+
+Recoveryは独立した最小システムとして設計し、通常環境の壊れた部分に依存しすぎない。
+
+---
+
+# 24. Display Architecture
+
+```text
+GPU/framebuffer driver
+ ↓
+Display backend
+ ↓
+Compositor
+ ↓
+Window system
+ ↓
+GUI toolkit
+ ↓
+Applications
+```
+
+## 24.1 Fallback
+
+Accelerated GPU driverがなくても、可能ならgeneric framebuffer等で最低限の画面を出せるようにする。
+
+## 24.2 Multi-monitor
+
+将来的に、
+
+- Display enumeration
+- Resolution
+- Refresh rate
+- Position
+- Scaling
+- Primary display
+
+を扱う。
+
+---
+
+# 25. Input Architecture
+
+対象:
+
+- Keyboard
+- Mouse
+- Touchpad
+- Touchscreen later
+- Hotkeys
+- Focus
+
+InputはHardware raw eventからOS internal eventへ変換する。
+
+アプリケーションへ直接hardware scan codeを渡さず、共通Input APIを使用する。
+
+---
+
+# 26. Text / Font / Unicode / IME
+
+多言語OSなので、単にASCIIが表示できるだけでは不十分。
+
+## 26.1 Unicode
+
+内部文字列処理はUnicodeを前提とする。
+
+## 26.2 Font fallback
+
+必要な文字が主フォントに存在しない場合、fallback fontを利用する。
+
+## 26.3 Input Method
+
+将来的に、
+
+- 日本語IME
+- 中文入力
+- その他の入力方式
+
+へ拡張可能なInput Method Frameworkを作る。
+
+---
+
+# 27. GUI Toolkit
+
+最低限必要なwidget:
+
+- Window
+- Label
+- Button
+- Text field
+- Checkbox
+- Radio button
+- Select/drop-down
+- List
+- Scroll view
+- Menu
+- Dialog
+- Notification
+- Progress bar
+- Tabs
+- Table/tree
+
+すべてKeyboard navigationとPointer interactionを考慮する。
+
+Accessibilityを後付けにせず、widget semantic情報を持たせる。
+
+---
+
+# 28. Compositor / Window System
+
+## 28.1 Window state
+
+最低限:
+
+- created
+- mapped
+- visible
+- focused
+- minimized
+- maximized
+- fullscreen
+- closing
+- destroyed
+
+## 28.2 Rendering
+
+Appは自分のsurfaceを描画し、Compositorが画面へ合成する。
+
+## 28.3 Isolation
+
+アプリが他アプリのsurfaceへ勝手に書き込めない。
+
+---
+
+# 29. Desktop Shell
+
+SB Desktopには、一般ユーザーがOSを操作できるShellを用意する。
+
+必要なもの:
+
+- App launcher
+- Task/window management
+- Desktop area
+- System status
+- Notification center
+- Power controls
+- Network indicator
+- Settings entry
+- File Manager entry
+- Terminal entry
+
+デスクトップの見た目は軽量性を損なわない範囲で設計する。
+
+---
+
+# 30. 初回起動セットアップ
+
+これはSBの重要なUX要件である。
+
+## 30.1 画面
+
+**GUIデスクトップが表示された後**に初回セットアップを表示する。
+
+ターミナル画面ではない。
+
+基本UI:
 
 ```text
 Welcome to SuiraBox
@@ -180,155 +1066,952 @@ Language
 [ Continue ]
 ```
 
-Choices:
+## 30.2 初期言語
 
 - 日本語
 - English
 - 中文
 - Español
 
-The user must not be required to type terminal commands.
+## 30.3 処理
 
-After selection:
+```text
+Desktop ready
+ ↓
+Check first-run state
+ ↓
+No valid configuration?
+ ↓
+Show language popup
+ ↓
+User chooses language
+ ↓
+Validate
+ ↓
+Save atomically
+ ↓
+Activate locale
+ ↓
+Continue desktop
+ ↓
+Mark completed
+```
 
-1. Validate the selection.
-2. Write configuration atomically.
-3. Activate the localization service.
-4. Refresh the current UI if necessary.
-5. Mark first-run as completed.
-6. Continue into normal desktop operation.
+## 30.4 キーボードレイアウト
 
-If the configuration is missing or corrupted later, the system must safely recover to the setup flow instead of silently using invalid state or entering a boot loop.
+言語とキーボード配列を同一視しない。
 
-## 3.3 Normal error
+例えばEnglishを選んでも、物理キーボードが日本語配列ならJP layoutを選べる。
 
-Normal errors should be non-traumatic and recoverable whenever possible.
+推奨初回順:
 
-A normal dialog should explain:
+1. Language
+2. Region/time zone
+3. Keyboard layout
+4. Network
+5. Optional privacy/performance settings
 
-- what happened;
-- which component was affected;
-- whether the system is still usable;
-- whether recovery was attempted;
-- what the user can do next;
-- Error ID;
-- optional technical details;
-- support-report option where appropriate.
+ただし、最初の言語ポップアップ自体は軽く、小さくする。
 
-## 3.4 BSOD
+ユーザー名/パスワード入力が必要な画面を作る場合は、キーボードレイアウトが確定してから行う。
 
-Meaning:
+## 30.5 設定破損
 
-> “The system was operating, but continuing is no longer safe.”
+first-run markerが破損した場合:
 
-A BSOD is a kernel/system emergency, not a normal error dialog.
-
-Display, where available:
-
-- stable error identifier;
-- failure class;
-- CPU exception/vector;
-- hardware error code;
-- instruction pointer;
-- relevant register state;
-- current process/thread;
-- subsystem;
-- kernel version/build;
-- boot/session identifier;
-- whether a crash dump was saved;
-- recovery/reboot state;
-- support-report identifier.
-
-The screen should be understandable to ordinary users while offering an expandable technical section.
-
-## 3.5 RSOD
-
-Meaning:
-
-> “The normal display/recovery path itself cannot be trusted, or critical early-boot/system integrity is broken.”
-
-RSOD must be rare. It is not a second ordinary error color.
-
-Use it only when:
-
-- the normal graphics path is itself compromised;
-- early boot state cannot be trusted;
-- recovery/display initialization is critically broken;
-- system integrity information required for safe recovery is unavailable.
+- setup状態へ安全に戻す
+- infinite loopを防ぐ
+- 既存ユーザーデータを削除しない
 
 ---
 
-# 4. Complete architecture
+# 31. Localization
 
-## 4.1 Layer model
+ユーザー向け文字列をソースコードへ直接大量に埋め込まない。
+
+## 31.1 Message ID
+
+例:
 
 ```text
-Firmware / BIOS / UEFI
-        ↓
-Bootloader
-        ↓
-Early Kernel
-        ↓
-CPU / Memory / Interrupt Infrastructure
-        ↓
-Kernel Core
-        ↓
-Device / Storage / Network Subsystems
-        ↓
-Userspace Init / Service Manager
-        ↓
-Display / Input Services
-        ↓
-Compositor / Window System
-        ↓
-Desktop Shell
-        ↓
-Settings / File Manager / Terminal / Store / Applications
+ui.welcome.title
+ui.language.label
+ui.continue
+settings.display
+error.network.timeout
+panic.kernel.page_fault
 ```
 
-## 4.2 Dependency rule
+## 31.2 Fallback
 
-Preferred dependency direction:
+翻訳が存在しない場合はfallback languageへ戻す。
 
-`boot → kernel primitives → kernel services → device abstractions → userspace services → GUI/applications`
+## 31.3 可変長
 
-Examples:
-
-- PMM must not know what a window is.
-- Network drivers must not know what Settings looks like.
-- Package management must work without the GUI.
-- GUI must not directly access hardware.
-- Error reporting from early boot must not require the GUI.
-
-## 4.3 Failure containment hierarchy
-
-Preferred containment:
-
-`application → application restart → service restart → userspace subsystem recovery → kernel subsystem recovery → recovery boot → system stop`
-
-The OS should stop at the lowest level that guarantees safety.
+日本語から英語、英語からスペイン語など、文字列長が変わってもUIが壊れない設計にする。
 
 ---
 
-# 5. Repository organization
+# 32. Settings
 
-Target ownership:
+設定アプリは「細かく設定できる」と「見やすい」を両立する。
+
+カテゴリ例:
+
+- System
+- Display
+- Appearance
+- Sound
+- Network
+- Keyboard & Mouse
+- Language & Region
+- Storage
+- Applications
+- Accounts
+- Privacy & Security
+- Updates
+- Performance
+- Developer
+- Recovery
+
+## 32.1 詳細設定
+
+初心者画面を壊さないため、Advanced/Developerへ分離できる項目は分離する。
+
+## 32.2 検索
+
+設定項目数が増えても探せるよう、Settings内検索を用意する。
+
+## 32.3 Preview / Apply
+
+変更によって再起動が必要な場合、適用前に明示する。
+
+---
+
+# 33. Accounts / Permissions
+
+ユーザー・権限は後付けで作るのではなく、userspace APIとsecurity modelへ統合する。
+
+必要な概念:
+
+- User ID
+- Group
+- Credential
+- Session
+- Permission
+- Privilege
+- Admin/elevated operation
+
+管理操作はGUIとCLIで同じsecurity policyを使用する。
+
+---
+
+# 34. Network Stack
 
 ```text
-boot/                 boot entry and early CPU state
-kernel/               privileged kernel implementation
-userspace/            userspace services and applications
-docs/                 subsystem specifications and test plans
-site/                 public website
-tests/                host/QEMU/integration tests when applicable
-.github/              CI, release and project automation
-Makefile              reproducible build orchestration
-linker.ld             final kernel memory layout
-README.md             short public project introduction
-SB_OS_DESIGN.md       canonical master specification
+NIC driver
+ ↓
+Ethernet/link
+ ↓
+IPv4/IPv6
+ ↓
+ARP/ND
+ ↓
+Routing
+ ↓
+UDP/TCP
+ ↓
+DNS/DHCP
+ ↓
+Sockets
+ ↓
+Network Manager
 ```
 
-Target kernel structure:
+## 34.1 必須機能
+
+- Loopback
+- Ethernet
+- IPv4
+- IPv6
+- ARP/Neighbor Discovery
+- Routing
+- UDP
+- TCP
+- DNS
+- DHCP
+- Static configuration
+- Socket API
+- Firewall/policy later
+
+## 34.2 Timeout
+
+Network operationでGUIを固めない。すべての外部通信にtimeout、cancel、failure状態を持たせる。
+
+---
+
+# 35. Network Manager
+
+GUIから、
+
+- interface
+- connected network
+- address
+- DNS
+- route
+- proxy later
+
+を設定できる。
+
+CLIでも同じ状態を確認・変更できる。
+
+GUIとCLIの設定が競合しないよう、Network Managerをsingle ownerとする。
+
+---
+
+# 36. Terminal / Shell
+
+SB Desktopには本物のTerminalを搭載する。
+
+## 36.1 基本機能
+
+- command execution
+- environment
+- stdin/stdout/stderr
+- redirection
+- pipe
+- process control
+- filesystem commands
+- network tools
+- package management
+- diagnostics
+- recovery commands
+
+## 36.2 GUIとの関係
+
+Terminal用APIとGUI用APIを別々に再実装しない。同じservice/permission/system APIを使用する。
+
+---
+
+# 37. Package Manager
+
+SBの軽量性を成立させる重要なSubsystem。
+
+```text
+Repository metadata
+ ↓
+Resolve
+ ↓
+Download
+ ↓
+Verify
+ ↓
+Stage
+ ↓
+Transaction
+ ↓
+Install
+ ↓
+Register
+```
+
+## 37.1 Package identity
+
+各packageは、
+
+- name
+- version
+- architecture
+- dependencies
+- conflicts
+- files
+- permissions
+- metadata
+
+を持つ。
+
+## 37.2 Integrity
+
+少なくともchecksum/integrity validationを行う。
+
+Official repositoryでは署名検証を行う。
+
+## 37.3 CLI/GUI排他
+
+CLIとSB Storeが同時にpackage transactionを実行しない。
+
+共通のtransaction lockを持つ。
+
+状態:
+
+```text
+idle
+ ↓
+locked
+ ↓
+transaction active
+ ↓
+commit
+ ↓
+unlock
+```
+
+GUI側でlock中の場合は「別のソフトウェア操作を処理しています」と表示し、勝手に同時変更しない。
+
+---
+
+# 38. SB Store
+
+SB Storeはpackage managerのGUI frontendである。
+
+## 38.1 機能
+
+- Search
+- Category
+- Details
+- Size
+- Dependencies
+- Install
+- Remove
+- Update
+- Cancel download where safe
+- Progress
+- Error details
+
+## 38.2 ベースOSを軽くする
+
+最初から全部のアプリをISOへ入れない。
+
+基本OSは必要最小限にし、Storeから追加する。
+
+---
+
+# 39. ダウンロード速度・データ量
+
+速度だけを最適化して安全性を落とさない。
+
+可能な手法:
+
+- compressed metadata
+- compressed package
+- resumable download
+- cache
+- parallel transfer when beneficial
+- mirror/CDN later
+- delta update later
+
+既にローカルに存在する正しいデータを再ダウンロードしない。
+
+---
+
+# 40. Driver Framework
+
+DriverはKernel内部へ直接ベンダー依存を撒き散らさない。
+
+共通Device Modelを作り、driverはinterfaceを実装する。
+
+## 40.1 初期優先度
+
+1. PCI
+2. framebuffer/display
+3. keyboard
+4. mouse
+5. storage
+6. network
+7. USB foundation
+8. audio
+9. GPU acceleration
+
+## 40.2 GPU
+
+段階的に、
+
+```text
+Generic framebuffer
+ ↓
+Basic hardware acceleration abstraction
+ ↓
+Intel
+ ↓
+AMD
+ ↓
+NVIDIA consumer/professional
+```
+
+などへ進める。
+
+NVIDIA RTX系を含む高性能GPUは、PCI detectionだけでは「対応」としない。実際にdisplay accelerationや必要機能を動作検証できた時点で対応対象へ昇格させる。
+
+---
+
+# 41. USB
+
+将来的なデスクトップ利用ではUSBは重要。
+
+必要な層:
+
+```text
+USB Host Controller
+ ↓
+USB core
+ ↓
+USB device class
+ ↓
+Driver
+```
+
+Keyboard/mouseなど基本的入力をUSB経由でも扱えるようにする。
+
+Hotplugを前提とし、device attach/detach eventを設ける。
+
+---
+
+# 42. Audio
+
+将来的に、
+
+- Device enumeration
+- Playback
+- Recording
+- Volume/mute
+- Per-app routing later
+
+を実装する。
+
+Audio failureでGUI全体を止めない。
+
+---
+
+# 43. Power Management
+
+- Shutdown
+- Reboot
+- Sleep later
+- Hibernate later
+- AC/battery status
+- Thermal status
+- CPU power policy later
+
+電源ボタンイベントはuserspace serviceとKernelで安全に処理する。
+
+---
+
+# 44. Clipboard / Notifications / Accessibility
+
+## Clipboard
+
+- copy
+- paste
+- clipboard owner
+- data type later
+
+## Notifications
+
+- application notification
+- system notification
+- update notification
+- error notification
+
+## Accessibility
+
+将来的に、
+
+- keyboard-only navigation
+- scalable UI
+- high contrast
+- screen reader hooks
+- reduced motion
+
+などへ拡張する。
+
+---
+
+# 45. Error UX / Support Report
+
+重大な問題の画面には、必ず「修理・サポートに役立つ情報」を残す。
+
+## 45.1 Support Report
+
+含める候補:
+
+- OS version
+- build ID
+- hardware summary
+- driver summary
+- kernel log
+- service states
+- storage health where safe
+- network configuration summary without secrets
+- error IDs
+- crash metadata
+
+除外:
+
+- password
+- authentication token
+- private key
+- session credential
+- raw secret
+- unnecessary private user content
+
+ユーザーが自分で保存・共有できる形にする。
+
+---
+
+# 46. Crash Dump
+
+Kernel crash時には可能な範囲でcrash dumpを保存する。
+
+保存ができない場合は、画面へその事実を表示する。
+
+Crash dump parserを将来的に開発者向けに提供する。
+
+---
+
+# 47. Recovery
+
+目標は「全部止める」ことではなく「壊れた一部分だけ復旧する」こと。
+
+例:
+
+```text
+App crash
+ → restart app
+
+Network service crash
+ → restart network service
+
+Display service crash
+ → restart display stack if safe
+
+Package transaction failure
+ → rollback transaction
+
+System boot failure
+ → recovery mode
+
+Kernel integrity failure
+ → stop safely
+```
+
+Recovery failureが無限ループを作らない。
+
+---
+
+# 48. Update System
+
+更新は、
+
+```text
+Check metadata
+ ↓
+Verify metadata
+ ↓
+Resolve dependencies
+ ↓
+Download
+ ↓
+Stage
+ ↓
+Verify
+ ↓
+Activate atomically
+ ↓
+Health check
+ ↓
+Commit
+```
+
+途中で電源断しても「完全に壊れた更新済み・更新前でもない半端な状態」を作らない。
+
+必要なら前の状態へrollbackする。
+
+---
+
+# 49. Data Cleanup
+
+「見えない要らないデータ」を減らすが、安全性を最優先する。
+
+## 安全な候補
+
+- expired temp
+- obsolete package cache
+- orphaned cache
+- stale generated artifact
+- expired diagnostic scratch data
+
+## 自動削除禁止
+
+- user documents
+- unknown files
+- active package data
+- recovery data
+- credential material
+
+Cleanup engineにはdata classificationとownershipを持たせる。
+
+---
+
+# 50. Security Architecture
+
+## 50.1 基本
+
+- Kernel/userspace isolation
+- Memory protection
+- Syscall validation
+- Permission checks
+- Package verification
+- Update verification
+- Least privilege
+- Driver isolation where practical
+- Sandboxing where practical
+
+## 50.2 Supply chain
+
+SB official repositoryでは将来的に、
+
+- Signed metadata
+- Signed packages
+- Trusted keys
+- Key rotation
+- Revocation
+- Repository pinning/policy
+
+を扱う。
+
+---
+
+# 51. Application isolation
+
+すべてのアプリを同じ権限で動かさない。
+
+段階的に、
+
+- normal user process
+- restricted app
+- sandboxed app
+- privileged/system service
+
+を区別する。
+
+UIだけで「安全そう」に見せず、Kernel/userspace boundaryで実際に制御する。
+
+---
+
+# 52. Time / Date / Region
+
+OS全体で共通のtime serviceを持つ。
+
+- monotonic time
+- wall clock
+- RTC
+- time zone
+- locale
+- daylight saving data as applicable
+
+Scheduler timeoutとユーザー表示時刻を同一概念にしない。
+
+---
+
+# 53. Performance Architecture
+
+軽量化は「削ったファイル数」ではなく測定値で評価する。
+
+最低限測定:
+
+- boot time
+- idle RAM
+- idle CPU
+- background wakeups
+- storage footprint
+- GUI frame latency
+- app launch latency
+- network overhead
+- package download size
+- update size
+
+## 53.1 Lazy loading
+
+不要なサービス・フォント・アプリ・driverは必要になるまでロードしない。
+
+## 53.2 No pointless polling
+
+イベント駆動を優先する。
+
+## 53.3 Memory reuse
+
+同じデータを複数のサービスが重複保持しない。
+
+---
+
+# 54. Minecraftとの関係
+
+SBは汎用Desktop OSを維持しながら、Minecraft利用を重要なユースケースの一つとして扱う。
+
+将来的に、
+
+- JVM runtime optimization
+- Minecraft instance manager
+- Minecraft Server manager
+- storage optimization
+- network policy
+- scheduling/runtime hints
+- benchmark suite
+
+などを追加できる。
+
+ただしMinecraft機能をKernelへ直接埋め込み、汎用OSとしての設計を壊さない。
+
+Minecraft向け機能はPolicy / Runtime / Application層に置く。
+
+---
+
+# 55. Build System
+
+## 55.1 必須
+
+- reproducible-ish build process
+- explicit architecture
+- freestanding kernel
+- controlled linker
+- ISO creation
+- checks
+- QEMU boot test
+
+## 55.2 Assembly errors
+
+32-bit assemblerへ64-bit relocationを誤って渡す事故を防ぐ。
+
+Architectureごとに、
+
+- operand width
+- relocation type
+- symbol addressability
+- code model
+
+を明示する。
+
+---
+
+# 56. CI/CD
+
+基本CI:
+
+```text
+Checkout
+ ↓
+Install build dependencies
+ ↓
+Build
+ ↓
+Validate boot image
+ ↓
+Inspect layout
+ ↓
+QEMU boot
+ ↓
+Serial log assertions
+ ↓
+Upload artifacts
+```
+
+将来追加:
+
+- unit tests
+- integration tests
+- package tests
+- GUI startup test
+- first-run persistence test
+- storage tests
+- network tests
+- crash tests
+- recovery tests
+- performance regression tests
+
+## 56.1 CIの原則
+
+失敗を隠してgreenにしない。
+
+Timeoutを伸ばすだけで問題を消さない。
+
+Expected outputを削除して成功扱いにしない。
+
+---
+
+# 57. QEMU / Virtual Hardware Test
+
+QEMUは最初の自動検証環境。
+
+最低限:
+
+- x86_64 boot
+- ISO boot
+- Serial output
+- memory tests
+- VMM tests
+- scheduler tests
+- userspace preparation
+- timer
+
+将来:
+
+- disk image
+- network device
+- framebuffer
+- multiple CPUs
+- USB
+- UEFI boot
+
+---
+
+# 58. 実機検証
+
+QEMUで通ったことをHardware compatibilityと同一視しない。
+
+実機では少なくとも、
+
+- Boot
+- Storage
+- Keyboard/mouse
+- Display
+- Network
+- Power
+- Reboot/shutdown
+
+を確認する。
+
+さらにベンダー別GPU等を追加していく。
+
+---
+
+# 59. Test design
+
+Subsystemごとに、
+
+1. Happy path
+2. Boundary
+3. Invalid input
+4. Resource exhaustion
+5. Concurrent access
+6. Recovery
+7. Persistence
+8. Performance
+
+を確認する。
+
+## 59.1 例: PMM
+
+- first allocation
+- repeated allocation
+- free/reallocate
+- invalid alignment
+- invalid range
+- reserved region
+- exhaustion
+- double free
+- bootstrap/real map transition
+
+## 59.2 例: Package Manager
+
+- valid install
+- missing dependency
+- conflict
+- corrupt download
+- interrupted download
+- transaction lock
+- rollback
+- GUI/CLI concurrent request
+
+## 59.3 例: First Boot
+
+- no config
+- valid config
+- invalid config
+- language save
+- reboot persistence
+- keyboard layout mismatch
+- translation fallback
+
+---
+
+# 60. Public Project / Official Ecosystem
+
+SBはコードだけでなく、世界中から参加できるプロジェクトとして公開する。
+
+## 60.1 Official Website
+
+資金をかけない前提で、GitHub Pagesを優先する。
+
+掲載予定:
+
+- SB紹介
+- Features
+- Downloads
+- Documentation
+- Development status
+- Hardware compatibility
+- Roadmap
+- Security advisories
+- Release notes
+- Contributing
+- Community links
+
+## 60.2 Official social/community
+
+Suiramをプロジェクト/コミュニティの識別名とする。
+
+公式SNSやDiscordなどは、なりすまし対策として公式サイトから導線を示す。
+
+---
+
+# 61. Documentation architecture
+
+`SB_OS_DESIGN.md`は最上位。
+
+個別ドキュメントは詳細実装を補足する。
+
+例:
+
+```text
+SB_OS_DESIGN.md
+ ↓
+docs/BOOT.md
+docs/MEMORY.md
+docs/HEAP.md
+docs/SCHEDULER.md
+docs/SYSCALL_ABI.md
+docs/FILESYSTEM.md
+docs/DRIVERS.md
+docs/GUI_DESKTOP_PLAN.md
+docs/FIRST_BOOT_SETUP.md
+docs/SB_SETTINGS.md
+docs/SB_STORE.md
+...
+```
+
+個別文書とこのマスターが矛盾した場合、マスターの更新を検討し、設計変更を明示する。
+
+---
+
+# 62. Repository Structure
+
+目標構造:
+
+```text
+boot/
+kernel/
+userspace/
+docs/
+tests/
+site/
+.github/
+Makefile
+linker.ld
+README.md
+SB_OS_DESIGN.md
+```
+
+Kernel目標:
 
 ```text
 kernel/
@@ -346,2396 +2029,709 @@ kernel/
     heap/
   sched/
   process/
-  syscall/
   ipc/
-  security/
-  drivers/
-    pci/
-    usb/
-    input/
-    display/
-    storage/
-    network/
-    audio/
+  syscall/
   fs/
   net/
   time/
   power/
+  security/
   log/
   panic/
+  drivers/
 ```
 
-Target userspace structure:
+Userspace目標:
 
 ```text
 userspace/
   init/
   services/
-    config/
-    display/
-    input/
-    network/
-    package/
-    update/
-    logging/
-    account/
-    notification/
   gui/
-    compositor/
-    toolkit/
-    shell/
-    settings/
-    filemanager/
-    terminal/
-    store/
   apps/
 ```
 
-Directories are targets, not requirements to create empty placeholders.
+これは「空ディレクトリを作れ」という意味ではない。実装されたSubsystemに合わせて育てる。
 
 ---
 
-# 6. Full construction order
+# 63. 実装の順番
 
-The project must be built in dependency order.
+以下の順番を基本とする。依存関係上必要なら前後させるが、上位機能を下位基盤未完成のまま「完成扱い」しない。
 
-## Phase 0 — Build foundation
+## Phase 0 — Build
 
-- Toolchain.
-- Freestanding compilation.
-- Assembler.
-- Linker script.
-- Makefile.
-- ISO creation.
-- QEMU invocation.
-- Serial logging.
-- CI.
-- Artifact validation.
+Toolchain → Build → Link → ISO → QEMU → CI
 
 ## Phase 1 — Boot
 
-- Boot protocol entry.
-- CPU mode.
-- Stack.
-- Boot information preservation.
-- Early output.
-- Kernel layout.
-- Reserved memory.
+Bootloader → CPU state → stack → boot info → kernel layout
 
 ## Phase 2 — Memory
 
-- PMM.
-- VMM.
-- Kernel heap.
-- Memory diagnostics.
+PMM → VMM → Heap → memory diagnostics
 
-## Phase 3 — CPU/runtime
+## Phase 3 — CPU runtime
 
-- GDT.
-- TSS.
-- IDT.
-- Exceptions.
-- PIC/APIC.
-- Timer.
-- Synchronization.
-- SMP groundwork.
+GDT → TSS → IDT → Exceptions → IRQ → Timer → synchronization
 
 ## Phase 4 — Execution
 
-- Scheduler.
-- Threads.
-- Processes.
-- Address spaces.
-- Syscalls.
-- ELF loader.
-- Userspace init.
-- Service manager.
+Scheduler → Thread → Process → IPC → Syscall → ELF → Userspace
 
 ## Phase 5 — Storage
 
-- Block layer.
-- Partition layer.
-- Filesystem.
-- VFS.
-- File permissions.
-- Persistent configuration.
-- Installer/storage preparation.
+Block → Partition → Filesystem → VFS → Configuration
 
-## Phase 6 — Hardware I/O
+## Phase 6 — Platform
 
-- PCI.
-- ACPI.
-- Keyboard.
-- Mouse.
-- USB foundations.
-- Display/framebuffer.
-- Storage devices.
-- Network devices.
-- Audio.
-- Power management.
+PCI → ACPI → SMP groundwork → Input → Display → USB → Network → Audio → Power
 
 ## Phase 7 — GUI
 
-- Text rendering.
-- Fonts.
-- Surfaces.
-- Event system.
-- Compositor.
-- Window manager.
-- Toolkit.
-- Desktop shell.
-- Notifications.
-- Clipboard.
-- File manager.
+Framebuffer → font/text → event → compositor → windows → toolkit → shell
 
-## Phase 8 — First boot/localization
+## Phase 8 — First run
 
-- Configuration service.
-- Locale service.
-- Language catalogs.
-- First-run popup.
-- Persistence.
-- Settings integration.
-- Keyboard layout and input method groundwork.
+Config service → Localization → Language popup → Keyboard layout → Settings
 
-## Phase 9 — Network
+## Phase 9 — Network services
 
-- NIC abstraction.
-- Ethernet.
-- IPv4.
-- IPv6.
-- ARP/ND.
-- Routing.
-- UDP.
-- TCP.
-- DNS.
-- DHCP.
-- Sockets.
-- Network manager.
-- Firewall/policy.
+Network Manager → DNS/DHCP → Firewall/policy
 
-## Phase 10 — Software distribution
+## Phase 10 — Software ecosystem
 
-- Package format.
-- Manifest.
-- Repository metadata.
-- Downloader.
-- Verification.
-- Transaction engine.
-- Install/remove/update.
-- SB Store.
-- Cache management.
+Package Manager → SB Store → Update system
 
-## Phase 11 — Security/recovery
+## Phase 11 — Reliability
 
-- Privilege model.
-- Permissions.
-- Sandboxing boundaries.
-- Package signing.
-- Update signing.
-- Crash diagnostics.
-- Recovery mode.
-- Rollback.
-- Backup/export mechanisms.
+Logging → diagnostics → crash dump → recovery → rollback
 
-## Phase 12 — Compatibility/performance
+## Phase 12 — Security
 
-- Hardware matrix.
-- GPU support.
-- Power management.
-- Boot performance.
-- Memory footprint.
-- Driver stability.
-- Storage efficiency.
-- Network efficiency.
+Permissions → privilege separation → package/update signing → sandbox boundaries
 
-## Phase 13 — Release
+## Phase 13 — Optimization
 
-- Release candidate.
-- Full CI.
-- Clean install.
-- Upgrade test.
-- Recovery test.
-- Hardware test.
-- Documentation.
-- Checksums/signatures.
-- Release artifacts.
-- Website publication.
+Boot → RAM → CPU → storage → graphics → network → application launch
+
+## Phase 14 — Release
+
+RC → complete test matrix → documentation → signatures/checksums → release
 
 ---
 
-# 7. Toolchain and build system
+# 64. Project state model
 
-## 7.1 Freestanding kernel requirements
-
-Kernel code must not accidentally depend on host libc/startup files/runtime.
-
-The build must explicitly define:
-
-- target architecture;
-- ABI;
-- freestanding mode;
-- compiler/assembler versions or reproducible toolchain source;
-- warning policy;
-- optimization policy;
-- relocation model;
-- stack-protection policy if used;
-- required compiler runtime functions.
-
-If compiler-generated runtime helpers are required, they must be deliberately provided or linked in a controlled manner.
-
-## 7.2 Assembly architecture correctness
-
-The project has already encountered the class of failure where 32-bit assembly is asked to represent a 64-bit relocation. Prevent recurrence by making architecture assumptions explicit.
-
-Rules:
-
-- 32-bit boot code must not contain unrepresentable 64-bit relocations.
-- 64-bit code must use the intended assembler mode.
-- Linker symbols must be referenced using the correct operand width.
-- Every boot relocation must be tested in CI.
-
-## 7.3 Linker layout
-
-Document and verify:
-
-- entry point;
-- `.text`;
-- `.rodata`;
-- `.data`;
-- `.bss`;
-- alignment;
-- kernel end;
-- boot stack;
-- page tables;
-- early allocator metadata;
-- symbols exported to assembly.
-
-After layout changes, CI should inspect the actual addresses.
-
-## 7.4 Build targets
-
-Equivalent functionality must exist for:
-
-- normal build;
-- clean build;
-- ISO generation;
-- QEMU boot;
-- tests;
-- artifact validation;
-- debug build;
-- release build.
-
----
-
-# 8. Bootloader and firmware boundary
-
-## 8.1 Supported boot paths
-
-Initial priority:
-
-1. QEMU test environment.
-2. Generic x86_64 legacy/BIOS-compatible boot path if supported.
-3. UEFI boot path.
-4. Real hardware validation.
-
-Do not claim UEFI/BIOS support until each path is actually tested.
-
-## 8.2 Firmware responsibilities
-
-The firmware owns platform initialization before the bootloader. SB must not assume that every platform exposes identical firmware behavior.
-
-## 8.3 Boot responsibilities
-
-The boot path must:
-
-- enter the expected CPU state;
-- establish a known stack;
-- preserve required boot information;
-- establish required initial paging;
-- transfer control through a documented ABI;
-- avoid initializing high-level services.
-
-## 8.4 Boot memory reservation
-
-Never give the PMM memory occupied by:
-
-- boot code/data;
-- stack;
-- page tables;
-- kernel image;
-- Multiboot structures still in use;
-- framebuffer;
-- firmware-reserved memory;
-- PMM metadata;
-- crash/recovery buffers.
-
----
-
-# 9. Physical Memory Manager (PMM)
-
-## 9.1 Purpose
-
-PMM owns physical page allocation.
-
-## 9.2 Required operations
-
-Conceptual API:
+Every component uses one of the following states:
 
 ```text
-pmm_init()
-pmm_reserve_range(start, length)
-pmm_release_range(start, length)
-pmm_alloc_page()
-pmm_alloc_pages(count)
-pmm_free_page(page)
-pmm_get_stats()
+PLANNED
+ ↓
+DESIGNED
+ ↓
+SKELETON
+ ↓
+PARTIAL
+ ↓
+FUNCTIONAL
+ ↓
+BUILD-VERIFIED
+ ↓
+RUNTIME-VERIFIED
+ ↓
+HARDWARE-VERIFIED
+ ↓
+RELEASE-READY
 ```
 
-Exact names are implementation details.
+`FUNCTIONAL` means the feature actually works in its supported scenario.
 
-## 9.3 Initialization
+`RUNTIME-VERIFIED` means automated or controlled runtime testing confirmed it.
 
-Bootstrap with a known-safe region if necessary. Later integrate the complete physical memory map.
-
-**Never reinitialize the allocator by clearing state that is already in use.**
-
-## 9.4 Reservation order
-
-1. Firmware-reserved regions.
-2. Boot structures.
-3. Kernel image.
-4. Stack.
-5. Page tables.
-6. PMM metadata/bitmap.
-7. Framebuffer.
-8. Other explicitly reserved structures.
-9. Remaining genuinely usable memory becomes free.
-
-## 9.5 Invariants
-
-- Every returned page is aligned.
-- Reserved pages cannot be allocated.
-- Freed pages become available exactly once.
-- Invalid pages are rejected.
-- Metadata cannot overlap free pages.
-- Counters are consistent.
-- Integer overflow is impossible or checked.
-- Initialization cannot run forever.
-
-## 9.6 PMM debugging procedure
-
-If boot stops at PMM:
-
-1. Confirm the last emitted checkpoint.
-2. Confirm PMM static addresses.
-3. Inspect linker map.
-4. Check overlap with stack/page tables/kernel.
-5. Check page count calculations.
-6. Check bitmap size.
-7. Check loop bounds.
-8. Check integer overflow.
-9. Check whether diagnostics are blocking.
-10. Check whether PMM is being initialized twice.
-11. Test a tiny fixed allocator.
-12. Test with low QEMU RAM.
-13. Test with larger QEMU RAM.
-14. Re-run with memory layout assertions.
-
-## 9.7 Tests
-
-- first page;
-- many pages;
-- free/reallocate;
-- exhaustion;
-- invalid page;
-- double free;
-- reserved region;
-- low-memory environment;
-- large-memory environment;
-- randomized allocation/free sequence.
+`HARDWARE-VERIFIED` means real hardware testing confirmed the declared support level.
 
 ---
 
-# 10. Virtual Memory Manager (VMM)
+# 65. Current implementation state
 
-## 10.1 Responsibilities
+**この章は必ず実際のコードとCIで更新する。**
 
-- page-table creation;
-- mapping;
-- unmapping;
-- permissions;
-- address-space lifecycle;
-- TLB management;
-- page fault handling;
-- ownership of page-table pages through PMM.
-
-## 10.2 Protection model
-
-At minimum distinguish:
-
-- kernel-only;
-- user-readable;
-- user-writable;
-- executable where supported;
-- non-executable where supported.
-
-User processes must not arbitrarily access kernel memory.
-
-## 10.3 Fault behavior
-
-Invalid user access should generate a controlled page fault and eventually an application-level failure when safe.
-
-Invalid kernel access should produce a kernel diagnostic/panic path unless a controlled recovery mechanism exists.
-
-## 10.4 Tests
-
-- map/unmap;
-- permissions;
-- page fault;
-- address-space isolation;
-- page-table cleanup;
-- TLB invalidation;
-- allocation failure;
-- mapping alignment;
-- double-unmap handling.
-
----
-
-# 11. Kernel heap
-
-Required properties:
-
-- documented alignment;
-- overflow checks;
-- defined zero-size behavior;
-- defined allocation failure;
-- no hidden recursion through logging;
-- fragmentation awareness;
-- repeated alloc/free tests;
-- interaction tests with PMM/VMM.
-
-Provide page allocation separately from heap allocation. The heap must not become the only memory primitive.
-
----
-
-# 12. CPU architecture layer
-
-## 12.1 GDT
-
-Define and test required code/data segments for kernel and userspace.
-
-## 12.2 TSS
-
-Provide per-CPU/kernel-stack data needed for safe privilege transitions.
-
-## 12.3 IDT
-
-Install handlers for CPU exceptions and hardware/software interrupts.
-
-## 12.4 Exceptions
-
-Each exception should capture enough state for diagnosis:
-
-- vector;
-- error code when present;
-- instruction pointer;
-- code segment;
-- flags;
-- stack pointer;
-- relevant registers;
-- current thread/process;
-- subsystem state when safely available.
-
-## 12.5 Interrupt controllers
-
-Support the selected interrupt architecture through an abstraction so the rest of the kernel does not depend directly on one controller implementation.
-
-## 12.6 Timer
-
-Provide a monotonic timer facility for:
-
-- scheduling;
-- sleep;
-- timeouts;
-- performance measurement.
-
-Wall-clock time must be a separate concept from monotonic elapsed time.
-
----
-
-# 13. ACPI, SMP and platform discovery
-
-Eventually support:
-
-- ACPI table discovery;
-- CPU enumeration;
-- interrupt routing information;
-- power state information;
-- thermal information where safely available;
-- multiple CPUs/cores.
-
-SMP rollout:
-
-1. Single CPU correctness.
-2. Per-CPU data structures.
-3. Secondary CPU startup.
-4. Scheduler awareness.
-5. Interrupt routing.
-6. Synchronization stress testing.
-
-Do not enable complex SMP behavior before synchronization primitives are reliable.
-
----
-
-# 14. Synchronization and concurrency
-
-Required primitives eventually include:
-
-- spinlocks;
-- mutexes;
-- semaphores where useful;
-- wait queues;
-- atomic operations;
-- reference counting;
-- interrupt-safe locking rules.
-
-Every lock must have documented ownership expectations.
-
-Avoid lock-order inversions.
-
-Never sleep while holding a lock that cannot legally be held across a sleep.
-
-Add concurrency tests before enabling SMP-dependent services.
-
----
-
-# 15. Scheduler, threads and processes
-
-## 15.1 Thread
-
-A thread owns execution context and scheduling state.
-
-## 15.2 Process
-
-A process owns an address space and process-level resources.
-
-## 15.3 Scheduler
-
-Minimum requirements:
-
-- runnable queue;
-- blocked state;
-- sleep/timer state;
-- context switch;
-- fairness policy;
-- idle thread;
-- CPU utilization accounting.
-
-Future priorities may include:
-
-- interactive responsiveness;
-- background tasks;
-- power-aware scheduling.
-
-## 15.4 Process lifecycle
-
-Required states conceptually:
-
-`created → runnable → running → blocked/sleeping → runnable → exited → reaped`
-
-Resources must be cleaned at exit.
-
----
-
-# 16. Syscall ABI
-
-The userspace boundary must be explicit and versioned.
-
-Required syscall families:
-
-- process/thread control;
-- memory mapping;
-- file I/O;
-- time;
-- IPC;
-- networking;
-- device abstractions;
-- configuration/service communication.
-
-Every syscall must validate:
-
-- pointers;
-- lengths;
-- handles;
-- permissions;
-- integer overflow;
-- user/kernel address boundaries.
-
-Define stable error codes and document whether errors are retryable.
-
-Changing a public ABI requires a compatibility policy.
-
----
-
-# 17. IPC and service architecture
-
-SB should use explicit service boundaries rather than making every component a privileged monolith.
-
-Potential IPC mechanisms:
-
-- message passing;
-- pipes;
-- shared memory with synchronization;
-- sockets/local endpoints;
-- event notification.
-
-The final mechanism may vary, but services must have:
-
-- lifecycle;
-- ownership;
-- permissions;
-- timeout behavior;
-- restart policy;
-- health state;
-- diagnostic identity.
-
----
-
-# 18. ELF/userspace loader
-
-The executable loader must eventually:
-
-- validate file format;
-- validate architecture;
-- validate program headers;
-- create mappings;
-- apply permissions;
-- initialize stack;
-- establish entry point;
-- provide process startup information;
-- reject malformed executables safely.
-
-Malformed binaries must never cause arbitrary kernel memory access.
-
----
-
-# 19. Userspace init and service manager
-
-Startup should be dependency-aware and lazy.
-
-Required service concepts:
-
-- service identity;
-- dependencies;
-- startup condition;
-- restart policy;
-- failure state;
-- logs;
-- resource limits;
-- shutdown ordering.
-
-Only services necessary for a usable desktop should automatically start.
-
-Installed optional applications must not automatically become permanent boot-time processes.
-
----
-
-# 20. Time and clock system
-
-Separate:
-
-- monotonic time;
-- wall-clock time;
-- timezone;
-- calendar/localization.
-
-Required future capabilities:
-
-- RTC initialization;
-- time synchronization;
-- timezone database;
-- user-visible date/time formatting;
-- timers;
-- alarms where appropriate.
-
-A broken wall clock must not break scheduler timing.
-
----
-
-# 21. Storage architecture
-
-Layers:
+現時点の重要な事実:
 
 ```text
-Physical device
- ↓
-Block layer
- ↓
-Partition layer
- ↓
-Filesystem driver
- ↓
-VFS
- ↓
-File APIs
- ↓
-Applications
+Build/ISO                         ✅
+Multiboot validation              ✅
+Kernel entry                      ✅
+PCI enumeration                   ✅
+PMM initialization                ❌ current blocker
+VMM                               not yet runtime-verified beyond PMM
+Heap                              not yet runtime-verified beyond PMM
+GDT/TSS                           not yet reached in current QEMU path
+Scheduler                         not yet reached in current QEMU path
+Process/Syscall                   not yet reached in current QEMU path
+Userspace                         not yet reached in current QEMU path
+Display                            not yet reached
+GUI                               not yet reached
+First Boot Language UI            not yet reached
+Settings                          not yet reached
+Network                           not yet reached
+Package Manager                   not yet reached
+SB Store                          not yet reached
+Recovery                          not yet reached
+Release                           not yet reached
 ```
 
-## 21.1 Required file operations
+現在のボトルネックはPMMである。QEMU smoke testは`Memory: PMM init begin`の後に停止しているため、次の作業はPMMの実行時停止を根本原因から解決することである。
 
-- open;
-- close;
-- read;
-- write;
-- seek;
-- stat;
-- create;
-- rename;
-- delete;
-- directory enumeration;
-- permissions;
-- timestamps;
-- durable write.
-
-## 21.2 Atomic configuration
-
-Configuration updates should use:
-
-`write temporary → validate → flush as required → atomically replace → recover stale temporary file`
-
-where supported.
-
-## 21.3 Filesystem recovery
-
-Interrupted writes must not intentionally produce an unrecoverable configuration state.
-
-Filesystem checks/recovery tools must be available outside the normal desktop when necessary.
+未到達のSubsystemを「ソースファイルが存在する」という理由だけで完成扱いしない。
 
 ---
 
-# 22. Installer and disk management
+# 66. PMM問題の復旧手順
 
-The project must eventually provide a safe installation path.
+現在地点からのデバッグ方法:
 
-Installer responsibilities:
+1. `kernel/mm/pmm.c`を読む。
+2. PMMのstatic storageの配置を確認する。
+3. Linker map / `nm`でbitmap/page_count/free_countのアドレスを確認する。
+4. Boot stack、page tables、kernel imageと重複していないか確認する。
+5. `pmm_init()`を、reset / range setup / count recomputeの単位で検証する。
+6. 各段階の境界ログは、allocator/lockに依存しない最小Loggerを使用する。
+7. QEMUで最小ケースを実行する。
+8. Boot informationがPMMに踏まれていないか確認する。
+9. BIOS/Multibootで受け取った情報のlifespanを確認する。
+10. 正常化したら、まずPMM単体を検証し、その後VMMへ進む。
 
-- detect disks;
-- clearly identify target disk;
-- distinguish removable/secondary disks;
-- show destructive operations clearly;
-- partition safely;
-- create required filesystem structures;
-- install boot files;
-- copy base system;
-- create initial configuration;
-- verify installation;
-- reboot into installed system.
-
-Never make destructive disk operations implicit.
-
-The installer should support a safe test path for QEMU virtual disks.
-
-Future options may include:
-
-- erase and install;
-- manual partitioning;
-- existing-system coexistence where technically supported;
-- recovery/repair mode.
+この問題を雑に「時間を増やす」「testを消す」で解決しない。
 
 ---
 
-# 23. Input architecture
+# 67. Complete End-to-End State Transitions
 
-Abstract hardware input from GUI input.
-
-Initial devices:
-
-- keyboard;
-- mouse.
-
-Later:
-
-- touch;
-- gamepads/controllers;
-- tablets;
-- hot-plug devices;
-- Bluetooth input.
-
-Input events should contain:
-
-- device identity;
-- timestamp;
-- event type;
-- key/button/code;
-- state;
-- pointer coordinates where applicable.
-
----
-
-# 24. Internationalization and input methods
-
-## 24.1 Initial languages
-
-- Japanese
-- English
-- Chinese
-- Spanish
-
-## 24.2 Localization requirements
-
-Use stable message IDs such as:
+## 67.1 Boot
 
 ```text
-ui.welcome.title
-settings.language
-error.network.timeout
-panic.kernel.page_fault
+OFF
+ ↓
+FIRMWARE
+ ↓
+BOOTLOADER
+ ↓
+KERNEL_ENTRY
+ ↓
+EARLY_CPU_READY
+ ↓
+MEMORY_READY
+ ↓
+INTERRUPTS_READY
+ ↓
+SCHEDULER_READY
+ ↓
+USERSPACE_READY
+ ↓
+DISPLAY_READY
+ ↓
+DESKTOP_READY
 ```
 
-Support:
-
-- fallback language;
-- plural rules;
-- date/time formatting;
-- number formatting;
-- text direction metadata;
-- Unicode;
-- font fallback;
-- string length expansion;
-- locale-specific keyboard settings.
-
-## 24.3 Japanese/Chinese input
-
-Language selection and text rendering are not sufficient for full usability.
-
-The architecture must eventually allow input methods/IME-style composition so users can type languages that require composition.
-
-The base OS should not need every large language resource installed if downloadable language packs are practical.
-
----
-
-# 25. Display architecture
-
-Target layers:
-
-`GPU/framebuffer driver → display service → compositor → window system → toolkit`
-
-## 25.1 Fallback
-
-A generic framebuffer path should allow basic display where a vendor-specific accelerated driver is unavailable and the platform exposes a usable framebuffer.
-
-## 25.2 Resolution/hotplug
-
-Eventually support:
-
-- resolution changes;
-- refresh rate selection;
-- multiple displays;
-- display orientation;
-- hotplug events;
-- scaling.
-
----
-
-# 26. Graphics acceleration
-
-Separate graphics API from vendor driver.
-
-Potential long-term support:
-
-- Intel graphics;
-- AMD graphics;
-- NVIDIA consumer GPUs;
-- NVIDIA professional GPUs;
-- modern high-end GPUs;
-- virtual GPU/QEMU devices.
-
-The project should not promise a specific RTX generation merely because the OS boots on generic x86_64.
-
-Driver compatibility must be proven per driver family and tested on real or virtual hardware.
-
-A missing acceleration driver should degrade gracefully when a generic path exists.
-
----
-
-# 27. GUI architecture
-
-Layers:
-
-`Display Driver → Display Service → Compositor → Window System → Toolkit → Desktop Shell → Apps`
-
-Minimum primitives:
-
-- surfaces;
-- windows;
-- text;
-- fonts;
-- labels;
-- buttons;
-- text fields;
-- lists;
-- select/drop-down controls;
-- dialogs;
-- menus;
-- notifications;
-- scroll containers;
-- keyboard focus;
-- pointer input;
-- accessibility metadata.
-
-GUI applications must not directly manipulate hardware.
-
-## 27.1 Event model
-
-GUI should be event-driven.
-
-Avoid:
-
-- busy waiting;
-- fixed polling loops for input;
-- blocking the compositor on network operations;
-- blocking the entire desktop while an application performs disk I/O.
-
-## 27.2 Window manager
-
-Must manage:
-
-- creation;
-- focus;
-- stacking;
-- minimize/maximize/close;
-- move/resize;
-- fullscreen;
-- workspace concepts if implemented;
-- crash cleanup.
-
----
-
-# 28. Desktop shell
-
-Minimum desktop functions:
-
-- application launcher;
-- task/window management;
-- system status area;
-- notification system;
-- settings access;
-- file manager access;
-- terminal access;
-- power controls;
-- network status;
-- clock;
-- basic user/session controls.
-
-The shell must remain usable if an optional application crashes.
-
----
-
-# 29. Accessibility
-
-Accessibility is part of architecture, not a later visual polish item.
-
-Plan for:
-
-- keyboard navigation;
-- visible focus;
-- scalable text;
-- display scaling;
-- high-contrast themes;
-- reduced-motion preference;
-- screen-reader hooks;
-- semantic UI labels;
-- color-independent status indicators.
-
-The exact implementation may arrive later, but GUI APIs should not make it impossible.
-
----
-
-# 30. Clipboard and desktop integration
-
-Provide a controlled clipboard service rather than allowing applications to access arbitrary application memory.
-
-Potential clipboard types:
-
-- plain text;
-- rich text;
-- images;
-- files/URI lists.
-
-Clipboard lifetime and privacy behavior must be defined.
-
----
-
-# 31. Notifications
-
-Notification service responsibilities:
-
-- application identity;
-- severity;
-- title/body;
-- timestamp;
-- action buttons;
-- persistence policy;
-- quiet mode;
-- accessibility output.
-
-Kernel-level failures must not rely on the normal notification service if that service may itself be broken.
-
----
-
-# 32. Settings architecture
-
-Settings categories:
-
-- System
-- Appearance
-- Display
-- Sound
-- Network
-- Keyboard & Mouse
-- Input Methods
-- Storage
-- Applications
-- Privacy & Security
-- Accounts
-- Updates
-- Language & Region
-- Performance
-- Developer
-- Recovery
-
-Every setting needs:
-
-- stable identifier;
-- type/schema;
-- default;
-- validation;
-- persistence policy;
-- owning subsystem;
-- UI description;
-- migration behavior if its format changes.
-
-No duplicate source of truth.
-
----
-
-# 33. User/account/permission model
-
-The OS eventually needs a real identity model.
-
-Requirements:
-
-- user identity;
-- groups/roles;
-- authentication mechanism;
-- session ownership;
-- file permissions;
-- privileged operations;
-- service identity.
-
-Normal applications should run without unrestricted privileged access.
-
-The GUI must never imply that a cosmetic role is a security boundary.
-
-Authentication secrets must be stored through a dedicated protected mechanism, not ordinary configuration files.
-
----
-
-# 34. Terminal and shell
-
-SB Desktop includes a real terminal.
-
-Required direction:
-
-- process execution;
-- environment variables;
-- pipes;
-- redirection;
-- filesystem commands;
-- process tools;
-- network tools;
-- package commands;
-- diagnostics;
-- recovery commands;
-- scripting eventually.
-
-GUI and terminal should call the same underlying services wherever practical.
-
-The terminal is **not** the first-run configuration mechanism.
-
----
-
-# 35. Networking
-
-Target stack:
-
-`NIC → link layer → IPv4/IPv6 → ARP/ND → routing → UDP/TCP → DNS/DHCP → sockets → network manager`
-
-Requirements:
-
-- Ethernet;
-- IPv4;
-- IPv6;
-- DHCP;
-- static addresses;
-- DNS;
-- routing;
-- loopback;
-- sockets;
-- firewall/policy;
-- diagnostics.
-
-Later:
-
-- Wi-Fi;
-- Bluetooth networking;
-- VPN interfaces;
-- advanced routing.
-
-Every network operation must have timeout/error semantics and must not freeze the desktop.
-
----
-
-# 36. Network manager GUI/CLI parity
-
-The same underlying configuration model must power:
-
-- GUI network settings;
-- terminal commands;
-- automatic configuration;
-- diagnostics.
-
-Do not create a GUI-only network configuration database that the terminal cannot understand.
-
----
-
-# 37. Audio architecture
-
-Audio is a separate subsystem.
-
-Target layers:
-
-`audio hardware driver → kernel/device service → userspace audio service → mixer/session policy → applications`
-
-Required concepts:
-
-- output devices;
-- input devices;
-- volume;
-- mute;
-- per-application routing eventually;
-- device hotplug;
-- sample format/rate handling.
-
-Audio failure must not crash the desktop.
-
----
-
-# 38. USB and hotplug
-
-The architecture should support device discovery/removal without requiring reboot where technically possible.
-
-Requirements:
-
-- device identity;
-- enumeration;
-- driver matching;
-- attach/detach lifecycle;
-- safe resource cleanup.
-
-Hot-unplug must not leave dangling kernel pointers.
-
----
-
-# 39. Power management
-
-Eventually support:
-
-- shutdown;
-- reboot;
-- suspend;
-- hibernate if technically feasible;
-- CPU power states;
-- display power;
-- battery reporting;
-- thermal information;
-- laptop lid events.
-
-Shutdown/reboot must use dependency-aware service termination.
-
-Never cut power while persistent data is known to be mid-transaction unless forced recovery requires it.
-
----
-
-# 40. Package manager
-
-Architecture:
-
-`SB Core → package manager → repository metadata → downloader → verification → dependency solver → transaction → filesystem → package database`
-
-Package metadata must include at least:
-
-- package ID;
-- name;
-- version;
-- architecture;
-- dependencies;
-- conflicts;
-- files;
-- optional dependencies;
-- integrity hash;
-- signature/provenance information.
-
-Required operations:
-
-- search;
-- install;
-- remove;
-- upgrade;
-- list;
-- inspect;
-- verify;
-- rollback where feasible;
-- clean cache;
-- repair database.
-
-Transactions should be interruptible/recoverable.
-
----
-
-# 41. SB Store
-
-SB Store is a GUI front end to the package/repository system, not a separate package universe.
-
-Required concepts:
-
-- search;
-- categories;
-- installed state;
-- version;
-- size;
-- dependencies;
-- screenshots/description later;
-- install;
-- remove;
-- update;
-- cancellation;
-- progress;
-- error details.
-
-The base OS should remain usable without an internet connection. Previously installed software must not disappear merely because the repository is unavailable.
-
----
-
-# 42. Fast downloads
-
-Optimize downloads through:
-
-- compact metadata;
-- compression;
-- caching;
-- resumable downloads;
-- range requests where supported;
-- mirrors/CDN later;
-- parallel transfers when beneficial;
-- deduplication where practical.
-
-Never sacrifice cryptographic/integrity verification for speed.
-
----
-
-# 43. Repository and package security
-
-Official packages/metadata should eventually use cryptographic signing.
-
-Threats to consider:
-
-- malicious mirror;
-- corrupted download;
-- compromised package;
-- rollback to vulnerable version;
-- dependency confusion;
-- metadata tampering.
-
-The client must verify identity/integrity before installation.
-
----
-
-# 44. Driver framework
-
-Drivers must sit behind stable interfaces.
-
-Initial priority:
-
-- PCI;
-- framebuffer/display;
-- keyboard;
-- mouse;
-- storage;
-- Ethernet;
-- USB foundations.
-
-Later:
-
-- Wi-Fi;
-- audio;
-- Intel graphics;
-- AMD graphics;
-- NVIDIA graphics;
-- modern storage controllers;
-- additional PCIe/USB devices.
-
-Driver failure should be isolated when possible.
-
-A driver must declare:
-
-- hardware IDs;
-- capabilities;
-- required resources;
-- lifecycle;
-- failure state;
-- supported versions.
-
----
-
-# 45. PCI and hardware discovery
-
-PCI enumeration must provide a hardware inventory abstraction for the rest of the system.
-
-Record:
-
-- bus/device/function;
-- vendor/device IDs;
-- class/subclass;
-- BAR information where applicable;
-- interrupt information;
-- driver binding state.
-
-Do not assume a device exists merely because a common PC usually has one.
-
----
-
-# 46. Security architecture
-
-Security boundaries:
-
-`firmware/boot → kernel → privileged services → ordinary userspace → applications`
-
-Required directions:
-
-- memory isolation;
-- syscall validation;
-- file permissions;
-- service privileges;
-- package verification;
-- secure updates;
-- firewall policy;
-- least privilege;
-- protected secrets;
-- sanitized logs.
-
-## 46.1 Threat model
-
-Document threats against:
-
-- malicious local application;
-- compromised package;
-- malicious network server;
-- corrupted storage;
-- accidental user action;
-- driver bugs;
-- kernel bugs;
-- physical loss of the device.
-
-Security decisions should be made according to threat severity rather than aesthetic complexity.
-
----
-
-# 47. Logging architecture
-
-Structured logs should contain:
-
-- timestamp;
-- severity;
-- component;
-- event/error ID;
-- boot ID;
-- session ID where appropriate;
-- process/thread where available;
-- message;
-- relevant sanitized context.
-
-Severity classes should be stable enough for filtering.
-
-Do not log:
-
-- passwords;
-- authentication tokens;
-- private keys;
-- session cookies;
-- unnecessary personal data.
-
----
-
-# 48. Crash dumps and diagnostics
-
-Serious failures should produce a machine-readable diagnostic record when possible.
-
-Include:
-
-- OS build;
-- kernel build;
-- hardware inventory;
-- CPU information;
-- memory information;
-- driver versions;
-- recent subsystem events;
-- exception state;
-- process/thread;
-- error ID;
-- boot/session ID.
-
-Allow users to save/export a support report.
-
-The report should have a privacy review/filtering step.
-
----
-
-# 49. Recovery architecture
-
-Recovery priorities:
-
-1. Restart failed application.
-2. Restart failed userspace service.
-3. Restart network/display service when safe.
-4. Roll back failed package transaction.
-5. Boot recovery environment.
-6. Run filesystem checks.
-7. Restore known-good configuration.
-8. Reinstall damaged system components.
-9. Kernel panic only if no safe continuation exists.
-
-Every recovery mechanism needs a termination condition. Never create an infinite “repair → reboot → repair” loop.
-
----
-
-# 50. Configuration backup and migration
-
-Configuration formats must be versioned.
-
-When a configuration schema changes:
-
-1. Detect old version.
-2. Validate it.
-3. Migrate it.
-4. Keep a recovery copy when practical.
-5. Validate new format.
-6. Atomically activate it.
-
-Never assume an old configuration is valid merely because it is syntactically readable.
-
----
-
-# 51. Update system
-
-Target transaction:
-
-`metadata → verification → dependency resolution → download → staging → validation → activation → health check → rollback if necessary`
-
-Requirements:
-
-- signed metadata;
-- integrity hashes;
-- dependency checks;
-- atomic activation where practical;
-- interrupted-update recovery;
-- rollback;
-- progress reporting;
-- clear error messages.
-
-A failed update must not intentionally leave the machine in an unknown half-updated state.
-
----
-
-# 52. Backup and restore
-
-The OS must distinguish:
-
-- system files;
-- user files;
-- configuration;
-- application data;
-- package state;
-- recovery metadata.
-
-Future backup tooling should let users choose what to preserve.
-
-Restore must validate compatibility before overwriting active system state.
-
----
-
-# 53. Data minimization and cleanup
-
-Classify data by ownership:
-
-- user data;
-- system data;
-- package state;
-- cache;
-- temporary data;
-- logs;
-- recovery data.
-
-Safe cleanup candidates:
-
-- expired temporary files;
-- obsolete package caches;
-- orphaned package artifacts;
-- stale generated data.
-
-Never automatically delete unknown files or user documents merely because they are large or old.
-
-Cleanup must have a dry-run/report mode where feasible.
-
----
-
-# 54. Privacy
-
-Privacy defaults should favor collecting less data.
-
-The system should clearly distinguish:
-
-- local diagnostics;
-- optional support upload;
-- update communication;
-- telemetry if ever introduced.
-
-No hidden telemetry should be required for the core OS.
-
-Any future telemetry feature must be explicitly documented and controllable.
-
----
-
-# 55. Application isolation
-
-The long-term application model should support different trust levels.
-
-Possible classes:
-
-- trusted system service;
-- normal application;
-- sandboxed application;
-- developer/debug application.
-
-The architecture should allow sandboxing without requiring every GUI application to run as a privileged process.
-
----
-
-# 56. Developer mode
-
-Advanced users/developers may need:
-
-- verbose boot logs;
-- serial logging;
-- debug symbols;
-- diagnostic tools;
-- driver debugging;
-- kernel tracing;
-- performance counters;
-- development packages.
-
-Developer mode must not silently weaken ordinary user security.
-
----
-
-# 57. Performance engineering
-
-Measure before optimizing.
-
-Track:
-
-- boot stages;
-- scheduler latency;
-- page fault cost;
-- allocation latency;
-- filesystem latency;
-- network latency;
-- compositor frame time;
-- application startup;
-- idle wakeups;
-- memory fragmentation.
-
-Optimize in this order:
-
-1. Correctness.
-2. Major architectural bottlenecks.
-3. User-visible latency.
-4. Memory footprint.
-5. CPU efficiency.
-6. Minor size/byte-level optimizations.
-
----
-
-# 58. Compatibility strategy
-
-Initial stable target:
-
-**generic x86_64 PC**
-
-Do not immediately create dozens of ISO variants.
-
-Use capability detection and graceful fallback.
-
-Future compatibility classes may include:
-
-- ordinary laptops;
-- ordinary desktops;
-- gaming PCs;
-- workstations;
-- professional GPU systems;
-- server systems.
-
-A release variant should exist only when real hardware differences justify it.
-
----
-
-# 59. GPU strategy
-
-The long-term target includes broad GPU support, including high-performance NVIDIA/AMD/Intel hardware where technically and legally feasible.
-
-Potential NVIDIA classes include consumer and professional generations, including RTX-class hardware.
-
-However:
-
-- generic x86_64 boot does not equal GPU support;
-- framebuffer output does not equal acceleration;
-- PCI detection does not equal a usable graphics driver;
-- a driver must be implemented, integrated, tested and documented before support is claimed.
-
-GPU acceleration must have a fallback path where possible.
-
----
-
-# 60. Installer/live environment/recovery environment
-
-The final distribution should distinguish:
-
-- installer/live environment;
-- installed desktop system;
-- recovery environment.
-
-The installer should be able to operate without relying on the installed system being healthy.
-
-The recovery environment should be able to:
-
-- inspect disks;
-- inspect logs;
-- repair configuration;
-- repair/reinstall boot files;
-- check filesystems;
-- restore packages;
-- roll back updates;
-- export diagnostics.
-
----
-
-# 61. Release artifact strategy
-
-Potential artifacts:
-
-- bootable ISO;
-- checksum files;
-- signature files;
-- QEMU test image where useful;
-- source archive;
-- debug symbols for developers;
-- release notes;
-- hardware compatibility notes.
-
-Future hardware-specific releases should be generated from the same source and clearly labeled.
-
----
-
-# 62. Reproducible build and supply chain
-
-The release process should eventually record:
-
-- source commit;
-- toolchain version;
-- build environment;
-- dependency versions;
-- generated artifact hashes;
-- build timestamp policy;
-- package manifest;
-- signing identity.
-
-Aim for reproducible or at least independently verifiable builds.
-
-Do not depend on an undocumented developer machine.
-
----
-
-# 63. SB website and official ecosystem
-
-The project should eventually publish through free/open infrastructure where practical.
-
-Official project resources should have a single source-of-truth relationship with the repository.
-
-Website should provide:
-
-- project explanation;
-- download page;
-- installation guide;
-- hardware compatibility;
-- documentation;
-- changelog;
-- security advisories;
-- contribution guide;
-- support/community links.
-
-GitHub Pages can serve as the initial official website when cost is a constraint.
-
-Community services may include Discord and social media, but core technical truth must remain in the repository/documentation rather than depending on a chat server.
-
----
-
-# 64. Documentation architecture
-
-The repository should maintain both:
-
-1. This master document.
-2. Smaller subsystem documents.
-
-Subsystem documents may cover:
-
-- boot;
-- memory;
-- scheduler;
-- ELF;
-- filesystem;
-- drivers;
-- GUI;
-- first boot;
-- settings;
-- package manager;
-- store;
-- errors;
-- release;
-- ecosystem.
-
-If a subsystem document conflicts with this master specification, the conflict must be resolved explicitly; do not let contradictory specifications silently accumulate.
-
----
-
-# 65. Test architecture
-
-Testing must exist at multiple levels.
-
-## 65.1 Unit tests
-
-Use where the code can be isolated safely.
-
-Examples:
-
-- bitmap operations;
-- parsers;
-- configuration validation;
-- package manifest parsing;
-- dependency solver;
-- localization lookup.
-
-## 65.2 Kernel integration tests
-
-Examples:
-
-- PMM + VMM;
-- interrupts + scheduler;
-- filesystem + storage;
-- syscall + userspace.
-
-## 65.3 QEMU tests
-
-Examples:
-
-- boot;
-- memory;
-- exceptions;
-- userspace launch;
-- storage;
-- networking;
-- framebuffer;
-- GUI startup.
-
-## 65.4 Real hardware tests
-
-Eventually test representative:
-
-- laptop;
-- desktop;
-- gaming PC;
-- different CPU generations;
-- different GPUs;
-- different storage devices;
-- different network hardware.
-
-A QEMU pass is not automatically a real-hardware pass.
-
----
-
-# 66. Mandatory end-to-end test list
-
-Before first major stable release:
-
-1. Clean ISO build.
-2. ISO integrity.
-3. QEMU cold boot.
-4. QEMU reboot.
-5. QEMU shutdown.
-6. Clean disk installation.
-7. First graphical startup.
-8. Language selector.
-9. Japanese selection.
-10. English selection.
-11. Chinese selection.
-12. Spanish selection.
-13. Language persistence after reboot.
-14. Keyboard/mouse.
-15. Display.
-16. Settings persistence.
-17. Filesystem operations.
-18. Network configuration.
-19. DNS.
-20. Terminal execution.
-21. Package installation.
-22. Package removal.
-23. Package update.
-24. Application crash recovery.
-25. Service restart.
-26. Diagnostic report.
-27. Recovery mode.
-28. Controlled kernel exception.
-29. Failed update rollback.
-30. Clean shutdown during active writes.
-31. Interrupted package transaction.
-32. Invalid configuration recovery.
-33. Low-memory boot.
-34. High-memory boot.
-35. Multiple CPU test when SMP enabled.
-36. Hardware hotplug tests where supported.
-37. Security/permission tests.
-38. Artifact checksum/signature verification.
-
----
-
-# 67. Failure investigation procedure
-
-When something fails, do not randomly rewrite code.
-
-Use:
+## 67.2 First-run
 
 ```text
-1. Reproduce
-2. Record exact environment
-3. Identify last successful checkpoint
-4. Reduce to smallest failing subsystem
-5. Inspect logs/registers/state
-6. Form a falsifiable hypothesis
-7. Add minimal diagnostic instrumentation
-8. Reproduce
-9. Confirm root cause
-10. Fix root cause
-11. Remove unnecessary diagnostics
-12. Add regression test
-13. Re-run broader test suite
-14. Document the lesson if architecture changed
+DESKTOP_READY
+ ↓
+NO_VALID_CONFIG
+ ↓
+LANGUAGE_DIALOG
+ ↓
+LANGUAGE_SELECTED
+ ↓
+CONFIG_VALIDATE
+ ↓
+CONFIG_COMMIT
+ ↓
+LOCALE_APPLY
+ ↓
+FIRST_RUN_COMPLETE
+ ↓
+NORMAL_DESKTOP
 ```
 
-## 67.1 Timeouts
-
-A timeout is not evidence that “the system is slow.”
-
-First determine whether the system:
-
-- entered an infinite loop;
-- faulted silently;
-- deadlocked;
-- blocked on I/O;
-- waited for a nonexistent device;
-- corrupted control flow;
-- exhausted memory;
-- stopped emitting logs because the logger failed.
-
----
-
-# 68. Current PMM incident recovery rule
-
-The project has previously experienced a QEMU boot path that reached PMM initialization and then stopped until the CI timeout.
-
-The correct response is:
-
-- preserve the diagnostic evidence;
-- inspect actual linker addresses;
-- check bitmap/static-data placement;
-- check stack/page-table overlap;
-- check initialization order;
-- check duplicate initialization;
-- check loop bounds and integer overflow;
-- check whether diagnostic output itself blocks;
-- reproduce with a minimal allocator.
-
-Do not “fix” the incident by deleting PMM or skipping memory management.
-
----
-
-# 69. AI development protocol
-
-Every AI working in the repository must follow this exact loop:
+## 67.3 Package install
 
 ```text
-READ MASTER SPEC
-    ↓
-INSPECT REPOSITORY
-    ↓
-CHECK CURRENT CI / TESTS
-    ↓
-IDENTIFY REAL CURRENT STATE
-    ↓
-IDENTIFY SMALLEST BLOCKER
-    ↓
-IMPLEMENT
-    ↓
-BUILD
-    ↓
-RUN TEST
-    ↓
-READ LOG
-    ↓
-FIX ROOT CAUSE
-    ↓
-ADD REGRESSION TEST
-    ↓
-UPDATE DOCS IF NEEDED
-    ↓
-REPORT ACTUAL STATE
+REQUESTED
+ ↓
+RESOLVING
+ ↓
+LOCKED
+ ↓
+DOWNLOADING
+ ↓
+VERIFYING
+ ↓
+STAGING
+ ↓
+INSTALLING
+ ↓
+HEALTH_CHECK
+ ↓
+COMMITTED
+ ↓
+UNLOCKED
 ```
 
-AI must never:
+Failure:
 
-- invent successful tests;
-- claim a commit that was not created;
-- claim code was changed when it was not;
-- call an untested feature complete;
-- remove a failing test just to obtain green CI;
-- hide a crash;
-- silently replace architecture;
-- add a second source of truth for an existing subsystem;
-- create fake compatibility claims;
-- treat a screenshot as proof of functional implementation.
-
----
-
-# 70. Change management
-
-Every architectural change should answer:
-
-1. What problem does it solve?
-2. Why is the current architecture insufficient?
-3. What dependencies change?
-4. What APIs change?
-5. What persistent data formats change?
-6. What tests must change?
-7. What compatibility risks exist?
-8. What rollback path exists?
-
-If a change is only a refactor, preserve behavior and prove it with tests.
+```text
+ANY_TRANSACTION_STATE
+ ↓
+FAILURE
+ ↓
+ROLLBACK
+ ↓
+RESTORE_KNOWN_STATE
+ ↓
+UNLOCK
+ ↓
+REPORT
+```
 
 ---
 
-# 71. Definition of implementation states
+# 68. Data Ownership Model
 
-Use these states consistently:
+重要データには必ずowner subsystemを定める。
 
-### PLANNED
+例:
 
-Architecture described but no meaningful implementation.
+```text
+Language config         → Configuration/Locale service
+Network config          → Network Manager
+Package database        → Package Manager
+User account data       → Account service
+Window state            → Window system / Desktop Shell
+Driver state            → Driver subsystem
+Kernel logs             → Logging subsystem
+Crash report            → Diagnostic subsystem
+```
 
-### SKELETON
-
-Interfaces/files exist but feature is not functional.
-
-### PARTIAL
-
-Some real behavior exists but required scenarios remain missing.
-
-### FUNCTIONAL
-
-Feature works in its intended test environment.
-
-### VERIFIED
-
-Feature passes automated and relevant runtime tests.
-
-### RELEASE-READY
-
-Feature passes required hardware/security/recovery/documentation gates.
-
-Never use “done” for PLANNED, SKELETON or PARTIAL.
+別Subsystemが同じ設定を独自コピーして、互いに別の値になることを避ける。
 
 ---
 
-# 72. Subsystem acceptance criteria
+# 69. Persistent Data Versioning
 
-Every subsystem must define:
+ユーザーデータ、system configuration、package databaseなどを更新する場合はversionを持たせる。
 
-- purpose;
-- inputs;
-- outputs;
-- ownership;
-- dependencies;
-- invariants;
-- error conditions;
-- recovery behavior;
-- tests;
-- performance expectations;
-- security expectations;
-- persistence/compatibility behavior if applicable.
+破壊的変更:
 
-A subsystem without these cannot be considered architecturally complete.
+```text
+old format
+ ↓
+migration validation
+ ↓
+new format
+ ↓
+verification
+ ↓
+commit
+```
 
----
-
-# 73. Release gates
-
-A release candidate may proceed only when:
-
-- build is reproducible enough for the project standard;
-- ISO generation succeeds;
-- QEMU boot succeeds;
-- kernel smoke tests succeed;
-- no known boot-critical regression exists;
-- first-run setup works;
-- persistence works;
-- terminal works;
-- storage works;
-- networking works at the supported level;
-- package installation works;
-- recovery paths are tested;
-- diagnostics work;
-- artifact hashes/signatures are generated as required;
-- documentation matches actual behavior.
-
-Known limitations must be published instead of hidden.
+Migration失敗時は旧形式を保護する。
 
 ---
 
-# 74. Final user-level definition of done
+# 70. Privacy
 
-SB Desktop v1 is complete only when a normal user can:
+SBは「取れるから取る」という設計をしない。
 
-1. Boot a supported x86_64 computer or QEMU.
-2. Reach a graphical desktop without terminal setup.
-3. See the first-run language selector.
-4. Select Japanese, English, Chinese or Spanish.
-5. Continue into the desktop.
-6. Reboot and retain the selected language.
-7. Use keyboard and mouse.
-8. Use the display system.
-9. Configure networking.
-10. Browse and manage files.
-11. Use a real terminal.
-12. Install/remove optional software.
-13. Change detailed system settings.
-14. Receive understandable normal error messages.
-15. Obtain detailed technical diagnostics for serious failures.
-16. Recover from supported application/service/package failures.
-17. Safely update the system.
-18. Avoid unnecessary base-system components consuming resources.
-19. Keep user data safe through ordinary failures and supported recovery operations.
-20. Understand what the OS is doing without needing to be a kernel developer.
+Telemetryを追加する場合、目的・データ・保存期間・共有先・無効化方法を明示する。
 
-Only after this foundation is genuinely stable should broad hardware expansion and specialized variants become the primary development direction.
+Diagnosticsでは必要最低限のみ収集する。
 
 ---
 
-# 75. Long-term expansion after SB Desktop v1
+# 71. Developer Experience
 
-Once the first complete stable desktop exists, expansion may branch from the same foundation toward:
+AIや人間の開発者が同じリポジトリを扱えるようにする。
 
-- gaming optimization;
-- workstation optimization;
-- professional GPU support;
-- server-oriented configurations;
-- high-memory systems;
-- data-center hardware;
-- specialized releases;
-- additional architectures if the kernel abstraction permits it.
+目標:
 
-These are **future branches**, not excuses to interrupt the current SB Desktop completion path.
+```text
+Clone/CodeSpace
+ ↓
+Install documented dependencies
+ ↓
+make
+ ↓
+QEMU
+ ↓
+Tests
+```
 
-The rule is:
-
-`Finish one complete stable system → stabilize it → measure it → branch it → add specialized capabilities.`
+開発環境自体も将来的に`.devcontainer`などで再現可能にする。
 
 ---
 
-# 76. Master implementation checklist
+# 72. AI Handoff
 
-Use this as the final progress checklist. A box may be checked only when the corresponding acceptance criteria are actually satisfied.
+別AIへ引き継ぐ場合、最初にこのファイルを読ませる。
 
-## Build
+その後、必ず:
 
-- [ ] Toolchain documented
-- [ ] Freestanding build verified
-- [ ] Assembly architecture verified
-- [ ] Linker layout verified
-- [ ] ISO build verified
-- [ ] QEMU invocation verified
-- [ ] CI build verified
+1. Repository tree確認
+2. Current source確認
+3. Current CI確認
+4. Relevant docs確認
+5. Current state判定
+6. Smallest unfinished prerequisite特定
+7. Implementation
+8. Build
+9. Runtime test
+10. CI
+11. Failure analysis
+12. Documentation update
+
+を行う。
+
+AIが知らない歴史的事情を勝手に補完しない。仕様上不明な点を発見した場合は、既存の設計と互換性を最優先にして記録する。
+
+---
+
+# 73. What not to do
+
+- GUIだけ作ってKernelが壊れたまま進めない。
+- CIが赤いのに「完成」と言わない。
+- Hardware supportを未検証で宣言しない。
+- PMMを無視してVMMのモックを作らない。
+- GUIエラーでBSODを乱発しない。
+- RSODを普通のエラー画面として使用しない。
+- ユーザーのファイルをcleanupという名目で勝手に削除しない。
+- CLIとGUIで同じデータベースを別々に操作しない。
+- LoggingがKernelのallocator/lockを再帰的に呼び出す設計を作らない。
+- Boot情報を使用中にfree扱いしない。
+- 機能追加のためだけに常駐サービスを増やさない。
+- 未使用ライブラリやデータをBase ISOへ無制限に詰め込まない。
+- 一時的なdiagnostic codeを恒久化しない。
+- 下位層へ上位層の概念を持ち込まない。
+
+---
+
+# 74. Release Engineering
+
+Release前に以下を実行する。
+
+```text
+Source freeze
+ ↓
+Build clean
+ ↓
+Full CI
+ ↓
+QEMU matrix
+ ↓
+First-boot test
+ ↓
+Persistence test
+ ↓
+Package test
+ ↓
+Recovery test
+ ↓
+Hardware smoke test
+ ↓
+Security review
+ ↓
+Artifact verification
+ ↓
+Checksums/signatures
+ ↓
+Release notes
+ ↓
+Website publication
+```
+
+## 74.1 Release artifact
+
+必要に応じて:
+
+- ISO
+- checksum
+- signature
+- debug symbols where intended
+- release notes
+- installation guide
+- recovery guide
+- compatibility list
+
+を公開する。
+
+---
+
+# 75. 完成条件 — SB Desktop v1
+
+次をすべて満たすことを目標とする。
 
 ## Boot
 
-- [ ] Boot protocol verified
-- [ ] CPU initialization verified
-- [ ] Stack verified
-- [ ] Boot information preserved
-- [ ] Kernel layout verified
-- [ ] Boot memory reservations verified
-- [ ] BIOS path tested if supported
-- [ ] UEFI path tested if supported
+- Supported x86_64 machine/QEMUから起動できる。
+- BootloaderからKernelへ正しく移行する。
+- メモリ領域を安全に扱う。
+- Kernel panicを除き、不要な停止がない。
 
-## Memory
+## Core
 
-- [ ] PMM
-- [ ] PMM reservations
-- [ ] PMM allocation/free
-- [ ] PMM stress tests
-- [ ] VMM
-- [ ] Page protection
-- [ ] Page faults
-- [ ] Address-space isolation
-- [ ] Kernel heap
-- [ ] Memory diagnostics
+- PMM
+- VMM
+- Heap
+- Interrupt
+- Timer
+- Scheduler
+- Process
+- Syscall
+- Userspace
 
-## CPU/runtime
+がRuntime-verifiedである。
 
-- [ ] GDT
-- [ ] TSS
-- [ ] IDT
-- [ ] Exceptions
-- [ ] Interrupt controller
-- [ ] Timer
-- [ ] Synchronization
-- [ ] SMP groundwork
+## Desktop
 
-## Execution
+- GUI起動
+- display
+- keyboard
+- mouse
+- windows
+- compositor
+- desktop shell
 
-- [ ] Scheduler
-- [ ] Threads
-- [ ] Processes
-- [ ] Syscalls
-- [ ] ABI documentation
-- [ ] ELF loader
-- [ ] Userspace init
-- [ ] Service manager
-- [ ] IPC
+が機能する。
 
-## Storage
+## First Boot
 
-- [ ] Block layer
-- [ ] Partition layer
-- [ ] Filesystem
-- [ ] VFS
-- [ ] Permissions
-- [ ] Persistent configuration
-- [ ] Atomic writes
-- [ ] Installer
-- [ ] Recovery storage tools
+- Desktop到達後に言語popupが出る。
+- select boxで言語を選べる。
+- Japanese / English / Chinese / Spanishが使用できる。
+- 設定が保存される。
+- 再起動後も維持される。
+- Keyboard layoutを別に設定できる。
 
-## Hardware
+## Daily Use
 
-- [ ] PCI
-- [ ] ACPI
-- [ ] Keyboard
-- [ ] Mouse
-- [ ] USB
-- [ ] Hotplug
-- [ ] Display/framebuffer
-- [ ] Audio
-- [ ] Network device
-- [ ] Power management
+- Files
+- Settings
+- Network
+- Terminal
+- Package Manager
+- SB Store
 
-## GUI
+が機能する。
 
-- [ ] Text rendering
-- [ ] Font system
-- [ ] Unicode
-- [ ] Input events
-- [ ] Surfaces/windows
-- [ ] Compositor
-- [ ] Window manager
-- [ ] Toolkit
-- [ ] Desktop shell
-- [ ] Notifications
-- [ ] Clipboard
-- [ ] File manager
-- [ ] Accessibility foundations
+## Reliability
 
-## First boot
-
-- [ ] Clean-install detection
-- [ ] Graphical language popup
-- [ ] Select/drop-down control
-- [ ] Japanese
-- [ ] English
-- [ ] Chinese
-- [ ] Spanish
-- [ ] Atomic configuration save
-- [ ] Persistence
-- [ ] Corrupt-config recovery
-- [ ] Settings integration
-
-## Settings/localization
-
-- [ ] Stable setting IDs
-- [ ] Schema validation
-- [ ] Migration
-- [ ] Locale service
-- [ ] Fallback language
-- [ ] Pluralization
-- [ ] Date/time formatting
-- [ ] Input methods
-- [ ] Keyboard layouts
-
-## Network
-
-- [ ] Ethernet
-- [ ] IPv4
-- [ ] IPv6
-- [ ] ARP/ND
-- [ ] Routing
-- [ ] UDP
-- [ ] TCP
-- [ ] DNS
-- [ ] DHCP
-- [ ] Sockets
-- [ ] Network manager
-- [ ] GUI/CLI parity
-- [ ] Firewall/policy
-
-## Software
-
-- [ ] Package format
-- [ ] Manifest
-- [ ] Repository metadata
-- [ ] Downloader
-- [ ] Integrity verification
-- [ ] Signatures
-- [ ] Dependency resolution
-- [ ] Transactions
-- [ ] Install
-- [ ] Remove
-- [ ] Update
-- [ ] Rollback
-- [ ] Cache management
-- [ ] SB Store
-
-## Security/recovery
-
-- [ ] Privilege model
-- [ ] Permissions
-- [ ] Secret storage
-- [ ] Package trust
-- [ ] Update trust
-- [ ] Firewall
-- [ ] Logging
-- [ ] Crash diagnostics
-- [ ] Support report
-- [ ] Application recovery
-- [ ] Service recovery
-- [ ] Recovery environment
-- [ ] Configuration rollback
-- [ ] Update rollback
-- [ ] Backup/restore
+- Normal errors are understandable.
+- BSOD is reserved for kernel/system emergencies.
+- RSOD is extremely rare.
+- Support Report exists.
+- Recovery exists.
+- Update rollback exists where supported.
 
 ## Performance
 
-- [ ] Boot benchmark
-- [ ] Idle RAM benchmark
-- [ ] Idle CPU benchmark
-- [ ] Background wakeup measurement
-- [ ] GUI latency measurement
-- [ ] Application startup benchmark
-- [ ] Storage benchmark
-- [ ] Network benchmark
-- [ ] Package download benchmark
-- [ ] Base-image size tracking
+- 不要な常駐処理を最小化
+- Base imageを最小化
+- Background wakeupsを測定・削減
+- 起動時間を測定
+- Idle RAMを測定
 
-## Release
+## Security
 
-- [ ] Clean build
-- [ ] Full CI
-- [ ] Clean installation
-- [ ] Upgrade
-- [ ] Recovery
-- [ ] Hardware compatibility test
-- [ ] Artifact hashes
-- [ ] Artifact signatures
-- [ ] Release notes
-- [ ] Known limitations
-- [ ] Installation guide
-- [ ] Recovery guide
-- [ ] Website publication
+- userspace/kernel isolation
+- package verification
+- update verification
+- permission enforcement
+- secret exclusion from diagnostics
+
+を実装・検証する。
 
 ---
 
-# 77. Recovery procedure when project context is lost
+# 76. 将来のSB
 
-If an AI/developer receives only this repository and no previous conversation:
+v1完成後は、共通基盤を壊さずに枝分かれする。
 
-1. Read this file completely.
-2. Read `README.md`.
-3. Inspect `.github/workflows/`.
-4. Inspect `Makefile` and linker script.
-5. Inspect `boot/`.
-6. Inspect `kernel/`.
-7. Inspect current tests.
-8. Run the build.
-9. Run QEMU smoke tests.
-10. Record the first actual failure.
-11. Map that failure to the roadmap above.
-12. Fix the earliest unfinished prerequisite.
-13. Do not jump ahead to GUI features if the kernel cannot safely boot.
-14. Do not delete difficult subsystems merely to get a demo.
-15. Continue until the release gates are satisfied.
+```text
+                 SB Desktop Core
+                       │
+        ┌──────────────┼──────────────┐
+        ↓              ↓              ↓
+     Gaming       Workstation      General
+        │              │
+        ↓              ↓
+  GPU/JVM tuning   Pro hardware
+        │
+        └──────────────┬──────────────┘
+                       ↓
+                 Server / High-end
+                       ↓
+               Data Center later
+```
 
-The repository is the implementation. This file is the architectural memory.
+高性能GPU、サーバー、データセンター向け機能などは、**最初のGUI Desktopを完成させた後に拡張する**。
 
 ---
 
-# 78. Final project rule
+# 77. 最終的な設計思想
 
-SB is not finished when it can display a desktop screenshot.
+SBは「何でも最初から入っている巨大OS」を目指さない。
 
-SB is finished when the system is:
+SBが目指すのは、
 
-- bootable;
-- memory-safe within its supported guarantees;
-- usable;
-- configurable;
-- recoverable;
-- diagnosable;
-- updateable;
-- modular;
-- reasonably lightweight;
-- secure enough for its stated release scope;
-- documented;
-- tested;
-- reproducibly distributable.
+```text
+小さい基盤
++ 明確な構造
++ 必要な機能だけ追加
++ 細かい設定
++ 使いやすいGUI
++ 完全なCLI
++ 強い診断
++ 安全な復旧
++ 測定可能な性能
++ 拡張可能なHardware abstraction
+```
 
-The guiding development sequence is:
+を同時に成立させたOSである。
 
-**Build one complete, trustworthy SB Desktop first. Then expand it.**
+ユーザーがPCの性能を活かせるよう、OS自身が余計な負荷を抱え込まない。
 
-This document must evolve with the architecture. When the implementation proves that a design decision is wrong, update the specification and record the reason rather than allowing the code and documentation to silently diverge.
+しかし「軽い」という理由で機能や安全性を削るのではなく、**不要なものを外へ追い出し、必要なものは正しく作る**。
+
+---
+
+# 78. このファイル自体の役割
+
+このファイルは単なる説明書ではない。
+
+**SBの設計・目的・完成形・実装順・Subsystem・データ・状態・UX・障害対応・運用・リリース・将来方針を保存するプロジェクトバックアップである。**
+
+会話履歴が失われても、このファイルを読めば、少なくともSBの意図と構造を再構成できなければならない。
+
+ただし実装状態については常にコードとCIを優先する。
+
+```text
+SB_OS_DESIGN.md
+      ↓
+プロジェクトの意図・設計・完成形
+      ↓
+個別Subsystem docs
+      ↓
+Source code
+      ↓
+Build / CI / QEMU / Hardware
+      ↓
+Verified implementation
+```
+
+**この設計書を読んで初めてSBを理解したことになる。**
+
+重要な設計変更を行った場合、このファイルを更新し、古い設計との違いを追跡可能にする。
+
+---
+
+# 79. Master Checklist
+
+```text
+[ ] Build foundation
+[ ] Bootloader
+[ ] Firmware abstraction
+[ ] Boot memory ownership
+[ ] PMM
+[ ] VMM
+[ ] Heap
+[ ] GDT
+[ ] TSS
+[ ] IDT
+[ ] Exceptions
+[ ] IRQ
+[ ] Timer
+[ ] ACPI
+[ ] SMP
+[ ] Synchronization
+[ ] Scheduler
+[ ] Thread
+[ ] Process
+[ ] IPC
+[ ] Syscall ABI
+[ ] ELF loader
+[ ] Userspace init
+[ ] Service manager
+[ ] Block layer
+[ ] Partition
+[ ] Filesystem
+[ ] VFS
+[ ] Configuration
+[ ] Account/permission
+[ ] PCI
+[ ] USB
+[ ] Input
+[ ] Display
+[ ] GPU abstraction
+[ ] Audio
+[ ] Power
+[ ] Unicode
+[ ] Fonts
+[ ] IME framework
+[ ] Event system
+[ ] GUI toolkit
+[ ] Compositor
+[ ] Window system
+[ ] Desktop shell
+[ ] First-run language UI
+[ ] Keyboard layout UI
+[ ] Localization
+[ ] Settings
+[ ] Network stack
+[ ] Network Manager
+[ ] Terminal
+[ ] Package Manager
+[ ] SB Store
+[ ] Logging
+[ ] Crash dump
+[ ] Error UX
+[ ] BSOD
+[ ] RSOD
+[ ] Recovery
+[ ] Update
+[ ] Rollback
+[ ] Cleanup engine
+[ ] Security model
+[ ] Package signing
+[ ] Update signing
+[ ] Performance suite
+[ ] Hardware matrix
+[ ] QEMU matrix
+[ ] Real hardware testing
+[ ] Release pipeline
+[ ] Website
+[ ] Documentation
+[ ] Public ecosystem
+[ ] SB Desktop v1 release
+```
+
+---
+
+# 80. Final rule
+
+**最優先するのは「SBらしい、実際に動くOSを完成させること」。**
+
+設計の美しさだけでも、巨大な機能一覧だけでも完成ではない。
+
+```text
+正しい設計
++ 正しい実装
++ 実際のテスト
++ 実際のユーザー体験
++ 実際の復旧能力
+= SB Desktop
+```
+
+現在はPMMを突破することから進める。
