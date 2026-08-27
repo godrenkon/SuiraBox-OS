@@ -1,325 +1,1517 @@
-# SuiraBox OS — Master Product, Architecture, Construction, UX, Compatibility and Recovery Specification
+# SuiraBox OS — Ultimate Master Specification
 
-> **This is the canonical master specification for SuiraBox OS (SB Desktop).**
+> **Document role:** This file is the single highest-level specification, recovery record, product definition, architecture reference, construction plan, UX definition, compatibility plan, and project memory for **SuiraBox OS (SB Desktop)**.
 >
-> This file is simultaneously the product definition, complete architectural blueprint, implementation plan, operational reference, recovery manual, and AI handoff document for the SB Desktop project.
->
-> The intention is not to describe only the kernel or only the GUI. The intention is to record **what SB is, what the finished OS contains, how the pieces interact, what the user sees, how the system behaves, how it fails, how it recovers, how it is installed and updated, how optional functionality is distributed, how hardware is supported, how Minecraft-focused optimization fits into the architecture, and how the project is verified and released.**
+> **Primary purpose:** Preserve the complete intent of the project so that a new developer or AI can understand not only what files exist today, but what SB is supposed to become, why it is designed that way, how every major subsystem fits together, what the user should experience, what happens when something fails, how the system is extended, and how a release is proven ready.
 >
 > **Current active product:** SB Desktop.
 >
-> **Independent CUI-only operating-system edition:** out of current scope. SB Desktop itself must still contain a real terminal and CLI because CLI operation is a first-class capability.
+> **Separate CUI-only operating system:** not an active development target. SB Desktop itself must contain a complete terminal and CLI because advanced users need command-line control.
 >
-> **Status rule:** A description in this document is a requirement or intended design. It is not proof of implementation. Implementation state is determined by repository contents, builds, automated tests, QEMU runs, hardware tests and release verification.
+> **Implementation-status rule:** This document defines intended behavior and acceptance criteria. It does not prove implementation. Real status is determined by source code, build output, tests, QEMU, CI and hardware verification.
 
 ---
 
-# PART I — PRODUCT DEFINITION
+# PART 0 — HOW TO READ THIS DOCUMENT
 
-## 1. Identity
+## 0.1 What this document is
 
-### 1.1 Names
+This document is the authoritative description of the SB product and its intended implementation.
+
+It is not merely a README, tutorial or checklist. It is intended to answer all of the following:
+
+- What is SB?
+- Who is SB for?
+- What should the finished desktop look and behave like?
+- What exists inside the OS?
+- What code belongs in the kernel, userspace, drivers, GUI and package ecosystem?
+- What data does the system store?
+- What are the lifecycle rules for that data?
+- How do subsystems communicate?
+- How does boot proceed?
+- How is memory owned and reclaimed?
+- How are processes isolated?
+- How are drivers attached and removed?
+- How does the GUI start?
+- How does first-run setup work?
+- How are language and keyboard layout handled?
+- How are errors displayed?
+- When is BSOD used?
+- When is RSOD used?
+- How are packages downloaded, verified, installed and rolled back?
+- How does SB remain lightweight?
+- How does SB support many hardware classes?
+- How is Minecraft optimization integrated without turning the whole OS into a single-purpose system?
+- How does an AI continue the project without reinventing its architecture?
+
+## 0.2 Status vocabulary
+
+Every feature should use one of these states in project tracking:
+
+`IDEA` → concept only
+`SPECIFIED` → architecture/behavior defined
+`SKELETON` → code structure exists
+`PARTIAL` → part works
+`FUNCTIONAL` → end-to-end behavior works in its supported environment
+`RUNTIME-VERIFIED` → automated runtime verification passes
+`HARDWARE-VERIFIED` → real hardware verification passes
+`RELEASE-READY` → release acceptance criteria pass
+
+Do not use “done” for anything below RELEASE-READY when describing a release-quality feature.
+
+## 0.3 Source-of-truth hierarchy
+
+When information conflicts:
+
+1. The actual repository implementation determines what exists.
+2. Tests and CI determine what has been verified.
+3. This file determines intended product behavior and architecture.
+4. Individual `docs/*.md`, issues and conversation history provide supplemental detail and history.
+
+If code violates this specification, do not silently pretend that the specification was implemented. Either fix the code or explicitly change the specification through a documented architectural decision.
+
+---
+
+# PART I — PRODUCT AND USER EXPERIENCE
+
+# 1. PRODUCT IDENTITY
+
+## 1.1 Names
 
 - Project: **SuiraBox OS**
 - Short name: **SB**
 - Current desktop product: **SB Desktop**
-- Project/community identity: **Suiram**
-- Primary repository: `godrenkon/SuiraBox-OS`
-- Primary development account/owner identity currently used in repository: `godrenkon`
+- Community/project identity: **Suiram**
+- Current repository: `godrenkon/SuiraBox-OS`
 
-### 1.2 What SB is
+## 1.2 Product objective
 
-SB is an open-source, modular, lightweight, configurable desktop operating system intended to provide:
+SB is an open-source desktop operating system intended to be:
 
-- a normal graphical desktop experience;
-- strong command-line capability;
-- efficient use of CPU, RAM and storage;
-- fine-grained but understandable configuration;
-- optional software/components installed on demand;
-- fast and verified package downloads;
-- strong diagnostics and understandable failures;
-- recoverable failures where technically safe;
-- broad hardware compatibility through abstractions and incremental driver support;
-- an architecture suitable for Minecraft-focused performance optimization without turning the entire kernel into Minecraft-specific code;
-- a path from a minimal generic system to gaming, workstation and other optimized deployments later.
+- lightweight;
+- fast;
+- understandable;
+- configurable;
+- modular;
+- user-oriented;
+- recoverable;
+- secure;
+- broadly compatible;
+- suitable for normal desktop use;
+- suitable for gaming and Minecraft workloads;
+- extensible without forcing unnecessary software into the base installation.
 
-### 1.3 What SB is not
+## 1.3 Core philosophy
 
-SB is not intended to:
+The base OS should contain the minimum required foundation for a useful and reliable computer.
 
-- force every available feature into the base installation;
-- require terminal commands for ordinary first setup;
-- hide technical failures behind meaningless generic messages;
-- silently delete user files to save space;
-- claim hardware compatibility that has not actually been tested;
-- turn every optional component into a permanently running service;
-- duplicate subsystem logic separately for GUI and CLI when one shared backend is practical.
+Additional capabilities should be installable on demand rather than permanently consuming base-system resources.
 
-### 1.4 Primary design objective
-
-The primary objective is **maximum useful capability per unit of system complexity**.
-
-The OS should be as small and efficient as reasonably possible without sacrificing:
-
-- correctness;
-- security;
-- recoverability;
-- compatibility;
-- maintainability;
-- user control;
-- diagnostics.
-
-A small binary that is unreliable is not considered successful lightweight design.
-
----
-
-## 2. Core philosophy
-
-### 2.1 Minimal base
-
-The installed base system contains only functionality necessary for a secure, usable desktop and its essential runtime dependencies.
-
-Optional applications, language packs, fonts, development tools, advanced drivers and similar non-essential capabilities should be independently distributable where doing so has a real benefit.
-
-### 2.2 Choice without confusion
-
-Users should be able to choose detailed behavior without being forced to understand kernel internals.
-
-Therefore every advanced setting should have:
-
-- a human-readable name;
-- a concise description;
-- a safe default;
-- a validation rule;
-- a place to find advanced technical details when necessary;
-- an indication of whether changing it requires restart, logout or service restart.
-
-### 2.3 GUI first, CLI fully functional
-
-The graphical desktop is the ordinary user interface.
-
-The terminal is not a replacement for the GUI. It is an additional interface for advanced users, development, recovery and automation.
-
-GUI and CLI should use common underlying services wherever feasible so that:
-
-- a function available in the GUI also has a consistent CLI/API path where appropriate;
-- a CLI operation does not require a hidden GUI service;
-- documentation can describe one subsystem instead of two unrelated implementations.
-
-### 2.4 Optional components
-
-The base OS should not carry unnecessary long-lived runtime cost simply because an application or component might eventually be needed.
-
-The package architecture must distinguish at least:
-
-- required base component;
-- optional system component;
-- application;
-- development component;
-- language/localization component;
-- driver/firmware component where legally distributable;
-- cache/data generated at runtime.
-
-### 2.5 User-centered recovery
-
-A failure should be handled at the lowest safe severity.
-
-Preferred hierarchy:
+The design should resemble a toolkit more than an inflexible monolith:
 
 ```text
-Application failure
+Small stable base
     ↓
-Restart application
+Detect capabilities
     ↓
-Restart affected service
+Choose needed components
     ↓
-Restart affected userspace subsystem
+Download only what is required
     ↓
-Recover kernel subsystem if technically safe
+Verify
     ↓
-Recovery boot
+Install transactionally
     ↓
-System stop / kernel panic
+Automatically integrate
+    ↓
+Use
 ```
 
-The OS must not turn an ordinary application error into a BSOD or RSOD merely because a visual error screen looks impressive.
+This modularity must not become fragmentation for its own sake.
+
+A component becomes separately installable only when doing so materially improves one or more of:
+
+- base size;
+- memory usage;
+- startup time;
+- security isolation;
+- updateability;
+- reliability;
+- maintainability;
+- user choice.
+
+## 1.4 User-choice principle
+
+SB should not force one workflow unnecessarily.
+
+Advanced users can use the terminal and detailed settings.
+
+Ordinary users should be able to complete ordinary tasks entirely through GUI controls.
+
+The existence of a powerful CLI must never make the GUI intentionally incomplete.
+
+## 1.5 “RPG toolkit” principle
+
+The user should conceptually be able to build a system that fits their needs:
+
+```text
+Core
+ ├─ required desktop components
+ ├─ selected language
+ ├─ selected drivers
+ ├─ selected applications
+ ├─ selected development tools
+ ├─ selected gaming components
+ └─ selected performance features
+```
+
+The OS must remain coherent. Optional modules use defined interfaces and cannot arbitrarily overwrite another subsystem's ownership.
 
 ---
 
-## 3. Finished SB Desktop — complete product surface
+# 2. FINISHED SB DESKTOP — WHAT THE USER SHOULD GET
 
-The finished SB Desktop is composed of the following major surfaces.
+## 2.1 High-level boot experience
 
-### 3.1 Boot and installation
-
-- Firmware compatibility layer.
-- Bootloader.
-- Boot diagnostics.
-- Installer.
-- Live/recovery environment as development permits.
-- Clean-install flow.
-- Upgrade path.
-- Recovery path.
-
-### 3.2 Kernel
-
-- Architecture layer.
-- CPU initialization.
-- Memory management.
-- Interrupts/exceptions.
-- Timers.
-- Scheduler.
-- Process/thread model.
-- IPC.
-- Syscall ABI.
-- Security primitives.
-- Kernel logging.
-- Kernel panic infrastructure.
-
-### 3.3 Device and hardware services
-
-- PCI.
-- ACPI.
-- CPU topology.
-- RAM discovery.
-- Storage controllers/devices.
-- USB.
-- Input devices.
-- Display/framebuffer.
-- GPU acceleration.
-- Network devices.
-- Audio.
-- Power management.
-- Hotplug where supported.
-
-### 3.4 Userspace platform
-
-- Init/service manager.
-- Configuration service.
-- Account service.
-- Display service.
-- Input service.
-- Network manager.
-- Package manager.
-- Update manager.
-- Logging/diagnostics service.
-- Notification service.
-- Time/locale service.
-
-### 3.5 Desktop
-
-- Compositor.
-- Window system.
-- UI toolkit.
-- Desktop shell.
-- Application launcher.
-- Task/window switcher.
-- Notifications.
-- System status area.
-- File manager.
-- Settings.
-- Terminal.
-- System dialogs.
-- Power controls.
-
-### 3.6 Distribution platform
-
-- Package format.
-- Repository metadata.
-- Package verification.
-- Download manager.
-- Transaction engine.
-- Cache.
-- SB Store.
-- Update/rollback mechanisms.
-
-### 3.7 Diagnostics and recovery
-
-- Normal errors.
-- Structured logs.
-- Error IDs.
-- Technical details.
-- Support report.
-- Crash data.
-- BSOD.
-- RSOD.
-- Recovery mode.
-- Rollback.
-
-### 3.8 Minecraft-focused ecosystem
-
-SB remains a general desktop OS, but its architecture must permit a dedicated upper-layer ecosystem for Minecraft-related use:
-
-- Minecraft Java Edition runtime integration;
-- JVM/runtime management;
-- Minecraft instance management;
-- Minecraft Server management;
-- performance policies tuned for Minecraft workloads;
-- benchmark tooling;
-- storage/cache policies useful for game assets;
-- network/CPU scheduling policies that improve applicable workloads.
-
-Minecraft optimization belongs primarily in **policy, runtime, service and application layers**, not as arbitrary Minecraft-specific branches throughout the generic kernel.
-
----
-
-# PART II — USER EXPERIENCE
-
-## 4. Boot-to-desktop lifecycle
-
-The conceptual finished flow is:
+Target user-visible sequence:
 
 ```text
 Power On
-  ↓
-Firmware initialization
-  ↓
+ ↓
+Firmware
+ ↓
 Bootloader
-  ↓
-Kernel entry
-  ↓
-Early CPU state
-  ↓
-Early memory/boot information protection
-  ↓
-Kernel memory infrastructure
-  ↓
-CPU/interrupt/timer infrastructure
-  ↓
-Scheduler + process infrastructure
-  ↓
+ ↓
+Kernel
+ ↓
+Hardware discovery
+ ↓
+Memory / CPU / Interrupt infrastructure
+ ↓
+Kernel services
+ ↓
 Userspace init
-  ↓
-Storage + configuration
-  ↓
-Display + input
-  ↓
+ ↓
+Storage / configuration
+ ↓
+Display / input
+ ↓
 Compositor
-  ↓
-Desktop Shell
-  ↓
+ ↓
+Desktop shell
+ ↓
 First-run check
-  ↓
-Language selector when required
-  ↓
-Normal Desktop
+ ↓
+Language selector (only when required)
+ ↓
+Usable desktop
 ```
 
-The system must not require a command-line interaction for a normal first graphical setup.
+## 2.2 Ordinary user capabilities
+
+The finished SB Desktop must support, through GUI where appropriate:
+
+- launching and closing applications;
+- window movement, resizing, minimizing, maximizing and switching;
+- keyboard and mouse input;
+- file creation and organization;
+- copy, move, rename and safe deletion;
+- network configuration;
+- language configuration;
+- keyboard layout configuration;
+- display configuration;
+- audio configuration;
+- account configuration;
+- privacy and security configuration;
+- storage management;
+- software search, install, remove and update;
+- update progress and rollback information;
+- diagnostics and support-report generation;
+- recovery actions;
+- shutdown, reboot and sleep/standby where hardware supports them;
+- Terminal access.
+
+## 2.3 Advanced-user capabilities
+
+The same OS must expose:
+
+- package management from CLI;
+- process inspection;
+- logs;
+- network diagnostics;
+- storage diagnostics;
+- hardware/device information;
+- developer tools;
+- recovery commands;
+- performance information;
+- detailed configuration;
+- machine-readable diagnostic output.
 
 ---
 
-## 5. First graphical startup
+# 3. DESIGN GOALS AND NON-GOALS
 
-### 5.1 Trigger condition
+## 3.1 Goals
 
-Show first-run UI when the OS cannot find a valid persistent user/system setup record containing the minimum required locale/language initialization state.
+### G-01 — Lightweight base
 
-### 5.2 Visual form
+Do not ship optional applications and services in the minimum image merely because they may be useful to someone.
 
-The first-run language selector is a small graphical popup over the desktop.
+### G-02 — Fast startup
 
-Conceptual UI:
+Avoid unnecessary initialization, polling and background services.
+
+### G-03 — Fast optional installation
+
+Package retrieval must be compact, resumable, verified and efficient.
+
+### G-04 — Detailed settings
+
+Users should have meaningful control without needing to edit obscure files for common configuration.
+
+### G-05 — Explainable failures
+
+A failure should communicate its meaning and expose technical detail when useful.
+
+### G-06 — Broad hardware support
+
+The architecture must allow multiple drivers and hardware backends without changing applications for each vendor.
+
+### G-07 — Minecraft readiness
+
+Minecraft and Minecraft Server workloads should be first-class performance targets, while the underlying OS remains a general-purpose desktop OS.
+
+### G-08 — CLI parity where appropriate
+
+GUI and CLI should call the same system services rather than implementing two contradictory versions of the same logic.
+
+## 3.2 Non-goals during the current phase
+
+- separate CUI-only edition;
+- dozens of premature hardware-specific ISO images;
+- vendor-specific kernel forks;
+- features that are merely visual mockups;
+- replacing stability with benchmark-only optimizations.
+
+---
+
+# PART II — COMPLETE SYSTEM ARCHITECTURE
+
+# 4. GLOBAL LAYER MODEL
+
+```text
+Firmware
+  ↓
+Boot environment
+  ↓
+Architecture-specific early kernel
+  ↓
+CPU / Memory / Interrupt foundation
+  ↓
+Kernel core
+  ↓
+Device and I/O subsystems
+  ↓
+Filesystem / VFS
+  ↓
+Userspace init / service manager
+  ↓
+System services
+  ↓
+Display / input services
+  ↓
+GUI platform
+  ↓
+Desktop shell
+  ↓
+System applications
+  ↓
+Optional applications / Store components
+```
+
+The dependency direction is intentionally one-way wherever practical.
+
+## 4.1 Kernel must not depend on GUI
+
+The kernel cannot require:
+
+- a window system;
+- a font engine;
+- a desktop shell;
+- the package store;
+- a graphical language popup.
+
+Kernel startup and recovery must remain possible without userspace GUI.
+
+## 4.2 GUI must not access hardware directly
+
+GUI processes communicate with display/input/device services using defined interfaces.
+
+## 4.3 One source of truth
+
+The same setting, package state, device state or account state must not be represented by multiple independent databases.
+
+---
+
+# 5. COMPLETE BOOT ARCHITECTURE
+
+## 5.1 Firmware
+
+SB should support a firmware abstraction capable of handling BIOS and UEFI-based machines as the project expands.
+
+Firmware-specific details must remain below the generic boot/platform interface.
+
+## 5.2 Bootloader responsibilities
+
+The bootloader must:
+
+- load the kernel;
+- provide required boot modules;
+- establish the CPU execution environment expected by the kernel;
+- establish or pass required page-table information;
+- establish an early stack;
+- pass boot protocol metadata;
+- identify relevant loaded-image and reserved-memory ranges;
+- transfer control to the kernel entry point.
+
+It must not initialize the desktop.
+
+## 5.3 Boot information ownership
+
+All externally supplied structures have an explicit lifecycle:
+
+```text
+received
+ ↓
+validated
+ ↓
+protected
+ ↓
+parsed
+ ↓
+copied/normalized when ownership requires it
+ ↓
+consumers registered
+ ↓
+original storage released only when no consumer needs it
+```
+
+This applies to Multiboot2 structures, firmware tables, memory maps, ACPI data and boot modules.
+
+## 5.4 Boot states
+
+The kernel should expose an internal state machine conceptually similar to:
+
+```text
+RESET
+EARLY_CPU
+BOOT_INFO_READY
+EARLY_CONSOLE_READY
+MEMORY_BOOTSTRAP
+MEMORY_READY
+INTERRUPTS_READY
+SCHEDULER_READY
+USERSpace_READY
+STORAGE_READY
+DISPLAY_READY
+DESKTOP_READY
+RECOVERY
+PANIC
+```
+
+State transitions must be monotonic except for explicitly defined recovery transitions.
+
+## 5.5 Boot failure policy
+
+Boot failures are classified by earliest safe recovery boundary:
+
+1. failure before diagnostic console;
+2. failure after serial/early console but before graphics;
+3. failure after graphics initialization;
+4. userspace/service failure;
+5. desktop/application failure.
+
+The system should never require a graphical mechanism to diagnose a failure that occurs before graphics exists.
+
+---
+
+# 6. CPU AND ARCHITECTURE LAYER
+
+## 6.1 Initial architecture
+
+Initial production target:
+
+**x86_64**
+
+Initial development/test environment:
+
+**QEMU x86_64**
+
+## 6.2 Implementation languages
+
+Kernel:
+
+- C as the primary systems language;
+- x86_64 Assembly for boot entry, low-level context switching, interrupt/syscall entry and hardware-specific primitives where necessary.
+
+Supporting implementation may use:
+
+- linker scripts;
+- shell/build scripts;
+- CI YAML;
+- host-side test utilities.
+
+## 6.3 Architecture abstraction
+
+Architecture-dependent code must be isolated so that future architectures can be considered without rewriting high-level kernel services.
+
+Potential future architecture ports are not required for the first product, but the boundary must be clean.
+
+## 6.4 CPU feature detection
+
+The kernel must detect and record supported CPU capabilities rather than assuming that every x86_64 machine has identical features.
+
+Potential capabilities include:
+
+- APIC;
+- invariant TSC where available;
+- NX;
+- syscall/sysret support;
+- SMEP/SMAP where available;
+- PCID where useful;
+- virtualization extensions;
+- vector instruction capabilities;
+- other capabilities used by optional optimizations.
+
+An optimization must have a fallback if the feature is optional.
+
+---
+
+# 7. PHYSICAL MEMORY MANAGER (PMM)
+
+## 7.1 Purpose
+
+PMM owns physical page allocation and reservation.
+
+## 7.2 Memory ownership states
+
+Every physical page must conceptually be in one of these states:
+
+```text
+UNKNOWN
+RESERVED
+FREE
+ALLOCATED
+RECLAIMABLE
+FIRMWARE
+DEVICE
+```
+
+Transitions must be explicit.
+
+## 7.3 Protected ranges
+
+The PMM must never return a page that belongs to:
+
+- kernel image;
+- active boot stack;
+- active page tables;
+- PMM metadata;
+- active Multiboot structures;
+- active UEFI structures;
+- active ACPI tables;
+- loaded boot modules still in use;
+- device/firmware reserved regions;
+- other explicitly owned allocations.
+
+## 7.4 Bootstrap mode
+
+A bounded bootstrap allocator may be used before full memory-map integration is operational.
+
+Bootstrap mode must be clearly identified in the code and must not be mistaken for the final memory-management policy.
+
+## 7.5 Final memory-map integration
+
+The final PMM must consume a normalized platform memory map.
+
+Memory-map entries should be converted into internal types before allocator policy is applied.
+
+## 7.6 PMM invariants
+
+- page-aligned allocations;
+- no allocation from reserved memory;
+- no duplicate ownership;
+- no double free;
+- invalid addresses rejected;
+- exhaustion explicitly reported;
+- metadata memory accounted for;
+- reinitialization cannot destroy live allocation ownership.
+
+## 7.7 PMM debugging
+
+Low-level diagnostics must not recursively depend on the PMM being debugged.
+
+Boot diagnostics from PMM must use a minimal logging path that does not allocate from PMM or wait on user-facing services.
+
+---
+
+# 8. VIRTUAL MEMORY MANAGER (VMM)
+
+## 8.1 Responsibilities
+
+- page-table construction;
+- mapping;
+- unmapping;
+- permission flags;
+- address-space creation;
+- address-space destruction;
+- kernel/user separation;
+- page-fault integration;
+- TLB management.
+
+## 8.2 Required protection model
+
+Userspace must not be able to:
+
+- write kernel-only memory;
+- execute explicitly non-executable memory where NX is enforced;
+- access another process's private mappings;
+- alter page tables without privileged APIs.
+
+## 8.3 Mapping lifecycle
+
+```text
+request mapping
+ ↓
+validate alignment/range
+ ↓
+allocate page-table structures if needed
+ ↓
+validate physical ownership
+ ↓
+install mapping
+ ↓
+invalidate/update translation state
+ ↓
+return handle/result
+```
+
+Unmapping must correctly update ownership and TLB state.
+
+## 8.4 Large pages
+
+Support for large pages is optional initially. If added, the API must distinguish page size and alignment and must not make 4 KiB pages impossible.
+
+---
+
+# 9. KERNEL HEAP
+
+## 9.1 Responsibilities
+
+Provide dynamic kernel allocations on top of PMM/VMM.
+
+## 9.2 Requirements
+
+- defined alignment;
+- allocation failure path;
+- zero-size behavior;
+- integer-overflow checks;
+- no hidden dependency on GUI/logging;
+- correct freeing;
+- fragmentation measurement;
+- optional per-CPU caches only after correctness exists.
+
+## 9.3 Allocation classes
+
+Eventually separate:
+
+- page allocations;
+- physically contiguous allocations;
+- ordinary heap objects;
+- DMA-safe allocations where required.
+
+A driver must explicitly request the correct class instead of assuming every allocation is physically contiguous.
+
+---
+
+# 10. GDT / TSS / IDT / EXCEPTIONS
+
+## 10.1 GDT
+
+Provide defined kernel and user execution/data contexts.
+
+## 10.2 TSS
+
+Provide privilege-transition stack support and architecture-required state.
+
+Each CPU that needs a distinct interrupt stack must have its own state.
+
+## 10.3 IDT
+
+All architecture exceptions must have defined entry paths.
+
+## 10.4 Exception handling
+
+For each exception:
+
+- capture relevant CPU state;
+- identify process/thread;
+- determine recoverability;
+- deliver to userspace when safe;
+- otherwise enter kernel diagnostic path.
+
+## 10.5 Page fault handling
+
+Page faults must distinguish at least:
+
+- valid demand allocation/page-in path;
+- copy-on-write if implemented later;
+- guard-page violation;
+- permission violation;
+- unmapped address;
+- kernel fault.
+
+---
+
+# 11. INTERRUPTS, APIC, PIC AND TIMERS
+
+## 11.1 Timer architecture
+
+Use a layered timer interface rather than exposing PIT details to the scheduler.
+
+Initial development may use PIT.
+
+Later the kernel may select among:
+
+- PIT;
+- HPET where appropriate;
+- local APIC timer;
+- TSC-derived timing where safe;
+- platform timer facilities.
+
+The selected timer source must expose one monotonic kernel timebase.
+
+## 11.2 Migration rule
+
+Timer source selection must be explicit:
+
+```text
+Early boot timer
+ ↓
+Basic interrupt/tick operation
+ ↓
+APIC/advanced timer initialization
+ ↓
+Clocksource validation
+ ↓
+Scheduler clock migration
+```
+
+The scheduler must not implicitly change timer units during migration.
+
+## 11.3 PIC/APIC
+
+Legacy PIC may be supported during early bring-up, but final interrupt routing should support modern APIC-based systems.
+
+---
+
+# 12. ACPI AND PLATFORM DISCOVERY
+
+ACPI handling must be separated from generic device logic.
+
+Responsibilities include discovering:
+
+- processor topology;
+- interrupt routing information;
+- power-management capabilities;
+- relevant platform tables;
+- device descriptions exposed through ACPI.
+
+ACPI data has a lifecycle and remains protected while referenced.
+
+Malformed ACPI must not make the kernel blindly trust corrupted tables.
+
+---
+
+# 13. SMP / MULTI-CORE
+
+## 13.1 Goals
+
+Support multiple logical CPUs after single-CPU boot is stable.
+
+## 13.2 CPU-local data
+
+Each CPU may require private state including:
+
+- current thread;
+- scheduler run state;
+- interrupt nesting;
+- per-CPU logger buffer;
+- timer data;
+- architecture state;
+- temporary bootstrap state.
+
+## 13.3 Startup
+
+```text
+bootstrap CPU
+ ↓
+discover topology
+ ↓
+validate CPU set
+ ↓
+prepare per-CPU structures
+ ↓
+start application CPUs
+ ↓
+initialize local interrupts/timers
+ ↓
+join scheduler
+```
+
+Failure to start one optional CPU should not automatically crash the entire machine.
+
+---
+
+# 14. SYNCHRONIZATION
+
+Provide primitives such as:
+
+- spinlock;
+- mutex;
+- semaphore where justified;
+- condition/event mechanism;
+- interrupt-safe locking variants;
+- atomic operations.
+
+## 14.1 Lock rules
+
+Each lock must have:
+
+- ownership semantics;
+- context restrictions;
+- interrupt restrictions;
+- lock-order policy;
+- expected hold time;
+- debug detection where feasible.
+
+No lock may be acquired in an interrupt context if the implementation can block.
+
+## 14.2 Logging rule
+
+Logging from low-level code must not require locks that can be held by the caller.
+
+Preferred path:
+
+```text
+critical kernel path
+ ↓
+non-blocking event/log record
+ ↓
+per-CPU or lock-minimized ring buffer
+ ↓
+logger service
+ ↓
+serial/file/GUI destinations
+```
+
+---
+
+# PART III — EXECUTION MODEL
+
+# 15. SCHEDULER
+
+## 15.1 Objective
+
+Provide responsive execution while preserving deterministic and explainable behavior.
+
+## 15.2 Initial scheduler
+
+A simple round-robin scheduler is acceptable during bring-up.
+
+## 15.3 Future scheduler
+
+The architecture should allow policies for:
+
+- interactive desktop responsiveness;
+- background tasks;
+- I/O-bound workloads;
+- gaming workloads;
+- Minecraft server workloads;
+- CPU-intensive tasks.
+
+Minecraft-oriented policy must remain a policy layer rather than contaminating generic process management.
+
+## 15.4 Scheduler states
+
+```text
+NEW
+READY
+RUNNING
+SLEEPING
+BLOCKED_IO
+STOPPED
+EXITED
+ZOMBIE
+```
+
+Transitions must release resources appropriately.
+
+## 15.5 No busy loops
+
+A task waiting for an event should block/sleep rather than consume an entire CPU by polling.
+
+---
+
+# 16. THREADS AND PROCESSES
+
+## 16.1 Thread
+
+A thread owns CPU execution state and scheduling metadata.
+
+## 16.2 Process
+
+A process owns an address space and resource namespace.
+
+## 16.3 Process lifecycle
+
+```text
+create
+ ↓
+load/initialize
+ ↓
+runnable
+ ↓
+running
+ ↓
+exit
+ ↓
+resource cleanup
+ ↓
+reaped
+```
+
+## 16.4 Resource accounting
+
+At process level, eventually track:
+
+- memory;
+- CPU time;
+- open handles;
+- file descriptors;
+- sockets;
+- child processes;
+- package/app identity;
+- security context.
+
+---
+
+# 17. IPC
+
+Provide controlled mechanisms such as:
+
+- pipes;
+- queues;
+- shared memory;
+- event objects;
+- local sockets;
+- request/response service interfaces.
+
+IPC must enforce ownership and permissions.
+
+Shared memory must not implicitly grant arbitrary access to unrelated processes.
+
+---
+
+# 18. SYSCALL ABI
+
+## 18.1 General rule
+
+The userspace ABI must be versioned and validated.
+
+## 18.2 Categories
+
+Eventually include:
+
+- process/thread operations;
+- memory mapping;
+- file descriptors;
+- filesystem operations;
+- clocks/timers;
+- IPC;
+- sockets/networking;
+- device/service operations;
+- security/account operations where exposed.
+
+## 18.3 ABI safety
+
+At every syscall boundary validate:
+
+- pointer ranges;
+- buffer lengths;
+- integer overflow;
+- handle validity;
+- permission;
+- object ownership.
+
+A userspace pointer must never be trusted simply because it is non-null.
+
+---
+
+# 19. ELF / PROGRAM LOADING
+
+## 19.1 Loader
+
+The loader must:
+
+- validate ELF identity and class;
+- validate architecture;
+- validate program-header bounds;
+- validate segment sizes;
+- check alignment;
+- allocate/map required pages;
+- apply permissions;
+- construct user stack;
+- determine entry point;
+- reject malformed or impossible binaries.
+
+## 19.2 No implicit trust of modules
+
+A boot module claiming to be an executable must still be validated as input.
+
+---
+
+# 20. USERSPACE INIT AND SERVICE MANAGER
+
+## 20.1 Init
+
+The first userspace process is responsible for starting the minimal set of system services needed for a usable desktop.
+
+## 20.2 Service states
+
+```text
+DECLARED
+STARTING
+READY
+FAILED
+RESTARTING
+STOPPING
+STOPPED
+DISABLED
+```
+
+## 20.3 Service policy
+
+Services should start only when needed unless they are fundamental to the desktop.
+
+Optional software installation must not automatically create always-running background services unless the user or system policy explicitly requires it.
+
+---
+
+# PART IV — STORAGE, DATA AND CONFIGURATION
+
+# 21. STORAGE STACK
+
+```text
+Physical device
+ ↓
+Controller driver
+ ↓
+Block layer
+ ↓
+Partition layer
+ ↓
+Filesystem driver
+ ↓
+VFS
+ ↓
+Path/file APIs
+ ↓
+Applications
+```
+
+## 21.1 Device classes
+
+Initial direction:
+
+- SATA/ATA-compatible storage;
+- NVMe;
+- USB storage;
+- virtual disks in QEMU.
+
+## 21.2 NVMe
+
+NVMe support must use the controller's proper submission/completion queue model and DMA requirements. The architecture must not assume that a storage buffer is automatically DMA-safe.
+
+Current NVMe standards are maintained by NVM Express; the project should implement against a selected, documented specification revision and avoid embedding unexplained vendor-specific behavior. citeturn342371search0turn342371search1
+
+---
+
+# 22. FILESYSTEM AND VFS
+
+## 22.1 VFS responsibilities
+
+Provide common operations independent of the underlying filesystem:
+
+- open;
+- close;
+- read;
+- write;
+- seek;
+- stat;
+- create;
+- mkdir;
+- rename;
+- unlink;
+- directory enumeration;
+- permissions;
+- timestamps.
+
+## 22.2 Filesystem responsibilities
+
+A filesystem implementation owns its on-disk metadata and consistency rules.
+
+The VFS must not make filesystem-specific assumptions.
+
+## 22.3 Atomic configuration writes
+
+When writing critical configuration:
+
+```text
+create new version
+ ↓
+write complete content
+ ↓
+flush/sync according to storage semantics
+ ↓
+atomically switch active reference
+ ↓
+retain rollback copy if policy requires
+```
+
+## 22.4 User-data safety
+
+Normal system cleanup must never delete arbitrary user files.
+
+---
+
+# 23. DATA CLASSIFICATION
+
+Every persistent path should belong to a known class:
+
+```text
+SYSTEM
+USER
+CACHE
+TEMP
+LOG
+PACKAGE_STATE
+UPDATE_STAGING
+RECOVERY
+SECRETS
+FIRMWARE/DEVICE
+```
+
+Each class has separate lifecycle and cleanup rules.
+
+## 23.1 SYSTEM
+
+Core OS configuration and runtime state.
+
+## 23.2 USER
+
+Documents, application data and user-created content.
+
+Never automatically delete without an explicit user action or documented recovery policy.
+
+## 23.3 CACHE
+
+Re-creatable downloaded or generated data.
+
+Can be cleaned according to policy.
+
+## 23.4 TEMP
+
+Short-lived data.
+
+Must have ownership and expiration rules.
+
+## 23.5 LOG
+
+Diagnostic records with retention limits.
+
+## 23.6 UPDATE_STAGING
+
+Temporary package/update data that can be discarded or rolled back after transaction completion.
+
+## 23.7 SECRETS
+
+Credentials, keys and authentication material.
+
+Must be handled separately from ordinary logs and configuration exports.
+
+---
+
+# 24. CONFIGURATION SERVICE
+
+All system settings should eventually be accessed through one configuration service/API rather than every application editing independent copies.
+
+Each setting requires:
+
+- stable ID;
+- value type;
+- default;
+- valid range/schema;
+- current value;
+- persistence method;
+- access policy;
+- owning subsystem;
+- migration version.
+
+## 24.1 Configuration transactions
+
+Grouped settings changes should support:
+
+```text
+read current
+ ↓
+validate proposal
+ ↓
+apply in memory
+ ↓
+persist transactionally
+ ↓
+notify observers
+```
+
+A failed setting change should not leave half the settings applied.
+
+---
+
+# 25. TIME, CLOCKS, REGION AND LOCALE
+
+Separate:
+
+- monotonic kernel time;
+- wall-clock time;
+- RTC synchronization;
+- timezone;
+- locale;
+- date/time formatting.
+
+Applications must not use wall-clock time for timeout logic where monotonic time is required.
+
+---
+
+# PART V — DEVICES AND HARDWARE
+
+# 26. PCI / PCI EXPRESS
+
+PCI is the base discovery mechanism for many devices.
+
+The implementation must discover device identity and capabilities before loading the correct driver.
+
+PCI device access must obey platform and bus constraints; the driver layer must not assume that configuration space values are always identical across generations.
+
+PCI-SIG maintains the PCI Express specifications and revisions; implementation work should target explicitly documented revisions/features rather than assuming every optional capability exists. citeturn511015search4turn511015search11
+
+## 26.1 Device discovery result
+
+A discovered device should eventually expose:
+
+- bus/device/function;
+- vendor/device ID;
+- class/subclass/prog-if;
+- BARs/resources;
+- interrupt mechanism;
+- capabilities;
+- attached driver;
+- status.
+
+---
+
+# 27. DRIVER FRAMEWORK
+
+## 27.1 Driver lifecycle
+
+```text
+DISCOVERED
+ ↓
+MATCHED
+ ↓
+PROBING
+ ↓
+INITIALIZED
+ ↓
+BOUND
+ ↓
+ACTIVE
+ ↓
+STOPPING
+ ↓
+REMOVED
+```
+
+## 27.2 Driver isolation
+
+A faulty optional driver should fail as locally as safely possible.
+
+Driver ownership must be clear:
+
+- which device it owns;
+- what resources it allocated;
+- what interrupts it registered;
+- what DMA buffers it owns;
+- what service endpoints it exposes.
+
+## 27.3 Missing driver behavior
+
+If no driver exists, the device should appear in diagnostics as unsupported rather than silently corrupting the system.
+
+If a generic fallback exists, use it.
+
+---
+
+# 28. USB
+
+The USB architecture should consist of:
+
+```text
+USB host controller
+ ↓
+USB core
+ ↓
+device/enumeration layer
+ ↓
+class drivers
+ ↓
+input/storage/audio/etc.
+```
+
+Support should expand incrementally from foundational USB 2.0 functionality toward newer controllers and USB4-related capabilities as hardware support matures. USB-IF publishes the relevant USB and USB Type-C/UCSI specifications and compliance material. citeturn342371search3turn342371search4
+
+Hotplug events must be explicit and safe.
+
+---
+
+# 29. INPUT
+
+Input subsystem must abstract:
+
+- keyboard;
+- mouse;
+- touch if later supported;
+- buttons/hotkeys;
+- device addition/removal;
+- focus routing.
+
+Raw hardware events are converted into normalized input events before GUI applications consume them.
+
+---
+
+# 30. DISPLAY AND GRAPHICS
+
+## 30.1 Display layers
+
+```text
+GPU/display hardware
+ ↓
+Kernel/driver abstraction
+ ↓
+Display service
+ ↓
+Framebuffer / rendering backend
+ ↓
+Compositor
+ ↓
+Window system
+ ↓
+GUI toolkit
+ ↓
+Applications
+```
+
+## 30.2 Generic fallback
+
+A generic framebuffer path should exist when technically possible so that lack of an accelerated vendor driver does not automatically make the desktop unusable.
+
+## 30.3 GPU progression
+
+Hardware support should progress approximately as:
+
+1. generic framebuffer;
+2. stable display modes;
+3. basic acceleration abstraction;
+4. vendor-specific drivers;
+5. modern graphics APIs where justified;
+6. advanced compute/graphics capabilities.
+
+Vulkan support, if adopted, should be implemented as a userspace API/backend architecture and not confused with the low-level device driver itself. Vulkan is defined as a C99 graphics/compute API by Khronos. citeturn342371search60
+
+---
+
+# 31. GPU COMPATIBILITY TARGETS
+
+Future compatibility includes:
+
+- Intel integrated/discrete graphics;
+- AMD Radeon families;
+- NVIDIA consumer GPUs;
+- NVIDIA RTX families;
+- NVIDIA professional/data-center GPUs;
+- other high-performance accelerators as the driver architecture permits.
+
+Important distinction:
+
+**“The PCI device is detected” is not “the GPU is supported.”**
+
+A release claiming GPU support must demonstrate at least:
+
+- correct device initialization;
+- display output;
+- memory management;
+- required power/state transitions;
+- graphics workload execution appropriate to the claimed support level;
+- stability tests.
+
+---
+
+# 32. AUDIO
+
+Audio should be a service-backed subsystem with device drivers underneath.
+
+Responsibilities:
+
+- device discovery;
+- playback/capture;
+- stream format negotiation;
+- volume/mute;
+- device selection;
+- application stream management;
+- failure recovery.
+
+No GUI application should speak directly to a hardware codec.
+
+---
+
+# 33. POWER MANAGEMENT
+
+Eventually support:
+
+- shutdown;
+- restart;
+- sleep;
+- hibernate if technically safe;
+- battery information;
+- thermal information;
+- idle CPU states;
+- device power states.
+
+Power transitions must be state-machine driven and recover from partial device failures where possible.
+
+---
+
+# PART VI — GUI AND DESKTOP
+
+# 34. GUI ARCHITECTURE
+
+## 34.1 Layers
+
+```text
+Display backend
+ ↓
+Compositor
+ ↓
+Window system
+ ↓
+GUI toolkit
+ ↓
+Desktop shell
+ ↓
+Applications
+```
+
+## 34.2 Core GUI primitives
+
+- window/surface;
+- text;
+- font;
+- label;
+- button;
+- checkbox;
+- radio selection;
+- select/drop-down;
+- text field;
+- list;
+- tree;
+- menu;
+- dialog;
+- notification;
+- progress indicator;
+- scrollbar;
+- tab;
+- toolbar;
+- context menu.
+
+## 34.3 Event model
+
+The GUI is event-driven.
+
+Events include:
+
+- pointer move;
+- pointer button;
+- keyboard press/release;
+- text input;
+- focus change;
+- resize;
+- window state change;
+- timer/event callbacks;
+- device change;
+- system notifications.
+
+## 34.4 Rendering policy
+
+UI rendering must not require unnecessary full-screen redraws when incremental updates are possible.
+
+The toolkit should eventually support damage tracking and composition optimizations.
+
+---
+
+# 35. DESKTOP SHELL
+
+The desktop shell provides the default user environment.
+
+Minimum capabilities:
+
+- desktop/workspace surface;
+- application launcher;
+- task/window switching;
+- system status area;
+- notifications;
+- network status;
+- audio status;
+- clock;
+- settings access;
+- file manager access;
+- terminal access;
+- power controls.
+
+Installed optional software does not automatically become a permanent resident background process merely because it is installed.
+
+---
+
+# 36. FIRST BOOT — EXACT REQUIRED EXPERIENCE
+
+This is a core SB requirement.
+
+## 36.1 Trigger
+
+Show first-run UI when a valid persistent language configuration does not exist.
+
+## 36.2 What must appear
+
+After the graphical desktop is available, show a normal GUI popup such as:
 
 ```text
 Welcome to SuiraBox
@@ -330,96 +1522,131 @@ Language
 [ Continue ]
 ```
 
-The actual visual theme may evolve, but the interaction model is fixed: **a graphical select/drop-down control plus a clear continue action.**
+The language field is a real graphical select/drop-down control.
 
-### 5.3 Initial language choices
+It is not a terminal prompt.
 
-The initial supported UI languages are:
+## 36.3 Initial language choices
 
 - 日本語
 - English
 - 中文
 - Español
 
-Do not require the user to enter a locale code.
+## 36.4 Keyboard layout dependency
 
-### 5.4 First-run sequence
+Language and keyboard layout are distinct settings.
 
-1. Display the popup.
-2. Populate language choices from the built-in language catalog.
-3. Determine a safe initial selection.
-4. User chooses language.
-5. Validate the selection.
-6. Determine initial locale defaults.
-7. Determine keyboard-layout default separately from UI language.
-8. Allow keyboard layout correction before credential entry or other input-heavy setup.
-9. Persist configuration atomically.
-10. Activate the selected language.
-11. Refresh or restart affected UI components as required.
-12. Mark first-run initialization complete.
-13. Continue to the normal desktop.
+The first-run system must therefore implement this safe ordering:
 
-### 5.5 Language versus keyboard layout
+```text
+Choose display language
+ ↓
+Choose or confirm keyboard layout
+ ↓
+Apply input configuration
+ ↓
+Continue with any text-entry-dependent setup
+```
 
-UI language and physical/input keyboard layout are separate concepts.
+A sensible default may be inferred from locale/hardware, but the user must be able to override it.
+
+Never assume that language automatically determines physical keyboard layout.
+
+## 36.5 First-run persistence
+
+After the user confirms:
+
+1. validate language ID;
+2. validate keyboard-layout ID;
+3. write both atomically;
+4. activate localization/input services;
+5. mark first-run complete;
+6. continue to normal desktop.
+
+## 36.6 Corrupt first-run state
+
+If the configuration later becomes invalid:
+
+- detect it;
+- preserve diagnostics;
+- repair/rebuild the configuration when possible;
+- otherwise reopen a safe setup path;
+- never create an infinite setup/reboot loop.
+
+---
+
+# 37. LOCALIZATION / INTERNATIONALIZATION
+
+## 37.1 Initial languages
+
+- Japanese
+- English
+- Chinese
+- Spanish
+
+## 37.2 String architecture
+
+Every user-visible string uses a stable identifier.
 
 Example:
 
 ```text
-UI language: Japanese
-Keyboard layout: Japanese JIS
+ui.firstboot.title
+ui.firstboot.language
+ui.firstboot.keyboard_layout
+ui.firstboot.continue
+error.network.timeout
+panic.kernel.page_fault
+settings.display.refresh_rate
 ```
 
-or:
+Applications must not hard-code translated strings throughout the program.
 
-```text
-UI language: English
-Keyboard layout: US
-```
+## 37.3 Locale versus language
 
-The system must not assume that language uniquely determines keyboard layout.
+Maintain separately:
 
-The user must be able to change the keyboard layout later from Settings.
+- interface language;
+- locale formatting;
+- keyboard layout;
+- input method;
+- timezone;
+- region.
 
-### 5.6 Recovery from broken first-run configuration
+## 37.4 Unicode
 
-If the configuration is missing, invalid, partially written or incompatible with the current schema:
+The UI stack must support Unicode end-to-end.
 
-- validate before use;
-- attempt migration if a supported prior version exists;
-- otherwise fall back to safe defaults;
-- return to setup only when required;
-- never enter an infinite setup/reboot loop.
+The text path must account for:
+
+- variable-width glyphs;
+- combining characters;
+- fallback fonts;
+- right-to-left rendering capability as a future extension;
+- line breaking;
+- normalization where relevant.
+
+## 37.5 IME
+
+Japanese and Chinese input require an input-method architecture rather than assuming that one keyboard event equals one final Unicode character.
+
+IME integration belongs above raw keyboard drivers and below text fields/applications.
+
+## 37.6 Missing translation fallback
+
+If a translation is missing:
+
+1. use fallback language;
+2. never display an uninitialized string ID;
+3. log the missing translation for developers;
+4. do not block the application merely because a translation is missing.
 
 ---
 
-## 6. Desktop shell
+# 38. SETTINGS
 
-The desktop shell is the normal container for user interaction.
-
-It must expose, directly or through clearly discoverable UI:
-
-- launcher;
-- open applications/windows;
-- current workspace/window state;
-- network status;
-- audio state;
-- time/date;
-- notifications;
-- power controls;
-- Settings;
-- File Manager;
-- Terminal.
-
-The shell must remain lightweight and should lazy-load optional UI functionality.
-
----
-
-## 7. Settings
-
-Settings is a real application backed by the configuration service.
-
-Categories should include at least:
+## 38.1 Main categories
 
 - System
 - Appearance
@@ -433,2910 +1660,2060 @@ Categories should include at least:
 - Accounts
 - Privacy & Security
 - Updates
-- Recovery
 - Performance
 - Developer
+- Recovery
+- Accessibility
 
-### 7.1 Configuration object model
+## 38.2 Setting presentation
 
-Every persistent setting should have:
+The UI must be readable even when many detailed controls exist.
 
-- stable key/ID;
-- value type;
-- default value;
-- valid range/enum/schema;
-- owner subsystem;
-- persistence location;
-- migration strategy;
-- effect classification;
-- required privilege level.
-
-### 7.2 Configuration transaction rules
-
-A configuration update should not leave a malformed partially written file.
-
-Preferred sequence:
+Preferred hierarchy:
 
 ```text
-Read current state
-  ↓
-Validate proposed state
-  ↓
-Create staged representation
-  ↓
-Durably write/stage
-  ↓
-Atomically activate
-  ↓
-Notify owner subsystem
+Category
+ ↓
+Section
+ ↓
+Setting
+ ↓
+Current value
+ ↓
+Description
+ ↓
+Advanced details if needed
 ```
+
+## 38.3 Advanced options
+
+Detailed controls can be hidden under Advanced sections where exposing every option simultaneously would reduce usability.
+
+The setting still exists; only its presentation is simplified.
 
 ---
 
-## 8. Localization
+# 39. ACCESSIBILITY
 
-### 8.1 Architecture
-
-User-visible strings use stable message IDs rather than hard-coded duplicated strings.
-
-Conceptual examples:
-
-```text
-ui.welcome.title
-ui.language.label
-ui.continue
-error.network.timeout
-error.storage.read_failed
-panic.page_fault
-settings.display.refresh_rate
-```
-
-### 8.2 Requirements
-
-- Unicode support.
-- UTF-aware text handling.
-- Font fallback.
-- Missing-translation fallback.
-- Safe string expansion.
-- No layout corruption from long translations.
-- Translation packages separable from the minimal base when practical.
-
-### 8.3 Input methods
-
-UI language support and text input support are separate layers.
-
-The architecture must eventually support appropriate input methods for supported languages, including Japanese and Chinese input, without hard-coding language logic into GUI widgets.
-
----
-
-## 9. Accessibility
-
-The finished desktop should expose a real accessibility layer rather than visually styling controls only.
-
-Target capabilities include:
+The GUI must eventually consider:
 
 - keyboard navigation;
-- focus indicators;
-- scalable UI text;
-- high-contrast configuration;
-- reduced-motion option;
-- accessible labels/roles;
-- notification duration control;
-- screen-reader integration path;
-- color-independent status indicators.
+- focus visibility;
+- scalable text;
+- high-contrast modes;
+- reduced animation preference;
+- screen-reader integration boundary;
+- color-independent status communication;
+- pointer-size options.
 
-Accessibility is part of the GUI platform, not a collection of application-specific hacks.
-
----
-
-# PART III — BOOT, CPU AND MEMORY
-
-## 10. Firmware boundary
-
-SB must be prepared for both legacy BIOS-style boot environments and modern UEFI-based systems through a defined bootloader boundary.
-
-UEFI and ACPI are external standards and must be implemented according to their applicable specifications rather than approximated from assumptions. The UEFI Forum currently publishes UEFI 2.11 and ACPI 6.6 as current specification versions. 
-
-The boot architecture must isolate firmware-specific handling from the common kernel model.
-
-### 10.1 Boot information normalization
-
-Firmware/bootloader-specific data is converted into SB internal structures such as:
-
-- physical memory regions;
-- CPU topology;
-- ACPI table locations;
-- framebuffer information;
-- boot modules;
-- firmware/reserved regions;
-- device discovery hints.
-
-Higher layers must not need to know whether a specific record originated from Multiboot2, UEFI or another future boot path.
+Accessibility features must not require rewriting the entire application framework later, so accessibility metadata belongs in the toolkit design from the beginning.
 
 ---
 
-## 11. Multiboot2 handling
+# 40. CLIPBOARD, NOTIFICATIONS AND WORKSPACES
 
-Multiboot2 provides a tagged boot-information structure. The boot information is not owned by the PMM merely because it lies in physical memory.
+## Clipboard
 
-The boot path must:
+Provide secure copy/paste semantics across applications with ownership/timeouts as needed.
 
-1. validate the boot-information pointer;
-2. validate total size and tag boundaries;
-3. validate individual tag size/alignment before reading;
-4. identify all boot information that will remain needed;
-5. reserve the physical memory occupied by those structures while they are referenced;
-6. copy data into SB-owned structures when appropriate;
-7. release the original boot-information memory only after its final consumer is finished.
+## Notifications
 
-This is required because the Multiboot2 specification places responsibility on the OS to avoid overwriting boot information while it is still in use. citeturn441644search30
+Notifications must:
 
-### 11.1 Memory-map precedence
+- have severity/category;
+- be dismissible where appropriate;
+- avoid exposing secrets;
+- avoid overwhelming the user with repeated identical failures.
 
-When multiple sources provide memory information, the source's semantic authority must be documented. The system must not blindly merge incompatible ranges.
+## Workspaces
 
-### 11.2 Malformed input
-
-Malformed or contradictory boot data must produce a controlled boot diagnostic rather than unsafe memory reuse.
+The desktop may support multiple workspaces, but workspace state must not become an unnecessary permanent memory cost when unused.
 
 ---
 
-## 12. CPU initialization
+# 41. FILE MANAGER
 
-The architecture abstraction must isolate x86_64-specific operations.
+The base desktop should provide a file manager capable of:
 
-### 12.1 C
-
-C is the primary kernel implementation language.
-
-### 12.2 x86_64 Assembly
-
-Assembly is reserved for operations where it is the appropriate implementation boundary:
-
-- boot entry;
-- low-level CPU state changes;
-- interrupt entry/exit stubs;
-- context-switch primitives;
-- syscall entry/exit;
-- selected CPU instructions.
-
-### 12.3 Linker script
-
-The linker script owns kernel image placement and exports symbols for:
-
-- kernel start/end;
-- sections;
-- early stack;
-- boot metadata as required;
-- alignment boundaries.
-
-### 12.4 Architecture invariants
-
-The implementation must not mix 32-bit and 64-bit relocation assumptions.
-
-All linker symbols and assembly references must have explicitly reviewed operand width and relocation semantics.
-
----
-
-## 13. GDT, TSS and IDT
-
-### GDT
-
-Provide the segmentation descriptors required by the chosen x86_64 execution model, including kernel and user execution/data contexts where userspace is supported.
-
-### TSS
-
-Provide task-state information required for privilege transitions and stack switching.
-
-### IDT
-
-Provide interrupt and exception vectors with correct gate types, privilege levels and entry stubs.
-
-Every vector must have a defined handler behavior.
-
----
-
-## 14. Exception model
-
-Each exception handler must determine:
-
-- exception/vector;
-- error code where applicable;
-- faulting instruction pointer;
-- relevant register context;
-- active process/thread;
-- current privilege level;
-- recoverability;
-- whether the fault originated in kernel or userspace.
-
-Userspace faults should generally terminate or signal the affected task rather than stopping the entire machine.
-
-Kernel faults enter the panic path when safe continuation cannot be established.
-
----
-
-## 15. Physical Memory Manager (PMM)
-
-### 15.1 Purpose
-
-PMM owns allocation and reservation of physical pages.
-
-### 15.2 Page granularity
-
-The initial x86_64 implementation uses the architecture-defined standard page size as its base allocation unit, normally 4 KiB.
-
-The page size is centralized, not duplicated across subsystems.
-
-### 15.3 Region classes
-
-Physical memory must be represented using explicit state categories such as:
-
-```text
-FREE
-RESERVED
-KERNEL
-BOOT_DATA
-BOOT_MODULE
-PAGE_TABLE
-PMM_METADATA
-FIRMWARE
-ACPI
-DEVICE/MMIO
-ALLOCATED
-BAD/UNUSABLE
-```
-
-Exact internal enum names may vary; the semantic distinction must remain.
-
-### 15.4 Initialization lifecycle
-
-The PMM must not release memory that is still required by:
-
-- kernel image;
-- current stack;
-- page tables;
-- boot information;
-- boot modules;
-- PMM metadata;
-- ACPI/firmware structures still in use;
-- device/MMIO reservations.
-
-### 15.5 Bootstrap PMM
-
-A bounded bootstrap allocator may be used before the complete platform memory map is integrated.
-
-The bootstrap allocator must not be treated as proof of final memory topology.
-
-### 15.6 API contract
-
-Conceptual operations:
-
-```text
-pmm_init(...)
-pmm_add_usable_range(start, end)
-pmm_reserve_range(start, end)
-pmm_alloc_page()
-pmm_free_page(page)
-pmm_total_pages()
-pmm_free_pages()
-```
-
-Each operation requires:
-
-- alignment validation;
-- range validation;
-- ownership validation;
-- defined failure behavior;
-- concurrency policy once SMP is active.
-
-### 15.7 PMM invariants
-
-- never return a reserved page;
-- never return an out-of-range page;
-- never accept an invalid free silently where detection is possible;
-- prevent double-free corruption;
-- preserve allocation state across subsystem startup;
-- avoid unbounded initialization loops;
-- never depend on the GUI/logger to function.
-
----
-
-## 16. Virtual Memory Manager (VMM)
-
-VMM owns virtual address spaces and page mappings.
-
-### 16.1 Responsibilities
-
-- page-table creation;
-- mapping;
-- unmapping;
-- permissions;
-- address-space creation/destruction;
-- kernel/user separation;
-- fault handling;
-- TLB management;
-- page-table memory ownership through PMM.
-
-### 16.2 Protection model
-
-At minimum support conceptual attributes:
-
-```text
-PRESENT
-WRITABLE
-USER
-EXECUTABLE/NX
-CACHE POLICY
-```
-
-The final bit-level implementation must match x86_64 paging semantics.
-
-### 16.3 Invariants
-
-- user mappings cannot arbitrarily expose kernel-only pages;
-- unmap must return ownership information appropriately;
-- physical page ownership must be unambiguous;
-- page-alignment requirements enforced;
-- malformed user pointers never bypass validation.
-
----
-
-## 17. Kernel heap
-
-The kernel heap provides sub-page dynamic allocation built on lower-level memory primitives.
-
-Requirements:
-
-- alignment guarantees;
-- overflow detection;
-- invalid-free detection where practical;
-- deterministic out-of-memory behavior;
-- no hidden dependency on GUI/logging;
-- fragmentation testing;
-- optional debug allocator instrumentation.
-
-The kernel heap must not replace PMM/VMM; those lower-level mechanisms remain available.
-
----
-
-# PART IV — EXECUTION, INTERRUPTS, SCHEDULING AND IPC
-
-## 18. Interrupt controller and timer architecture
-
-### 18.1 Early boot timer
-
-A simple legacy timer path such as PIT may be used for early bring-up.
-
-### 18.2 Mature timer path
-
-When APIC infrastructure is available, the scheduler should migrate to a per-CPU capable timer mechanism such as the Local APIC timer where supported.
-
-The timer abstraction must hide this transition from scheduler policy.
-
-Conceptual phases:
-
-```text
-Early timer
-  ↓
-Interrupt infrastructure verified
-  ↓
-APIC/CPU topology initialized
-  ↓
-Per-CPU timer path enabled
-  ↓
-Scheduler uses stable timer abstraction
-```
-
-### 18.3 Timebase rules
-
-Do not let scheduling correctness depend on a fragile wall-clock source.
-
-Separate:
-
-- monotonic time;
-- wall-clock time;
-- RTC/firmware time;
-- timezone/locale presentation.
-
----
-
-## 19. ACPI
-
-ACPI provides platform configuration and power-management information.
-
-Initial responsibilities include:
-
-- discovering relevant tables;
-- validating table signatures/checksums as required;
-- locating processor and interrupt topology information;
-- power-state information;
-- device/resource information where required.
-
-ACPI parsing must be separated from the power-management policy itself.
-
-ACPI data structures remain protected while referenced.
-
-The project must track applicable ACPI revisions rather than assuming one fixed version forever. The UEFI Forum lists ACPI 6.6 as the current published specification at the time of this document. citeturn441644search0
-
----
-
-## 20. SMP / multicore
-
-The final architecture must support multiple CPUs without changing the conceptual scheduler/process API.
-
-Per-CPU state should include, as required:
-
-- CPU identifier;
-- current thread;
-- scheduler state;
-- interrupt/preemption state;
-- kernel stack/temporary state;
-- per-CPU timer state;
-- performance counters where later supported.
-
-Required concerns:
-
-- startup of secondary CPUs;
-- synchronization;
-- interrupt routing;
-- memory barriers;
-- cache coherence assumptions;
-- per-CPU scheduler queues or equivalent;
-- safe process/address-space access.
-
-Single-core operation remains a supported development mode.
-
----
-
-## 21. Synchronization and concurrency
-
-Provide explicit primitives rather than ad-hoc interrupt disabling everywhere.
-
-Potential primitives:
-
-- spinlock;
-- mutex/sleeping lock;
-- semaphore;
-- condition/event;
-- reader/writer synchronization;
-- atomic operations;
-- wait queues.
-
-### 21.1 Lock ordering
-
-Subsystems that may acquire multiple locks must document lock order to prevent deadlock.
-
-### 21.2 Interrupt context
-
-A function callable from interrupt context must be explicitly classified as such.
-
-Operations forbidden or restricted in hard interrupt context must include at least:
-
-- potentially blocking sleeps;
-- unbounded waits;
-- ordinary heap allocation unless allocator explicitly supports it;
-- operations that take locks known to be held by interrupted code.
-
----
-
-## 22. Kernel logging
-
-Kernel logging is layered by execution context.
-
-### 22.1 Early logger
-
-Must require as little infrastructure as possible.
-
-### 22.2 Interrupt-safe logging
-
-In contexts where locks or blocking are unsafe, logging must use a minimal non-blocking or bounded path, typically a fixed-size ring buffer or direct emergency output.
-
-### 22.3 Normal logger
-
-Userspace-visible logging can later consume structured kernel events through a dedicated service.
-
-### 22.4 No logging recursion
-
-The logger itself must not silently call a subsystem whose failure it is attempting to report.
-
-For example:
-
-```text
-PMM failure
-  ↓
-logging
-  ↓
-heap allocation
-  ↓
-PMM
-```
-
-is an invalid hidden dependency.
-
----
-
-## 23. Scheduler
-
-### 23.1 Responsibilities
-
-- select runnable threads;
-- account CPU time;
-- block/sleep/wake threads;
-- perform context switches;
-- honor priority policy;
-- handle preemption where enabled;
-- cooperate with CPU topology.
-
-### 23.2 Policy abstraction
-
-Generic scheduler mechanisms must remain independent of Minecraft-specific optimization policies.
-
-Minecraft/game tuning should operate through explicit scheduling policy interfaces or runtime hints rather than hard-coded assumptions.
-
-### 23.3 Scheduler invariants
-
-- no runnable thread disappears silently;
-- sleeping thread cannot be selected as runnable;
-- exited threads release resources;
-- scheduler data structures remain consistent during preemption.
-
----
-
-## 24. Process and thread model
-
-Each process conceptually owns:
-
-- address space;
-- process identifier;
-- security identity;
-- open handles/resources;
-- environment/configuration;
-- one or more threads.
-
-Each thread owns:
-
-- thread identifier;
-- execution context;
-- scheduling state;
-- stack;
-- process association.
-
-Lifecycle:
-
-```text
-CREATED → READY → RUNNING → BLOCKED → READY → EXITED
-```
-
-Failure transitions must be explicit.
-
----
-
-## 25. IPC
-
-IPC must support safe communication without allowing direct arbitrary memory access between unrelated processes.
-
-Target mechanisms may include:
-
-- message queues;
-- pipes;
-- shared memory with explicit mapping permissions;
-- events/signals;
-- handles/capabilities.
-
-GUI services, Package Manager, Settings and other platform components should use documented IPC APIs rather than private memory hacks.
-
----
-
-# PART V — USERSPACE AND SYSTEM CALLS
-
-## 26. Syscall ABI
-
-The syscall boundary is a versioned ABI.
-
-Required families eventually include:
-
-- process/thread control;
-- memory operations;
-- file/handle I/O;
-- time;
-- IPC;
-- networking;
-- device/service interfaces;
-- configuration/service access.
-
-Every syscall must define:
-
-- number/identifier;
-- argument types;
-- return convention;
-- error model;
-- privilege requirements;
-- pointer validation;
-- compatibility policy.
-
-The kernel must validate all userspace-provided addresses, lengths, handles and object references before dereferencing or using them.
-
----
-
-## 27. Init and service manager
-
-The init/service manager is the first major userspace authority.
-
-Responsibilities:
-
-- start essential services;
-- honor service dependencies;
-- restart recoverable services;
-- record service failures;
-- coordinate shutdown/reboot;
-- avoid starting optional applications unless configured.
-
-Service lifecycle:
-
-```text
-DECLARED
-  ↓
-STARTING
-  ↓
-RUNNING
-  ↓
-STOPPING
-  ↓
-STOPPED
-```
-
-Failure state must include restart limits/backoff so a crashing service cannot create an infinite restart loop.
-
----
-
-## 28. Userspace application model
-
-Applications run outside the kernel.
-
-Applications obtain privileged functionality through:
-
-- syscalls;
-- service APIs;
-- approved device/service interfaces.
-
-The GUI toolkit must not grant raw hardware access by default.
-
----
-
-## 29. ELF loading
-
-The initial executable format can be ELF for the x86_64 userspace environment.
-
-Loader responsibilities:
-
-- validate ELF header;
-- validate machine/type;
-- validate program-header bounds;
-- validate segment alignment;
-- map loadable segments;
-- enforce permissions;
-- establish entry point;
-- establish user stack;
-- pass process startup arguments/environment;
-- refuse malformed or unsafe inputs.
-
-No executable file may cause arbitrary kernel memory mapping through unchecked header fields.
-
----
-
-# PART VI — STORAGE, FILESYSTEM AND INSTALLATION
-
-## 30. Storage stack
-
-Layer the storage architecture:
-
-```text
-Physical controller
-  ↓
-Block device
-  ↓
-Partition
-  ↓
-Filesystem driver
-  ↓
-VFS
-  ↓
-File/path API
-  ↓
-Applications
-```
-
-This prevents GUI or package code from becoming coupled to a particular disk controller.
-
----
-
-## 31. VFS
-
-The virtual filesystem provides common operations:
-
-- open;
-- close;
-- read;
-- write;
-- seek;
-- stat/metadata;
-- create;
-- delete;
+- navigation;
+- search;
+- folder creation;
+- file copy/move;
 - rename;
-- directory enumeration;
-- permissions;
-- synchronization/durability.
+- delete with appropriate confirmation/recovery behavior;
+- metadata display;
+- storage-device visibility;
+- permission-aware operations.
 
-Paths must be normalized and validated.
-
----
-
-## 32. Filesystem requirements
-
-A production filesystem must define:
-
-- on-disk metadata;
-- allocation structures;
-- directory structure;
-- permissions;
-- timestamps;
-- crash consistency;
-- corruption detection/recovery strategy;
-- maximum path/name sizes;
-- encoding requirements;
-- mount/unmount lifecycle.
-
-The initial filesystem choice is an implementation decision that must be documented when frozen. The architecture must not depend on a filesystem-specific API.
+Large operations must not freeze the GUI thread. Progress belongs in a task/service mechanism.
 
 ---
 
-## 33. User data versus system data
+# PART VII — NETWORKING
 
-Data classes should be explicit.
-
-```text
-SYSTEM
-USER
-CACHE
-TEMPORARY
-LOG
-PACKAGE_STATE
-RECOVERY
-UPDATE_STAGING
-```
-
-### 33.1 Cleanup rule
-
-Only data explicitly classified as safe-to-clean may be removed automatically.
-
-Never silently remove:
-
-- user documents;
-- unknown files;
-- recovery-required data;
-- credentials/keys;
-- active package state.
-
----
-
-## 34. Installer
-
-The installer must present destructive operations clearly.
-
-A disk operation must identify:
-
-- target disk/device;
-- existing partitions where detectable;
-- operation to be performed;
-- data-loss consequence;
-- final confirmation.
-
-Installation stages:
-
-```text
-Detect hardware
-  ↓
-Select installation target
-  ↓
-Validate plan
-  ↓
-Prepare storage
-  ↓
-Install base system
-  ↓
-Install bootloader
-  ↓
-Write initial configuration
-  ↓
-Validate installation
-  ↓
-Reboot into SB
-```
-
-The installer must not claim success until installation verification passes.
-
----
-
-# PART VII — INPUT, DISPLAY AND GUI PLATFORM
-
-## 35. Input subsystem
-
-Abstract input from hardware.
-
-Target devices:
-
-- PS/2 keyboard where relevant;
-- USB keyboards;
-- USB mice;
-- touchpads;
-- touchscreens where later supported;
-- other HID devices.
-
-Input events should carry enough metadata for the GUI layer to interpret them consistently.
-
----
-
-## 36. Display architecture
-
-Start with the broadest safe display path available, then accelerate when the appropriate driver exists.
-
-Conceptual hierarchy:
-
-```text
-Display hardware
-  ↓
-Driver
-  ↓
-Framebuffer / accelerated display API
-  ↓
-Compositor
-  ↓
-Window system
-  ↓
-Toolkit
-  ↓
-Applications
-```
-
-### 36.1 Framebuffer fallback
-
-A generic framebuffer should allow a basic desktop path when feasible even if advanced acceleration is unavailable.
-
-### 36.2 GPU acceleration
-
-Accelerated drivers must be optional from the architectural point of view.
-
-The desktop should degrade gracefully when only a fallback renderer is available.
-
----
-
-## 37. GPU and high-performance hardware strategy
-
-The architecture must support future drivers for:
-
-- integrated graphics;
-- AMD GPUs;
-- Intel GPUs;
-- NVIDIA consumer GPUs;
-- NVIDIA professional GPUs;
-- other accelerators as practical.
-
-The user's long-term target includes high-end NVIDIA RTX-class systems and professional/server-grade accelerators. These are **future compatibility targets**, not proof of current support.
-
-Driver support must be classified as:
-
-```text
-Not started
-Prototype
-Boot/Display capable
-Basic acceleration
-Functional desktop
-Feature-complete for target
-Hardware verified
-Release supported
-```
-
-A Release image must not claim a higher status than actual verification.
-
----
-
-## 38. GUI event system
-
-The GUI platform is event-driven.
-
-Events include conceptually:
-
-- pointer move;
-- pointer button;
-- keyboard input;
-- text input;
-- window creation/destruction;
-- resize;
-- focus changes;
-- timer events;
-- display changes;
-- notifications;
-- system state changes.
-
-No ordinary GUI operation should depend on busy loops polling hardware continuously.
-
----
-
-## 39. GUI toolkit
-
-Minimum primitives:
-
-- Window/surface
-- Panel/container
-- Button
-- Label
-- Text input
-- Select/drop-down
-- Checkbox/toggle
-- List
-- Scrollable area
-- Menu
-- Dialog
-- Notification
-- Progress indicator
-- Image/icon
-- Tabs
-
-Toolkit responsibilities:
-
-- layout;
-- input dispatch;
-- focus;
-- rendering;
-- accessibility metadata;
-- localization-aware sizing;
-- DPI/scaling support;
-- theme integration.
-
----
-
-## 40. Compositor and window system
-
-The compositor owns presentation of window surfaces.
-
-The window system owns:
-
-- window identity;
-- position/size;
-- focus;
-- z-order;
-- visibility;
-- input routing;
-- display/workspace association.
-
-Applications cannot directly overwrite another application's surface.
-
----
-
-## 41. Desktop applications
-
-### 41.1 Settings
-
-Owns user-facing system configuration.
-
-### 41.2 File Manager
-
-Provides normal filesystem navigation and file operations.
-
-### 41.3 Terminal
-
-Provides shell execution and advanced system access through approved APIs.
-
-### 41.4 SB Store
-
-Provides package/application browsing and installation using the same package transaction engine as CLI tools.
-
-### 41.5 Other base applications
-
-Additional apps should be added only when their inclusion is justified by core desktop usability, and optional apps should remain removable without damaging the base system.
-
----
-
-# PART VIII — NETWORK
-
-## 42. Network architecture
-
-Target hierarchy:
+# 42. NETWORK ARCHITECTURE
 
 ```text
 NIC driver
-  ↓
-Ethernet/link layer
-  ↓
-IPv4 / IPv6
-  ↓
-ARP / Neighbor Discovery
-  ↓
+ ↓
+Network device abstraction
+ ↓
+Link layer
+ ↓
+IPv4/IPv6
+ ↓
+ARP/Neighbor Discovery
+ ↓
 Routing
-  ↓
-UDP / TCP
-  ↓
-DNS / DHCP
-  ↓
-Sockets
-  ↓
-Network service/manager
-  ↓
-GUI + CLI applications
+ ↓
+UDP/TCP
+ ↓
+DNS/DHCP and other services
+ ↓
+Socket API
+ ↓
+Network manager
+ ↓
+GUI / CLI applications
 ```
 
-### 42.1 Requirements
+## 42.1 Initial targets
 
-- Ethernet.
-- IPv4.
-- IPv6.
-- Loopback.
-- DHCP.
-- Static addressing.
-- DNS configuration.
-- Routing.
-- Socket interface.
-- Network diagnostics.
-- Firewall/policy architecture.
+- Ethernet;
+- loopback;
+- IPv4;
+- IPv6;
+- DHCP;
+- DNS;
+- sockets.
 
-Wi-Fi support is a driver/platform expansion and must not be falsely implied by Ethernet support.
+## 42.2 Later capabilities
 
-### 42.2 Network operation safety
+- Wi-Fi;
+- firewall;
+- VLAN;
+- VPN interfaces where compatible;
+- advanced routing;
+- additional network diagnostics.
 
-Every network operation that can block must have:
+## 42.3 Failure behavior
+
+Every network request must have:
 
 - timeout;
-- cancellation/abort semantics where possible;
-- meaningful error state;
-- retry policy;
-- backoff policy.
+- cancellation semantics;
+- connection/error result;
+- retry policy where appropriate;
+- offline behavior.
 
-A failed DNS query must never make the entire desktop hang indefinitely.
-
-### 42.3 Network UI
-
-Settings should show:
-
-- interface state;
-- connection state;
-- address information;
-- DNS state;
-- diagnostics;
-- connect/disconnect controls;
-- advanced options.
-
-The GUI must use a service/API rather than directly configuring NIC hardware.
+The GUI must never freeze indefinitely while a network request waits.
 
 ---
 
-# PART IX — SOFTWARE DISTRIBUTION
+# 43. NETWORK MANAGER
 
-## 43. Package model
+The Network Manager is the single high-level authority for normal connection state.
 
-The package system exists to keep the base small while making additional software easy to install.
+It tracks:
 
-Conceptual package manifest fields:
+- interfaces;
+- addresses;
+- routes;
+- DNS settings;
+- DHCP state;
+- link state;
+- Wi-Fi state when supported;
+- connected/disconnected/degraded status.
 
-```text
-package identity
-name
-version
-architecture
-minimum SB version
-dependencies
-conflicts
-provides
-files/content
-entry points
-permissions/capabilities
-integrity information
-signature metadata
-upgrade/migration information
-```
-
-The exact serialization format is an implementation decision, but the semantic fields above must be represented.
+GUI and CLI query/change the same service.
 
 ---
 
-## 44. Repository metadata
+# PART VIII — TERMINAL AND SOFTWARE DISTRIBUTION
 
-Repository metadata must support:
+# 44. TERMINAL / SHELL
 
-- package discovery;
-- version selection;
-- dependency resolution;
-- architecture compatibility;
-- integrity verification;
-- signature verification;
-- repository provenance;
-- update information.
+SB Desktop includes a real terminal.
 
-Official package metadata must be authenticated.
+## 44.1 Required capabilities
 
----
+- command execution;
+- arguments;
+- environment variables;
+- pipelines;
+- redirection;
+- working directories;
+- signals/job control where implemented;
+- scripting foundation;
+- filesystem tools;
+- network tools;
+- process tools;
+- package tools;
+- diagnostic tools;
+- recovery tools.
 
-## 45. Download manager
+## 44.2 CLI/GUI parity
 
-The downloader should optimize for:
-
-- small metadata;
-- compressed content;
-- resumable transfer;
-- local cache reuse;
-- connection reuse;
-- sensible concurrency;
-- efficient mirrors/CDN when available later.
-
-Never skip integrity verification for speed.
-
----
-
-## 46. Package transaction engine
-
-A package installation/update/removal is a transaction.
-
-Conceptual state:
-
-```text
-PLANNING
-  ↓
-RESOLVING
-  ↓
-DOWNLOADING
-  ↓
-VERIFYING
-  ↓
-STAGING
-  ↓
-COMMITTING
-  ↓
-COMMITTED
-```
-
-Failure must transition to a recoverable state where possible.
-
-### 46.1 GUI/CLI concurrency
-
-GUI Store and CLI package commands use the same transaction backend.
-
-There must be a single authoritative package database/state lock or transaction coordinator.
+Where an operation has a GUI and CLI form, both should call the same underlying system service or library.
 
 Example:
 
 ```text
-CLI starts transaction
-  ↓
-Package transaction lock acquired
-  ↓
-SB Store attempts install
-  ↓
-Store receives BUSY/LOCKED state
-  ↓
-GUI shows "Another software operation is in progress"
-  ↓
-CLI commits/aborts
-  ↓
-Lock released
-  ↓
-Store refreshes metadata/state
+SB Store GUI ─┐
+              ├─> Package Service ─> Transaction Engine
+sbpkg CLI ────┘
 ```
 
-The two interfaces must never independently modify package state.
-
-### 46.2 Crash safety
-
-If power fails during a transaction, the next boot must detect incomplete state and either:
-
-- finish a validated commit;
-- roll back to the previous valid state;
-- enter recovery if neither safe path is possible.
+This prevents the GUI and CLI from having contradictory package databases.
 
 ---
 
-## 47. SB Store
+# 45. PACKAGE SYSTEM
 
-The Store is a GUI frontend, not a separate package backend.
-
-User actions:
+## 45.1 Package lifecycle
 
 ```text
-Search
+search
  ↓
-View package
+select version
  ↓
-Inspect size/dependencies/permissions
+resolve dependencies
  ↓
-Install
+obtain metadata
  ↓
-Download
+verify repository metadata
  ↓
-Verify
+download package(s)
  ↓
-Transaction
+verify package integrity/authenticity
  ↓
-Success / recovery
+stage
+ ↓
+preflight
+ ↓
+install transaction
+ ↓
+register state
+ ↓
+activate
+ ↓
+cleanup temporary data
 ```
 
-Store UI must clearly show:
+## 45.2 Package metadata
 
-- installed state;
-- available version;
-- download size;
-- installed size where known;
+Every package should eventually contain:
+
+- package ID;
+- name;
+- version;
+- architecture compatibility;
 - dependencies;
-- required restart/logout;
-- security/signature state.
+- conflicts;
+- provides;
+- files;
+- entry points where applicable;
+- service declarations where applicable;
+- permissions/capabilities;
+- integrity hashes;
+- signature/reference information;
+- localization metadata where applicable.
 
----
+## 45.3 Transactions
 
-# PART X — SECURITY AND PRIVACY
+Install/remove/update operations must be transactional.
 
-## 48. Security model
+If an operation fails partway through:
 
-Security enforcement occurs at privileged boundaries.
+- preserve known-good state;
+- undo partial modifications where possible;
+- mark recovery state;
+- provide an actionable error.
 
-Minimum foundations:
+## 45.4 Package concurrency
 
-- kernel/userspace separation;
-- memory protection;
-- syscall validation;
-- file permissions;
-- process identity;
-- capability/privilege model;
-- package signature verification;
-- update integrity;
-- service privilege separation;
-- network policy/firewall;
-- protected configuration.
+The package database and filesystem transaction layer must use an exclusive package transaction lock.
 
----
-
-## 49. Application isolation
-
-Optional applications should not receive broad system privileges by default.
-
-The long-term application model should support explicit capabilities such as:
+If CLI and GUI attempt concurrent modification:
 
 ```text
-filesystem read
-filesystem write
-network
-camera/device access
-USB/device access
-process control
-system configuration
+first operation owns transaction lock
+second operation sees BUSY
+ ↓
+GUI: show “Another package operation is in progress” + progress/status
+CLI: return machine-readable busy result or wait only when explicitly requested
 ```
 
-The exact capability mechanism can evolve, but privilege must be explicit rather than silently inherited.
+Read-only operations may use appropriate shared access if safe.
+
+## 45.5 SB Store
+
+SB Store is a GUI frontend to the package ecosystem.
+
+It must not create a separate package database.
+
+The Store provides:
+
+- search;
+- categories;
+- package details;
+- compatibility status;
+- install;
+- remove;
+- update;
+- progress;
+- cancellation where safe;
+- dependency explanation;
+- disk-space requirement;
+- rollback/error explanation.
 
 ---
 
-## 50. Secrets and credentials
+# 46. FAST AND LIGHTWEIGHT DOWNLOADS
 
-Secrets must not appear in:
+Because minimal base installation is a core SB principle, package retrieval must be optimized.
+
+## Required mechanisms where practical
+
+- compressed metadata;
+- compressed packages;
+- content hashing;
+- local caching;
+- resumable downloads;
+- range requests where supported;
+- connection reuse;
+- parallel downloads for independent large files where it improves performance;
+- mirrors/CDN later;
+- deduplication where practical.
+
+Integrity always has priority over raw download speed.
+
+The installer must not redownload a valid cached object unnecessarily.
+
+---
+
+# 47. OPTIONAL COMPONENT MODEL
+
+Potential optional components include:
+
+- extra language packs;
+- fonts;
+- applications;
+- development tools;
+- multimedia support;
+- GPU-related userland components;
+- JVM/runtime components;
+- Minecraft support tooling;
+- server tooling;
+- themes;
+- desktop extensions.
+
+Optional components must declare dependencies and whether they require a reboot or service restart.
+
+---
+
+# PART IX — SECURITY
+
+# 48. SECURITY MODEL
+
+Security is enforced at actual privilege boundaries.
+
+## 48.1 Core isolation
+
+- kernel memory protected from userspace;
+- process address spaces isolated;
+- syscall input validated;
+- privileged device access controlled;
+- package authenticity verified;
+- update authenticity verified;
+- secrets separated from ordinary logs.
+
+## 48.2 Capability/permission direction
+
+The future security model should distinguish:
+
+- user identity;
+- process identity;
+- application identity;
+- resource permission;
+- elevated administrative capability.
+
+## 48.3 Application isolation
+
+Optional applications should run with minimum required privileges where technically practical.
+
+Potential future isolation levels:
+
+```text
+normal process
+restricted process
+sandboxed application
+privileged service
+kernel driver
+```
+
+A GUI feature must not gain kernel privileges merely because its implementation is convenient.
+
+---
+
+# 49. PACKAGE AND SUPPLY-CHAIN SECURITY
+
+The package ecosystem must defend against:
+
+- tampered packages;
+- corrupted downloads;
+- stale metadata;
+- replay of outdated metadata where applicable;
+- dependency confusion;
+- malicious package names pretending to be official;
+- compromised mirrors;
+- partially written packages;
+- unsigned or unverifiable metadata.
+
+Official package sources must be distinguishable from third-party sources.
+
+---
+
+# 50. SECRETS
+
+Secrets must never be copied into:
 
 - ordinary logs;
-- crash reports;
 - support reports;
+- crash screens;
+- public diagnostic exports;
 - package metadata;
-- screenshots generated by diagnostics.
+- casual configuration dumps.
 
-Potential sensitive classes include:
-
-- passwords;
-- authentication tokens;
-- private keys;
-- session credentials;
-- recovery secrets.
-
-A secret-management system should eventually provide protected storage rather than leaving credentials in arbitrary configuration files.
+Future secret storage must separate credentials/keys from ordinary configuration.
 
 ---
 
-## 51. Privacy
+# PART X — ERRORS, DIAGNOSTICS AND RECOVERY
 
-SB does not require telemetry merely because it is useful for developers.
+# 51. ERROR CLASSIFICATION
 
-Any future diagnostic/telemetry feature must specify:
+SB uses an explicit severity hierarchy.
 
-- what data is collected;
-- why it is needed;
-- whether it is optional;
-- retention period;
-- transmission destination;
-- redaction rules.
+### Level A — Informational
 
-Diagnostic reports generated locally should be user-controlled.
+No failure. Example: package download complete.
+
+### Level B — Recoverable warning
+
+A component had trouble, but normal operation continues.
+
+### Level C — User-facing error
+
+An operation failed but the OS remains usable.
+
+### Level D — Service failure
+
+A system service failed and requires restart/recovery.
+
+### Level E — System degradation
+
+A larger subsystem is unavailable but the machine may remain usable.
+
+### Level F — Kernel emergency
+
+Safe continued execution cannot be guaranteed.
+
+### Level G — Early-boot / recovery integrity emergency
+
+The normal recovery or display path cannot be trusted.
 
 ---
 
-# PART XI — ERRORS, CRASHES, BSOD, RSOD AND RECOVERY
+# 52. NORMAL ERROR UX
 
-## 52. Error identity system
+A normal error dialog should contain, as appropriate:
 
-Every significant user-facing failure should have a stable identifier.
+- clear human-readable title;
+- concise explanation;
+- affected action/component;
+- current usability state;
+- recommended next step;
+- Error ID;
+- expandable details;
+- retry/recover option;
+- support-report option for serious issues.
 
-Recommended structure:
+Example conceptual structure:
 
 ```text
-SB-<SUBSYSTEM>-<CLASS>-<NUMBER>
+Something went wrong
+
+SB could not connect to the selected network.
+
+The desktop is still working normally.
+
+[ Retry ] [ Network Settings ] [ Details ]
+
+Error ID: NET-...
 ```
 
-The exact final syntax may be frozen later, but identifiers must remain stable across localized text changes.
+Do not show a terrifying kernel-style screen for ordinary application errors.
 
 ---
 
-## 53. Normal error UX
+# 53. BSOD
 
-Normal errors are ordinary failures that do not justify stopping the OS.
-
-Example categories:
-
-- application cannot open file;
-- package download failed;
-- network timeout;
-- insufficient permissions;
-- device unavailable;
-- configuration rejected.
-
-UI should show:
-
-```text
-What happened
-Why it happened, when known
-What was affected
-Whether recovery occurred
-What the user can do
-Error ID
-[Details]
-[Support Report]
-```
-
-The default view remains understandable to a normal user.
-
----
-
-## 54. Kernel panic / BSOD
+## 53.1 Meaning
 
 BSOD means:
 
-> **The system was operating, but continuing is no longer safe.**
+> **The system was operating, but continuing is no longer safe or reliable.**
 
-Use it for severe kernel/system state where safe continuation cannot be guaranteed.
+It is a kernel/system stop state.
 
-A BSOD should contain, where available:
+## 53.2 Causes
+
+Examples include:
+
+- unrecoverable kernel exception;
+- memory-management invariant corruption;
+- scheduler/kernel-state corruption;
+- security boundary violation inside the kernel;
+- critical infrastructure failure.
+
+## 53.3 Required technical information when available
 
 - stable error ID;
-- failure class;
+- error class;
 - exception/vector;
-- hardware error code;
+- CPU error code;
 - instruction pointer;
-- relevant register state;
-- current CPU;
-- current process/thread;
+- stack pointer;
+- CPU/core ID;
+- process/thread ID;
 - subsystem;
-- kernel version/build;
+- kernel build/version;
 - boot/session ID;
-- dump status;
-- recovery/reboot status;
-- support identifier.
+- crash-dump status;
+- recovery state.
 
-The user-facing explanation and technical details must be separate levels.
+## 53.4 User-facing design
+
+The primary message should be understandable.
+
+Technical diagnostics should be expandable or separately accessible.
+
+The screen should state what happens next, such as automatic restart, safe recovery attempt or manual recovery requirement.
 
 ---
 
-## 55. RSOD
+# 54. RSOD
+
+## 54.1 Meaning
 
 RSOD means:
 
-> **The normal display/recovery path itself cannot be trusted, or a critical early-boot/system-integrity failure prevents safe use of the normal error environment.**
+> **The normal display, recovery path, or critical early-boot/system-integrity path cannot be trusted.**
 
-RSOD is intentionally rare.
+## 54.2 Allowed use
 
-It may be used when:
+Only for exceptionally severe states such as:
 
-- normal graphics cannot be trusted;
-- recovery display cannot be safely initialized;
-- critical early-boot integrity is broken;
-- necessary boot/recovery data is unusable.
+- graphics/recovery path itself corrupted;
+- early boot integrity failure;
+- critical system image validation failure where normal diagnostics cannot safely operate;
+- recovery environment unavailable or untrusted.
 
-It must not be used for an ordinary process crash.
+## 54.3 Forbidden use
 
----
+Do not use RSOD because:
 
-## 56. Diagnostic data
-
-Support reports should contain enough information to help a user submit a useful report or take the machine to repair/support.
-
-Possible sections:
-
-```text
-System identity
-SB version/build
-Boot/session ID
-Hardware summary
-CPU summary
-RAM summary
-Display/GPU summary
-Storage summary
-Network summary
-Loaded services/drivers
-Recent relevant logs
-Recent errors
-Crash information
-Package transaction history
-Recovery state
-```
-
-Sensitive data is redacted before export.
+- an application crashed;
+- a file failed to open;
+- a package failed to install;
+- the network disconnected;
+- the desktop service restarted.
 
 ---
 
-## 57. Crash dumps
+# 55. CRASH DUMPS
 
-Crash dumps should be structured and versioned.
+Crash dumps must be:
 
-A dump format must support:
+- versioned;
+- bounded in size;
+- privacy-aware;
+- resilient against recursion/failure;
+- identifiable by crash/session ID.
 
-- architecture version;
-- kernel build ID;
-- thread/process state;
-- exception information;
-- stack/context;
-- loaded module metadata;
-- relevant memory ranges when safe.
-
-Dump size must have bounded behavior.
-
-A failure to save a dump must not cause a second fatal failure.
+A crash dump must never rely on the fully functioning GUI.
 
 ---
 
-## 58. Recovery mode
+# 56. LOW-LEVEL LOGGING
 
-Recovery should provide, as the architecture matures:
+## 56.1 Logging levels
 
-- boot diagnostics;
-- filesystem checks;
-- package transaction recovery;
-- update rollback;
-- configuration restoration;
-- driver disablement;
-- log export;
-- support report generation;
-- safe reboot/shutdown.
+- TRACE
+- DEBUG
+- INFO
+- NOTICE
+- WARNING
+- ERROR
+- CRITICAL
+- PANIC
 
-Recovery must minimize write operations to damaged storage.
+## 56.2 Log record
 
----
+At minimum:
 
-# PART XII — UPDATE, BACKUP AND DATA MIGRATION
-
-## 59. Update system
-
-Target update lifecycle:
-
-```text
-Check metadata
- ↓
-Verify source/signature
- ↓
-Resolve dependencies
- ↓
-Download
- ↓
-Verify contents
- ↓
-Stage
- ↓
-Pre-activation validation
- ↓
-Activate atomically
- ↓
-Post-update health check
- ↓
-Commit
-```
-
-### 59.1 Rollback
-
-A failed update must have a defined rollback path for components where rollback is technically feasible.
-
-### 59.2 Interrupted update
-
-On next boot:
-
-- detect staging/incomplete transaction;
-- do not assume the update succeeded;
-- verify current state;
-- recover to a known-valid state.
-
----
-
-## 60. Configuration migration
-
-Every persistent configuration schema must have a version.
-
-A migration step should be:
-
-```text
-old schema
-  ↓
-validate
-  ↓
-transform
-  ↓
-validate new schema
-  ↓
-atomically activate
-```
-
-Failed migration must preserve the old known-good state.
-
----
-
-## 61. User backup/restore
-
-The system should eventually expose a controlled mechanism to back up user configuration/data without requiring raw filesystem knowledge.
-
-Backup must distinguish:
-
-- user files;
-- application configuration;
-- system configuration;
-- secrets;
-- package state.
-
-Secrets require special handling and must not be exported casually.
-
----
-
-# PART XIII — POWER, TIME, AUDIO AND OTHER SYSTEM SERVICES
-
-## 62. Power management
-
-Target functionality:
-
-- shutdown;
-- reboot;
-- suspend where supported;
-- hibernate where later supported;
-- display sleep;
-- idle behavior;
-- battery state;
-- thermal information where available;
-- performance/energy policy.
-
-Power actions must be coordinated with userspace services and open transactions.
-
----
-
-## 63. Time and region
-
-Separate:
-
-- monotonic time;
-- wall clock;
-- RTC;
-- timezone;
-- locale date/time presentation.
-
-Settings must support region/timezone selection independently from UI language.
-
----
-
-## 64. Audio
-
-The architecture should support an audio service between hardware drivers and applications.
-
-Target capabilities:
-
-- output devices;
-- input devices;
-- volume;
-- mute;
-- per-application routing where practical;
-- device selection;
-- notifications/system sounds.
-
-Applications must not directly program arbitrary audio hardware.
-
----
-
-## 65. Clipboard and notifications
-
-These are userspace platform services.
-
-Clipboard must apply ownership/lifetime rules so an application cannot retain data unexpectedly forever.
-
-Notifications must support:
-
-- severity;
-- title/body;
-- source application;
 - timestamp;
-- user actions;
-- dismissal;
-- persistence rules.
+- CPU/core;
+- severity;
+- component;
+- event/error ID;
+- session/boot ID;
+- message/structured fields.
 
----
+## 56.3 Recursion rule
 
-# PART XIV — USB, PCI, DRIVERS AND HOTPLUG
+A logger used while the allocator, scheduler, interrupt controller or logger itself is broken must have a minimal fallback path that does not call the failing subsystem recursively.
 
-## 66. PCI
-
-PCI/PCIe discovery provides foundational hardware identification.
-
-Responsibilities:
-
-- enumerate bus/device/function;
-- read configuration space safely;
-- identify vendor/device/class;
-- assign or consume resources as required;
-- hand devices to matching driver frameworks.
-
-Driver code must not assume that every discovered device is safe or supported.
-
----
-
-## 67. Driver framework
-
-Drivers should implement defined interfaces such as:
+Preferred architecture:
 
 ```text
-probe
-initialize
-start
-stop
-suspend
-resume
-remove
-interrupt handling
-capability reporting
+lowest-level event
+ ↓
+static/minimal record
+ ↓
+serial / emergency buffer
 ```
 
-A driver failure should be isolated where possible.
+Then normal logging can take over later.
 
-### 67.1 Driver state
+---
+
+# 57. SUPPORT REPORT
+
+A support report should be available from Settings/Recovery.
+
+It may contain:
+
+- SB version/build;
+- hardware inventory;
+- driver states;
+- service states;
+- recent relevant logs;
+- package state;
+- storage health information where available;
+- network diagnostic state where appropriate;
+- crash IDs;
+- configuration summary.
+
+It must exclude known secret classes.
+
+It should be exportable as a stable, documented format.
+
+---
+
+# 58. RECOVERY ARCHITECTURE
+
+Recovery must prefer the smallest safe repair.
+
+Preferred sequence:
+
+```text
+application restart
+ ↓
+service restart
+ ↓
+subsystem reinitialization
+ ↓
+package rollback
+ ↓
+recovery boot
+ ↓
+full system stop
+```
+
+The OS must not repeatedly restart a permanently failing component without a backoff/disable condition.
+
+---
+
+# 59. RECOVERY MODE
+
+Recovery mode should eventually provide:
+
+- filesystem checks;
+- package rollback;
+- configuration rollback;
+- failed-service disablement;
+- log export;
+- update rollback;
+- safe driver disablement;
+- basic network diagnostics;
+- system integrity checks.
+
+Recovery mode must minimize dependencies on the normal desktop.
+
+---
+
+# PART XI — UPDATE, BACKUP, CLEANUP
+
+# 60. UPDATE SYSTEM
+
+Target transaction:
+
+```text
+check metadata
+ ↓
+verify metadata
+ ↓
+resolve dependencies
+ ↓
+download
+ ↓
+verify content
+ ↓
+stage
+ ↓
+preflight
+ ↓
+commit/activate atomically
+ ↓
+update state
+ ↓
+validate next boot
+ ↓
+retain rollback where policy requires
+```
+
+## 60.1 Interrupted update
+
+If power is lost during update, the machine must boot into a valid previous or recovery state rather than a deliberately half-written system.
+
+## 60.2 Rollback
+
+Update state must identify:
+
+- previous known-good state;
+- staged state;
+- active state;
+- failed activation state.
+
+---
+
+# 61. BACKUP AND RESTORE
+
+SB must eventually distinguish:
+
+- system rollback;
+- package-state rollback;
+- configuration backup;
+- user-data backup.
+
+A system rollback must not silently overwrite user files.
+
+---
+
+# 62. CLEANUP / “UNNECESSARY DATA” POLICY
+
+SB should actively minimize useless accumulated data.
+
+Safe cleanup candidates may include:
+
+- expired temporary files;
+- unused package caches;
+- stale downloaded artifacts;
+- abandoned update staging;
+- orphaned generated metadata.
+
+Before deletion, classify the path.
+
+Never use a broad “delete unknown files” rule as a cleanup mechanism.
+
+## 62.1 Cleanup modes
+
+### Automatic
+
+Only low-risk classes such as expired TEMP/CACHE data.
+
+### Suggested
+
+Show the user what can be reclaimed.
+
+### Manual
+
+Allow advanced users to inspect categories directly.
+
+---
+
+# PART XII — APPLICATION MODEL
+
+# 63. APPLICATION LIFECYCLE
 
 ```text
 DISCOVERED
  ↓
-MATCHED
+INSTALLED
  ↓
-INITIALIZING
+LAUNCHING
  ↓
-ACTIVE
+RUNNING
  ↓
-SUSPENDED
+SUSPENDED/BLOCKED if applicable
  ↓
-REMOVED/FAILED
+EXITING
+ ↓
+EXITED
 ```
 
-### 67.2 Driver trust boundary
-
-Drivers are privileged and therefore high risk.
-
-The project should prefer small, auditable driver interfaces and isolate policy from low-level hardware access.
+An application crash should normally not crash unrelated applications or the whole desktop.
 
 ---
 
-## 68. USB
+# 64. APPLICATION IDENTIFICATION
 
-Target layers:
+An installed application should have a stable identity independent of its display name.
+
+Potential metadata:
+
+- app ID;
+- version;
+- executable entry;
+- icon;
+- permissions;
+- supported files/protocols;
+- language resources;
+- package origin.
+
+---
+
+# PART XIII — MINECRAFT AND PERFORMANCE SPECIALIZATION
+
+# 65. MINECRAFT ROLE
+
+SB remains a general desktop OS, but Minecraft is an important first-class workload.
+
+The kernel should remain generic.
+
+Minecraft-specific behavior should live in higher-level policy/runtime components where possible.
+
+Architecture:
 
 ```text
-USB host controller
-  ↓
-USB core
-  ↓
-HID/storage/network/audio/etc. class driver
-  ↓
-Device service
+Generic Kernel
+      ↓
+Generic Scheduler / Memory / Storage / Network
+      ↓
+SB Runtime / optional optimization policy
+      ↓
+JVM / Minecraft tooling
+      ↓
+Minecraft / Minecraft Server
 ```
 
-Hotplug events must not deadlock device management.
+## 65.1 JVM integration
 
-A device being unplugged must result in deterministic resource cleanup.
+The OS should provide the hooks needed for an efficient JVM workload without baking one specific JVM implementation into the kernel.
 
----
+## 65.2 Minecraft optimization principles
 
-# PART XV — MINECRAFT-FIRST OPTIMIZATION WITHOUT LOSING GENERALITY
+Potential optimization targets:
 
-## 69. Minecraft product goal
-
-SB is Minecraft-focused but not Minecraft-exclusive.
-
-Minecraft-specific optimization must be implemented through well-defined policy/runtime layers.
-
-### 69.1 Target workload categories
-
-- Minecraft Java Edition client;
-- Minecraft Server;
-- modded Minecraft;
-- Java/JVM workloads related to Minecraft;
-- asset/resource processing;
-- server management tools.
-
-### 69.2 Possible optimization surfaces
-
-- scheduler policy;
-- CPU affinity/pinning policy;
-- memory policy;
-- filesystem/cache placement;
-- network queue policy;
-- I/O prioritization;
-- JVM/runtime tuning;
-- process priority;
-- thermal/performance policy;
-- background-service suppression while gaming.
-
-No optimization is accepted without measurement.
-
----
-
-## 70. JVM / Java runtime integration
-
-The OS should provide an explicit runtime-management layer rather than hard-coding one Java installation throughout the OS.
-
-Capabilities may include:
-
-- multiple JVM versions;
-- per-game instance JVM selection;
-- JVM memory settings;
-- GC/runtime configuration;
-- launch parameters;
-- compatibility checks;
-- runtime download/install through the package infrastructure.
-
-The exact bundled JVM distribution is a future packaging/legal/technical decision.
-
----
-
-## 71. Minecraft Instance Manager
-
-A future SB application/service can manage:
-
-- instances;
-- versions;
-- mod loaders;
-- mods/resource packs where legally/user-supplied;
-- saves/worlds;
-- Java runtime selection;
-- launch options;
-- logs/crash data.
-
-It must use normal filesystem and package APIs rather than bypassing system security.
-
----
-
-## 72. Minecraft Server Manager
-
-Target functions:
-
-- create server instance;
-- configure memory/runtime;
-- start/stop/restart;
-- logs;
-- backups;
-- update workflow;
-- resource monitoring;
-- port/network configuration;
-- scheduled operation;
-- failure recovery.
-
-The service must respect normal OS security and account permissions.
-
----
-
-## 73. Performance benchmark suite
-
-The project should maintain reproducible benchmarks for:
-
-- boot;
-- memory;
-- CPU scheduling;
+- scheduler policy for server workloads;
+- filesystem/cache behavior;
+- network latency;
+- JVM memory placement;
 - storage I/O;
-- network;
-- JVM startup;
-- Minecraft launch where legally/testably available;
-- server tick behavior where suitable.
+- process priorities;
+- performance monitoring.
 
-Optimization changes should compare before/after measurements rather than anecdotal speed claims.
+Every optimization must be measured against generic workload regressions.
 
----
+## 65.3 Minecraft Server Manager
 
-# PART XVI — DEVELOPMENT ENVIRONMENT AND PROJECT INFRASTRUCTURE
+Eventually provide a user-level manager capable of:
 
-## 74. Supported development environment
+- creating server instances;
+- selecting runtime versions;
+- configuring memory;
+- starting/stopping/restarting;
+- viewing logs;
+- backup/restore;
+- network configuration;
+- performance information.
 
-The project is intended to be developable through browser/cloud infrastructure when a local PC is unavailable.
+It must use standard SB services rather than a privileged kernel shortcut.
 
-A reproducible Codespaces/dev-container setup should eventually provide:
+## 65.4 Minecraft Instance Manager
 
-- compiler/toolchain;
-- assembler;
-- linker;
-- GRUB/boot tooling where required;
-- ISO tooling;
-- QEMU;
-- test utilities;
-- repository build scripts.
-
-The development environment must be defined as code rather than relying on undocumented manual installation steps.
+Eventually manage client instances and optional runtime/tooling components while preserving the user's control over files and versions.
 
 ---
 
-## 75. Build system
+# 66. PERFORMANCE FRAMEWORK
 
-Required build concepts:
+Performance work must be measurable.
 
-```text
-make
-make clean
-make check
-make test
-make iso
-make run
-```
+Track at minimum:
 
-Exact targets may vary, but there must be one obvious documented path for:
+- boot time;
+- time to desktop;
+- idle RAM;
+- idle CPU;
+- background wakeups;
+- GUI input latency;
+- GUI frame latency;
+- app startup latency;
+- storage throughput/latency;
+- network latency/throughput where applicable;
+- package install time;
+- update cost.
 
-- clean build;
-- ISO build;
-- validation;
-- QEMU boot;
-- test execution.
+## 66.1 Performance policy
 
-### 75.1 Compiler assumptions
+Do not “optimize” by:
 
-The build must explicitly establish:
-
-- target architecture;
-- freestanding mode;
-- ABI;
-- warning policy;
-- optimization policy;
-- relocation model;
-- runtime helper expectations.
+- deleting safety checks;
+- weakening tests;
+- hiding errors;
+- assuming hardware features;
+- introducing unbounded complexity.
 
 ---
 
-## 76. Continuous Integration
+# PART XIV — USERS, ACCOUNTS AND PRIVILEGES
 
-CI should validate progressively.
+# 67. ACCOUNT SYSTEM
 
-Minimum conceptual stages:
+Eventually support:
 
-```text
-Source checkout
- ↓
-Dependency/toolchain setup
- ↓
-Compile
- ↓
-Assemble
- ↓
-Link
- ↓
-ISO
- ↓
-Image validation
- ↓
-QEMU boot
- ↓
-Serial log assertions
- ↓
-Subsystem self-tests
- ↓
-Artifact upload
-```
+- user identity;
+- display name;
+- account state;
+- authentication method abstraction;
+- home directory;
+- groups/roles;
+- permissions.
 
-As the desktop matures add:
+## 67.1 First user
 
-- userspace tests;
-- filesystem tests;
-- package tests;
-- GUI startup tests;
-- first-run tests;
-- localization tests;
-- persistence tests;
-- recovery tests;
-- upgrade tests.
+Installer/first-run must establish the initial user according to an explicit account-creation policy.
 
-CI must not pass by deleting the failing assertion.
+Credentials must never be stored in plain text.
+
+## 67.2 Administrative access
+
+Administrative actions must be explicit.
+
+The GUI should explain when an operation requires elevated privileges.
 
 ---
 
-## 77. QEMU test strategy
+# 68. PERMISSIONS
 
-QEMU is a primary development target, not proof of universal hardware compatibility.
-
-Test scenarios should include:
-
-- normal boot;
-- low-memory configuration;
-- larger-memory configuration;
-- malformed/edge input where injectable;
-- storage failure simulation;
-- network failure simulation;
-- device absence;
-- controlled exception;
-- package transaction interruption;
-- first-run configuration.
-
-Timeouts must distinguish:
-
-- expected idle state;
-- actual hang;
-- controlled shutdown.
-
-A blanket timeout should not convert every hang into a successful test.
-
----
-
-# PART XVII — HARDWARE COMPATIBILITY AND RELEASE VARIANTS
-
-## 78. Compatibility model
-
-SB should start with generic x86_64 systems and expand through capabilities.
-
-Compatibility is classified independently for:
-
-- boot;
-- CPU;
-- memory;
-- storage;
-- display;
-- GPU acceleration;
-- network;
-- audio;
-- input;
-- power management;
-- suspend/hibernate;
-- multi-monitor;
-- USB/hotplug.
-
-A machine can be "boot supported" while not being "fully accelerated supported".
-
----
-
-## 79. Release profiles
-
-After the common platform is stable, variants may be produced when there is a measured reason.
-
-Potential profiles:
-
-```text
-Generic
-Gaming
-Workstation
-High-performance GPU
-Professional/Creator
-Server-oriented
-```
-
-These should share the common base rather than becoming unrelated OS forks.
-
----
-
-## 80. Future high-end/server direction
-
-The long-term architecture should permit systems with:
-
-- many CPU cores;
-- very large RAM;
-- professional/high-end GPUs;
-- multiple storage devices;
-- high-speed networking;
-- accelerator devices.
-
-The desktop project remains the active scope now. Server/data-center specific product work is a later expansion of the same foundations, not a separate current implementation track.
-
----
-
-# PART XVIII — SOFTWARE LIFECYCLE
-
-## 81. Application lifecycle
-
-Application installation and removal must be safe.
-
-An application removal must not remove shared components that another installed package still requires.
-
-Dependency removal decisions must be explicit and transactional.
-
----
-
-## 82. Service lifecycle
-
-Every long-running system service must specify:
-
-- why it exists;
-- startup dependency;
-- whether it is mandatory;
-- restart policy;
-- resource budget;
-- privileges;
-- shutdown behavior;
-- failure behavior;
-- logging category.
-
-Unnecessary services should not be started by default.
-
----
-
-## 83. Cache lifecycle
-
-Caches must have:
+Permission systems should distinguish:
 
 - owner;
-- purpose;
-- maximum size or growth policy;
-- eviction policy;
-- safe rebuild behavior.
+- group;
+- other/public;
+- privileged capability where needed.
 
-A cache must never become the only copy of user data.
-
----
-
-# PART XIX — COMPLETE FAILURE MATRIX
-
-## 84. Failure classes
-
-| Class | Example | Expected response |
-|---|---|---|
-| Application | app cannot open file | dialog/log, app remains isolated |
-| Service | network service crash | restart service, notify if needed |
-| Device | optional USB device failure | isolate device, continue OS |
-| Package | install transaction fails | abort/rollback transaction |
-| Storage | filesystem corruption | isolate/recovery workflow |
-| Userspace | critical service failure | restart/recovery escalation |
-| Kernel | unrecoverable page fault | BSOD/panic |
-| Display | compositor unavailable | restart display/recovery |
-| Early boot | invalid memory map | controlled boot failure |
-| Integrity | critical boot/recovery state compromised | RSOD or recovery path |
+Device access should use controlled permissions rather than giving every desktop application unrestricted hardware access.
 
 ---
 
-## 85. Severity levels
+# PART XV — INSTALLER AND LIVE SYSTEM
 
-Recommended conceptual levels:
+# 69. INSTALLER
+
+The installer must eventually provide:
+
+- target disk selection;
+- installation mode;
+- partitioning guidance;
+- bootloader installation;
+- base-package selection;
+- account creation;
+- language/keyboard setup;
+- network setup where desired;
+- progress and logging;
+- validation before destructive actions;
+- recovery on failure.
+
+## 69.1 Destructive action safety
+
+Before formatting or overwriting a disk:
+
+- identify the target explicitly;
+- show the intended operation;
+- require clear confirmation;
+- never infer consent from navigation.
+
+## 69.2 Live environment
+
+A future live environment should be able to:
+
+- test hardware;
+- run diagnostics;
+- access files;
+- repair installation;
+- install SB.
+
+The live environment should reuse system components where practical rather than becoming a completely separate OS.
+
+---
+
+# PART XVI — HARDWARE COMPATIBILITY STRATEGY
+
+# 70. COMPATIBILITY MODEL
+
+The target is not “support every device immediately.”
+
+The target is:
+
+**one clean architecture capable of supporting a very broad set of hardware over time.**
+
+## 70.1 Initial baseline
+
+- x86_64;
+- QEMU;
+- basic PCI;
+- generic display;
+- basic keyboard/mouse;
+- basic storage path.
+
+## 70.2 Compatibility classes
+
+Eventually evaluate:
+
+- generic desktop;
+- laptop;
+- gaming PC;
+- workstation;
+- high-end GPU system;
+- professional GPU system;
+- server-class machine;
+- data-center-oriented machine.
+
+## 70.3 Release artifact philosophy
+
+Do not create a separate ISO for each GPU model.
+
+Separate release artifacts only when:
+
+- firmware requirements differ;
+- kernel/driver composition differs materially;
+- hardware compatibility testing justifies it;
+- maintenance cost is acceptable.
+
+Potential future channels:
 
 ```text
-TRACE
-DEBUG
-INFO
-NOTICE
-WARNING
-ERROR
-CRITICAL
-PANIC
+SB Desktop Generic
+SB Desktop Gaming
+SB Desktop Workstation
+SB Desktop Hardware-specific support packs
 ```
 
-User-facing severity and developer-facing log severity are related but not identical.
+---
+
+# 71. SERVER / DATA-CENTER FUTURE COMPATIBILITY
+
+The current product remains SB Desktop.
+
+However, kernel and service boundaries should not make headless operation impossible later.
+
+Future work may support:
+
+- headless boot;
+- serial console;
+- remote administration services;
+- server-oriented package profiles;
+- high-core-count scheduling;
+- large-memory systems;
+- enterprise storage;
+- high-performance networking.
+
+This is compatibility planning, not a second current product scope.
 
 ---
 
-# PART XX — DATA FORMATS AND VERSIONING
+# PART XVII — CI, TESTING AND RELEASE ENGINEERING
 
-## 86. Versioned interfaces
+# 72. BUILD SYSTEM
 
-The following must have explicit versioning/migration policy:
+The build must be reproducible enough that developers and automation can reproduce the same class of artifact.
 
-- syscall ABI;
-- package metadata;
-- persistent configuration;
-- crash dump format;
-- diagnostic report format;
-- update transaction format;
-- application/service IPC APIs where compatibility matters.
+Required build stages:
 
----
+1. dependency validation;
+2. compile;
+3. assemble;
+4. link;
+5. image/ISO creation;
+6. static validation;
+7. boot validation;
+8. artifact upload.
 
-## 87. Stable identifiers
+## 72.1 Architecture-specific assembly
 
-Stable IDs are required for:
+The project has previously encountered unsupported relocation types caused by an architecture mismatch between boot assembly and linking.
 
-- errors;
-- settings;
-- packages;
-- services;
-- processes/threads during a session;
-- user-facing diagnostic categories;
-- localization messages.
+Therefore:
 
-Changing display text must not change the underlying identifier.
+- boot assembly mode must be explicit;
+- relocation sizes must match symbol/address usage;
+- mixed 32-bit/64-bit code must have explicit boundaries;
+- CI must validate boot images after every relevant change.
 
 ---
 
-# PART XXI — TEST PLAN
+# 73. TEST LEVELS
 
-## 88. Unit-level testing
+## Level 1 — host unit tests
 
-Where practical test:
+Pure logic that can run outside the kernel.
 
-- parsers;
-- memory-range arithmetic;
-- bitmap operations;
-- path normalization;
-- package dependency resolution;
-- version comparison;
-- config migration;
-- locale resolution;
-- error serialization;
-- protocol parsers.
+## Level 2 — kernel self-tests
 
----
+Small deterministic tests for PMM/VMM/heap/scheduler/etc.
 
-## 89. Kernel integration tests
+## Level 3 — QEMU integration
 
-At minimum test:
+Boot and interaction in an emulated machine.
 
-- PMM allocation/free;
-- VMM map/unmap/translation;
-- heap allocation/free;
-- interrupt initialization;
-- timer event;
-- scheduler transitions;
-- process creation;
-- syscall dispatch;
-- ELF validation/loading;
-- userspace fault isolation.
+## Level 4 — automated desktop tests
+
+First-boot, settings, package and GUI flows where testable.
+
+## Level 5 — real hardware
+
+Device/display/input/network/GPU compatibility.
+
+## Level 6 — release qualification
+
+Full clean-install/upgrade/recovery scenarios.
 
 ---
 
-## 90. End-to-end desktop tests
+# 74. REQUIRED QEMU BOOT TEST
 
-Final release candidate must validate:
-
-1. clean boot;
-2. reboot;
-3. shutdown;
-4. first-run popup;
-5. language selection;
-6. language persistence;
-7. keyboard layout;
-8. mouse/input;
-9. display;
-10. settings persistence;
-11. filesystem operations;
-12. network configuration;
-13. terminal operation;
-14. package installation;
-15. package removal;
-16. package update;
-17. GUI/CLI package-lock behavior;
-18. recoverable application error;
-19. support-report creation;
-20. controlled kernel fault diagnostic;
-21. recovery mode;
-22. rollback;
-23. update interruption recovery;
-24. clean install;
-25. upgrade install;
-26. QEMU boot;
-27. supported real-hardware boot;
-28. artifact/checksum/signature validation.
-
----
-
-# PART XXII — RELEASE ENGINEERING
-
-## 91. Release readiness levels
-
-Use explicit levels:
+The automated boot test must eventually verify at least:
 
 ```text
-PLANNED
-DESIGNED
-SKELETON
-PARTIAL
-FUNCTIONAL
-BUILD-VERIFIED
-RUNTIME-VERIFIED
-HARDWARE-VERIFIED
-RELEASE-READY
+Kernel initialized
+PCI discovery complete
+PMM ready
+VMM mapping self-test passed
+Kernel heap self-test passed
+GDT/TSS ready
+Interrupt system ready
+Scheduler ready
+Process/Syscall ready
+Userspace loader ready
+Timer ready
+Userspace init ready
+Display service ready
+GUI ready
+First-boot path ready
 ```
 
-A source file existing is not evidence of FUNCTIONAL state.
-
-A passing compile is not evidence of RUNTIME-VERIFIED state.
-
-A QEMU pass is not evidence of universal HARDWARE-VERIFIED support.
+As the implementation evolves, each previous line remains a regression test unless the architecture explicitly replaces it.
 
 ---
 
-## 92. Release artifact set
+# 75. TEST FAILURE POLICY
 
-A stable release should eventually publish:
+When CI fails:
 
-- installation ISO;
-- checksum data;
-- signatures where implemented;
-- release notes;
-- supported hardware matrix;
-- known limitations;
-- installation guide;
-- recovery guide;
-- administrator/developer documentation as appropriate.
+1. preserve logs;
+2. identify the earliest failed invariant;
+3. inspect the actual code;
+4. reproduce in the smallest environment;
+5. fix root cause;
+6. add regression coverage;
+7. rerun.
+
+Do not “fix” CI by removing the assertion that detected the bug.
 
 ---
 
-## 93. Official ecosystem
+# 76. DEFINITION OF RELEASE READY
 
-The project should use low-cost/public infrastructure where practical.
+A release candidate is not ready because it builds.
 
-Potential official surfaces include:
+It must satisfy:
 
-- GitHub repository;
-- GitHub Pages official website;
-- release downloads;
+- clean boot;
+- clean install;
+- first-run flow;
+- language persistence;
+- keyboard/input operation;
+- storage operations;
+- network operation;
+- terminal operation;
+- package install/remove/update;
+- recovery behavior;
+- error diagnostics;
+- supported hardware claims;
+- update/rollback tests;
 - documentation;
-- official X account;
-- official Discord/community;
-- issue tracker;
-- discussions/changelogs.
-
-The community identity is Suiram.
-
-Social/community infrastructure is secondary to software integrity and must not distract active engineering from the OS itself.
+- artifact integrity.
 
 ---
 
-# PART XXIII — PROJECT DOCUMENTATION ARCHITECTURE
+# PART XVIII — PUBLIC PROJECT / ECOSYSTEM
 
-## 94. Master document rule
+# 77. PROJECT WEBSITE
 
-`SB_OS_DESIGN.md` is the highest-level specification and project backup.
+GitHub Pages is an appropriate initial public website mechanism because it avoids a paid hosting dependency.
 
-It must remain sufficient to answer:
+The official website should eventually contain:
 
-- What is SB?
-- Why is SB built?
-- What does the finished OS contain?
-- What does the user see?
-- How does the system boot?
-- How is memory managed?
-- How do processes work?
-- How does storage work?
-- How does networking work?
-- How does GUI work?
-- How do packages work?
-- How are errors handled?
-- How is recovery performed?
-- How is the OS verified?
-- What is the release process?
-- How can a new developer/AI continue the project?
+- project overview;
+- download page;
+- installation guide;
+- hardware compatibility;
+- documentation;
+- changelog;
+- source links;
+- security information;
+- support information;
+- official community links.
 
-Individual `docs/*.md` files may describe subsystems in greater implementation detail, but they must not silently redefine product behavior.
-
-When a lower-level document conflicts with this file, the conflict must be resolved explicitly rather than being ignored.
+The site must not claim support that the compatibility matrix cannot prove.
 
 ---
 
-# PART XXIV — IMPLEMENTATION ORDER
+# 78. COMMUNITY CHANNELS
 
-## 95. Required vertical development path
+The project may maintain official:
 
-Build in dependency order.
+- Discord;
+- X/Twitter;
+- GitHub Discussions/Issues;
+- website announcements.
+
+Community moderation and bot systems are separate from OS runtime engineering and must not become kernel dependencies.
+
+---
+
+# PART XIX — DEVELOPMENT REPOSITORY MODEL
+
+# 79. EXPECTED REPOSITORY STRUCTURE
+
+Conceptual target:
 
 ```text
-0. Reproducible toolchain/build
-1. Boot entry
-2. Early CPU state
-3. Early output
-4. Boot information validation/protection
-5. Kernel layout
-6. PMM
-7. VMM
-8. Kernel heap
-9. GDT/TSS/IDT
-10. Exceptions
-11. Interrupt controller
-12. Timer abstraction
-13. Synchronization
-14. SMP groundwork
-15. Scheduler
-16. Threads/processes
-17. IPC
-18. Syscalls
-19. ELF/userspace
-20. Init/service manager
-21. Storage block layer
-22. VFS/filesystem
-23. Persistent configuration
-24. Input
-25. Display/framebuffer
-26. GUI primitives
-27. Compositor/window system
-28. Desktop shell
-29. Localization
-30. First-run language setup
-31. Settings
-32. Network stack
-33. Network manager
-34. Terminal/shell
-35. Package format/backend
-36. Package transaction engine
-37. SB Store
-38. Security hardening
-39. Diagnostics/recovery
-40. Update/rollback
-41. Driver expansion
-42. GPU acceleration
-43. Minecraft runtime layer
-44. Performance suite
-45. Hardware expansion
-46. Full release validation
+SuiraBox-OS/
+├─ boot/
+├─ kernel/
+│  ├─ arch/x86_64/
+│  ├─ mm/
+│  ├─ sched/
+│  ├─ process/
+│  ├─ syscall/
+│  ├─ ipc/
+│  ├─ drivers/
+│  ├─ fs/
+│  ├─ net/
+│  ├─ time/
+│  ├─ power/
+│  ├─ log/
+│  └─ panic/
+├─ userspace/
+│  ├─ init/
+│  ├─ services/
+│  ├─ gui/
+│  └─ apps/
+├─ docs/
+├─ tests/
+├─ site/
+├─ .github/
+├─ Makefile
+├─ linker.ld
+├─ README.md
+└─ SB_OS_DESIGN.md
 ```
 
-No later subsystem should be represented as finished merely because an earlier subsystem is missing if that later implementation depends on it for correct operation.
+This is a target organization, not permission to create empty directories without implementation need.
 
 ---
 
-# PART XXV — CURRENT DEVELOPMENT STATE
+# 80. DOCUMENTATION RELATIONSHIP
 
-## 96. Current target
+`SB_OS_DESIGN.md` is the master document.
 
-Active target: **SB Desktop, x86_64, initially validated with QEMU.**
+Individual subsystem documents are subordinate references.
 
-The project should proceed toward a generic desktop first and expand compatibility later.
-
-## 97. Current known implementation checkpoint
-
-At the latest verified development point represented by the repository history:
-
-- ISO generation is implemented and has been used by CI.
-- Multiboot2 image validation is implemented in CI.
-- Early kernel boot reaches the kernel.
-- PCI enumeration reaches completion in the smoke-test path.
-- Storage initialization was intentionally kept out of the blocking critical path during bootstrap work.
-- The next critical runtime blocker has been PMM initialization.
-
-The current PMM implementation must not be considered complete until QEMU reaches the post-PMM assertions in CI.
-
-The runtime path currently attempts, after PMM:
+Example:
 
 ```text
-PMM
- ↓
-VMM self-test
- ↓
-Kernel heap self-test
- ↓
-GDT/TSS
- ↓
-Scheduler
- ↓
-Process/Syscall
- ↓
-Userspace preparation
- ↓
-Timer
+SB_OS_DESIGN.md
+   ↓
+  docs/MEMORY.md
+  docs/FILESYSTEM.md
+  docs/SCHEDULER.md
+  docs/DRIVERS.md
+  docs/GUI_DESKTOP_PLAN.md
+  docs/SB_STORE.md
+  ...
 ```
 
-This is an implementation checkpoint, not the final architecture. The full finished desktop requires all later phases in this document.
+If an individual document conflicts with this file, either:
+
+- fix the individual document;
+- or make a deliberate master-spec change.
+
+Do not leave contradictory specifications indefinitely.
 
 ---
 
-# PART XXVI — CURRENT PMM DEBUGGING CONTRACT
+# PART XX — COMPLETE CONSTRUCTION ROADMAP
 
-## 98. PMM diagnostic procedure
+# 81. PHASE 0 — TOOLCHAIN
 
-When PMM initialization fails:
+Deliverables:
 
-1. Prove exact last emitted log line.
-2. Separate function entry from each internal stage.
-3. Verify linker addresses of stack/page tables/PMM metadata.
-4. Verify the bitmap address does not overlap code, stack, page tables or other active memory.
-5. Verify the supplied usable-memory range is legal under the active boot memory map.
-6. Verify the PMM does not reinitialize over live allocation metadata.
-7. Verify no PMM logging call depends on heap/locks.
-8. Reduce initialization to a minimal deterministic path.
-9. Run a focused QEMU test.
-10. Only then add back full memory-map integration.
+- reproducible build command;
+- compiler setup;
+- assembler setup;
+- linker setup;
+- ISO creation;
+- QEMU command;
+- CI workflow.
 
-Never hide the PMM failure by removing its test.
+Acceptance:
+
+- clean checkout builds;
+- generated ISO can be validated;
+- QEMU reaches kernel entry.
+
+# 82. PHASE 1 — EARLY BOOT
+
+Deliverables:
+
+- architecture entry;
+- stack;
+- boot protocol parsing;
+- early console;
+- linker symbols;
+- reserved memory tracking.
+
+Acceptance:
+
+- boot logs deterministic;
+- no invalid relocations;
+- boot information survives until consumed.
+
+# 83. PHASE 2 — MEMORY
+
+Deliverables:
+
+- PMM;
+- VMM;
+- heap;
+- page-fault foundation.
+
+Acceptance:
+
+- allocation/free self-tests pass;
+- mapping tests pass;
+- reserved memory is never returned.
+
+# 84. PHASE 3 — CPU/INTERRUPTS/TIME
+
+Deliverables:
+
+- GDT/TSS;
+- IDT;
+- exception handlers;
+- PIC/APIC;
+- timer;
+- synchronization.
+
+Acceptance:
+
+- timer interrupts occur;
+- exceptions produce controlled diagnostics;
+- no illegal blocking in interrupt paths.
+
+# 85. PHASE 4 — EXECUTION
+
+Deliverables:
+
+- scheduler;
+- threads;
+- processes;
+- address spaces;
+- IPC;
+- syscalls;
+- ELF loader;
+- userspace init.
+
+Acceptance:
+
+- at least one real userspace process runs safely;
+- syscall boundary validates pointers;
+- process cleanup works.
+
+# 86. PHASE 5 — STORAGE
+
+Deliverables:
+
+- block devices;
+- partitioning;
+- VFS;
+- filesystem;
+- configuration service.
+
+Acceptance:
+
+- persistent read/write works;
+- configuration survives reboot;
+- corrupted configuration follows recovery policy.
+
+# 87. PHASE 6 — DEVICE INPUT/OUTPUT
+
+Deliverables:
+
+- PCI;
+- storage drivers;
+- keyboard;
+- mouse;
+- display;
+- audio foundation;
+- network interface foundation.
+
+Acceptance:
+
+- generic PC in supported test environment can operate the required devices.
+
+# 88. PHASE 7 — GUI
+
+Deliverables:
+
+- font/text;
+- surfaces;
+- input events;
+- compositor;
+- window system;
+- toolkit;
+- desktop shell;
+- file manager.
+
+Acceptance:
+
+- desktop usable with keyboard/mouse;
+- applications can open/close;
+- errors are GUI-visible where appropriate.
+
+# 89. PHASE 8 — FIRST BOOT / LOCALIZATION
+
+Deliverables:
+
+- configuration persistence;
+- language catalogs;
+- language selector;
+- keyboard layout selection;
+- IME architecture;
+- localized Settings.
+
+Acceptance:
+
+- clean install shows graphical language selector;
+- selected language persists after reboot;
+- keyboard layout matches user's selection.
+
+# 90. PHASE 9 — NETWORK
+
+Deliverables:
+
+- sockets;
+- DHCP;
+- DNS;
+- Ethernet;
+- IPv4/IPv6;
+- network manager.
+
+Acceptance:
+
+- user can configure and diagnose network from GUI and CLI.
+
+# 91. PHASE 10 — PACKAGE ECOSYSTEM
+
+Deliverables:
+
+- package format;
+- repository metadata;
+- downloader;
+- transaction engine;
+- SB Store;
+- cache management.
+
+Acceptance:
+
+- install/remove/update from GUI and CLI produce identical state.
+
+# 92. PHASE 11 — SECURITY/RECOVERY
+
+Deliverables:
+
+- permission model;
+- package signatures;
+- update verification;
+- crash dump;
+- support report;
+- recovery environment;
+- rollback.
+
+Acceptance:
+
+- defined failure scenarios recover safely.
+
+# 93. PHASE 12 — PERFORMANCE / COMPATIBILITY
+
+Deliverables:
+
+- performance suite;
+- memory reduction;
+- boot optimization;
+- broader device support;
+- GPU work.
+
+Acceptance:
+
+- performance claims backed by measurements;
+- compatibility matrix updated with test evidence.
+
+# 94. PHASE 13 — RELEASE
+
+Deliverables:
+
+- release candidate;
+- documentation;
+- installer;
+- checksums/signing;
+- website;
+- release notes.
+
+Acceptance:
+
+- release test matrix passes.
 
 ---
 
-# PART XXVII — AI AND DEVELOPER OPERATING CONTRACT
+# PART XXI — EXACT INTERACTION BETWEEN MAJOR SUBSYSTEMS
 
-## 99. Required work loop
+# 95. BOOT → MEMORY
 
-Every implementation agent must:
+Boot parser identifies protected ranges.
+
+PMM cannot reclaim those ranges until the last dependent component declares them releasable.
+
+# 96. MEMORY → SCHEDULER
+
+Scheduler allocations are made through kernel memory interfaces.
+
+A scheduler task may not own a page without PMM/VMM bookkeeping reflecting that ownership.
+
+# 97. SCHEDULER → USERSpace
+
+The scheduler provides CPU execution; it does not know GUI semantics.
+
+# 98. USERSpace → STORAGE
+
+Applications use VFS/syscalls.
+
+They do not directly interpret raw block-device sectors.
+
+# 99. STORAGE → CONFIG
+
+Configuration data is persisted atomically through VFS/storage services.
+
+# 100. CONFIG → FIRST BOOT
+
+First-run checks configuration validity.
+
+No valid configuration → first-run UI.
+
+Valid configuration → skip first-run.
+
+# 101. DISPLAY → GUI
+
+Display service provides rendering targets.
+
+GUI never assumes a specific GPU vendor.
+
+# 102. INPUT → GUI
+
+Raw device events are normalized by input services before toolkit consumption.
+
+# 103. NETWORK → STORE
+
+SB Store uses network services.
+
+The Store does not own NIC configuration.
+
+# 104. PACKAGE SERVICE → STORE + CLI
+
+Store and CLI share the same transaction engine and package state.
+
+# 105. ERROR SERVICE → EVERY SUBSYSTEM
+
+Every layer can produce an error record appropriate to its level.
+
+A lower-level subsystem must have a lower-level diagnostic path that remains available if the normal UI is unavailable.
+
+---
+
+# PART XXII — FAILURE SCENARIOS THAT MUST BE DESIGNED EXPLICITLY
+
+# 106. PMM FAILURE
+
+Possible causes:
+
+- invalid map;
+- reserved range collision;
+- allocator corruption;
+- out of memory;
+- metadata overlap.
+
+Required response:
+
+- record the exact allocator state;
+- stop unsafe allocation;
+- avoid recursive logging;
+- enter the smallest safe diagnostic/recovery state.
+
+# 107. VMM FAILURE
+
+- distinguish mapping failure from page-fault failure;
+- capture virtual/physical addresses;
+- preserve process identity;
+- do not continue with corrupted page tables.
+
+# 108. SCHEDULER FAILURE
+
+- capture current CPU/thread;
+- capture runqueue state where safe;
+- do not recursively invoke scheduler recovery from the scheduler itself;
+- choose panic if invariants are compromised.
+
+# 109. STORAGE FAILURE
+
+Prefer:
+
+- retry;
+- offline device;
+- readonly fallback where safe;
+- notification;
+- recovery filesystem path.
+
+Do not pretend writes succeeded.
+
+# 110. NETWORK FAILURE
+
+Network loss is normally recoverable.
+
+Do not escalate network failure to BSOD/RSOD merely because an application depends on networking.
+
+# 111. DISPLAY FAILURE
+
+Try:
+
+- restart display service;
+- fallback framebuffer;
+- recovery display.
+
+Escalate to RSOD only if the display/recovery path itself cannot be trusted.
+
+# 112. PACKAGE FAILURE
+
+- abort transaction;
+- restore previous package state;
+- retain logs;
+- show package/error ID;
+- do not leave the package database claiming success when activation failed.
+
+---
+
+# PART XXIII — ENGINEERING RULES FOR THE AI/DEVELOPER
+
+# 113. REQUIRED WORK LOOP
 
 ```text
 Read SB_OS_DESIGN.md
  ↓
 Inspect repository
  ↓
-Inspect current implementation
+Inspect actual implementation
  ↓
 Inspect latest relevant CI
  ↓
-Identify exact state
+Identify earliest missing prerequisite
  ↓
-Choose smallest correct next change
- ↓
-Implement
+Implement root-cause change
  ↓
 Build
  ↓
-Runtime test
+Run runtime test
  ↓
 Inspect logs
  ↓
-Fix root cause
+Add regression coverage
  ↓
-Add/update tests
+Update design if architecture changed
  ↓
-Update this document when architecture changes
+Record actual status
  ↓
-Record actual state
+Proceed to next dependency
 ```
 
-### 99.1 AI must not
+## 113.1 Forbidden shortcuts
 
-- invent an implementation state;
-- call unverified hardware supported;
-- turn planned features into false completion claims;
-- silently remove tests;
-- replace real functionality with a visual mock and call it done;
-- change persistent formats without a migration plan;
-- add arbitrary privileged shortcuts;
-- create a second package backend for the GUI;
-- make normal errors fatal;
-- use RSOD/BSOD for ordinary failures;
-- silently delete user data;
-- introduce a dependency merely for convenience when it materially increases the base image or runtime footprint without benefit.
+Never:
 
----
+- claim an untested feature works;
+- delete a failing test to make CI pass;
+- silently change requirements;
+- introduce duplicate sources of truth;
+- make a lower layer depend on GUI code;
+- silently erase user data;
+- call a mockup a functioning OS subsystem;
+- add fake hardware support;
+- create compatibility claims from detection alone.
 
-# PART XXVIII — PERFORMANCE AND RESOURCE BUDGETING
+## 113.2 Temporary code
 
-## 100. What “lightweight” means
+Temporary diagnostics must be:
 
-Track measurable metrics.
-
-### Boot
-
-- firmware-to-bootloader time where measurable;
-- bootloader-to-kernel;
-- kernel-to-userspace;
-- userspace-to-desktop;
-- first-frame latency.
-
-### Runtime
-
-- idle RAM;
-- idle CPU;
-- background wakeups;
-- number of always-running services;
-- GUI frame latency;
-- disk footprint;
-- package cache size;
-- update download size.
-
-### Optimization rule
-
-Every optimization must identify:
-
-- baseline;
-- measurement method;
-- change;
-- new measurement;
-- correctness/security tradeoff if any.
-
-“Faster” without measurement is not an accepted engineering result.
+- identifiable;
+- bounded;
+- non-invasive;
+- removed or deliberately retained after investigation.
 
 ---
 
-# PART XXIX — COMPLETE USER-DATA SAFETY MODEL
+# PART XXIV — PROJECT STATE AND RECOVERY
 
-## 101. Deletion safety
+# 114. CURRENT REAL PROJECT STATE SNAPSHOT
 
-Before any destructive operation:
+At the time this specification was prepared, the repository already contains significant early-kernel infrastructure and individual subsystem design documents.
 
-1. identify target;
-2. classify data;
-3. determine whether data is user-owned/system-owned/cache;
-4. show consequence when user action is destructive;
-5. require confirmation for consequential UI operations;
-6. create recoverable state where appropriate;
-7. perform operation transactionally where feasible;
-8. report result.
+The known runtime bottleneck is the PMM initialization path in QEMU.
 
-### 101.1 Automatic cleanup
-
-Safe automatic cleanup requires explicit rules.
-
-Example eligible classes:
-
-- expired temporary data;
-- obsolete package cache;
-- orphaned generated build artifacts when explicitly designated;
-- stale update staging after safe recovery.
-
-Unknown data is not a cleanup target.
-
----
-
-# PART XXX — CHANGE CONTROL
-
-## 102. Architectural decision record discipline
-
-Important decisions should record:
-
-- decision;
-- alternatives considered;
-- reason;
-- compatibility impact;
-- performance impact;
-- security impact;
-- migration requirements;
-- affected documents/modules.
-
-This information may be stored in individual ADR files, but the master specification should summarize decisions that materially change the product identity.
-
----
-
-## 103. Backward compatibility
-
-Before changing:
-
-- persistent data;
-- package metadata;
-- syscall ABI;
-- public application APIs;
-- configuration schemas;
-- crash dump formats;
-
-define whether the change is:
+Current demonstrated progression is approximately:
 
 ```text
-compatible
-migratable
-breaking but planned
-unsupported experimental
+Build toolchain           verified
+ISO generation            verified
+Multiboot validation      verified
+Kernel entry              verified
+PCI scan                  verified
+Storage bootstrap         reached
+PMM initialization        current blocker
+VMM                       not yet reached in successful smoke path
+Heap                      not yet reached in successful smoke path
+Scheduler                 not yet reached in successful smoke path
+Userspace                 not yet reached in successful smoke path
+GUI                       not yet reached in successful smoke path
+```
+
+This status is not permanent and must be updated as CI results change.
+
+## 114.1 Current PMM investigation principle
+
+Do not assume that a 20-second timeout means the PMM algorithm is computationally expensive.
+
+The investigation must distinguish:
+
+- function-entry failure;
+- static-storage access fault;
+- bitmap write failure;
+- range-processing error;
+- page-map/access issue;
+- earlier memory corruption.
+
+Diagnostic output must itself avoid depending on the subsystem under investigation.
+
+---
+
+# PART XXV — FINAL PRODUCT ACCEPTANCE
+
+# 115. SB DESKTOP V1 DEFINITION OF DONE
+
+SB Desktop is considered release-ready only when a supported machine can:
+
+1. boot into SB through the supported boot path;
+2. initialize hardware safely;
+3. initialize memory safely;
+4. run userspace safely;
+5. initialize storage;
+6. initialize input;
+7. initialize display;
+8. start the desktop;
+9. display first-run GUI setup on a clean configuration;
+10. allow language selection with a graphical select control;
+11. allow keyboard-layout configuration;
+12. persist those settings;
+13. present a usable desktop;
+14. run applications as isolated userspace processes;
+15. use files safely;
+16. configure a network;
+17. use a functional terminal;
+18. install/remove/update optional software;
+19. handle package transactions safely;
+20. expose detailed settings;
+21. display normal errors without catastrophic-style screens;
+22. generate useful diagnostics for serious failures;
+23. recover supported service/application/package failures;
+24. survive reboot with valid persistent configuration;
+25. provide truthful hardware-support claims;
+26. pass defined CI/runtime tests;
+27. pass release qualification.
+
+---
+
+# PART XXVI — DECISIONS THAT MUST REMAIN EXPLICITLY UNDECIDED UNTIL ENGINEERING VALIDATION
+
+The following must not be invented prematurely:
+
+- final filesystem implementation;
+- final package container format;
+- final package repository protocol;
+- final GUI protocol/wire format;
+- final sandbox implementation;
+- final authentication provider;
+- final JVM distribution strategy;
+- final GPU userspace API choices;
+- final long-term update image layout;
+- final multi-disk/storage redundancy strategy.
+
+When one of these is decided, update this master document with:
+
+1. decision;
+2. alternatives considered;
+3. reason;
+4. compatibility impact;
+5. migration requirement;
+6. test requirement.
+
+---
+
+# PART XXVII — ARCHITECTURAL DECISION RECORD FORMAT
+
+Every major irreversible decision should eventually be recorded in this file in this form:
+
+```text
+Decision ID:
+Date:
+Decision:
+Problem:
+Options considered:
+Chosen option:
+Reason:
+Security impact:
+Performance impact:
+Compatibility impact:
+Migration requirement:
+Tests required:
+Status:
+```
+
+This prevents the project from losing the reasons behind major architecture choices.
+
+---
+
+# PART XXVIII — MASTER PRINCIPLE
+
+SB is not supposed to become a giant collection of features that happen to boot.
+
+It is supposed to become a coherent operating system in which:
+
+```text
+Minimal base
+      +
+Optional components
+      +
+Detailed but understandable control
+      +
+Real CLI
+      +
+Strong hardware abstraction
+      +
+Fast installation
+      +
+Clear diagnostics
+      +
+Recoverable failures
+      +
+Measured performance
+      +
+Broad future compatibility
+      =
+SuiraBox OS
+```
+
+The desktop should feel simple to a normal user while remaining technically deep underneath.
+
+The kernel should remain small enough to reason about while the userspace ecosystem grows.
+
+Optional functionality should be downloadable rather than permanently embedded into the minimum installation whenever that materially improves the system.
+
+The user should be able to control the machine without being forced to understand kernel internals.
+
+The developer should be able to understand the kernel without reverse-engineering undocumented behavior.
+
+The support process should be able to determine what failed without guessing.
+
+The project should remain recoverable even if an individual conversation, developer, machine or AI session disappears.
+
+**This file is the master memory of that design.**
+
+---
+
+# APPENDIX A — MASTER REQUIREMENT INDEX
+
+The following classes should eventually be tracked individually in project tooling:
+
+```text
+BOOT-*       boot and firmware
+ARCH-*       architecture/CPU
+MEM-*        PMM/VMM/heap
+INT-*        interrupts/exceptions/timers
+SMP-*        multicore
+SYNC-*       synchronization
+SCHED-*      scheduler
+PROC-*       process/thread
+IPC-*        IPC
+SYS-*        syscalls/ABI
+EXEC-*       executable loading
+STORE-*      storage/VFS/filesystem
+CFG-*        configuration
+TIME-*       time/locale
+PCI-*        PCI
+DRV-*        drivers
+USB-*        USB/hotplug
+INPUT-*      input
+DISP-*       display
+GPU-*        graphics
+AUDIO-*      audio
+POWER-*      power
+GUI-*        GUI toolkit
+DESK-*       desktop shell
+SET-*        settings
+I18N-*       localization
+IME-*        input methods
+A11Y-*       accessibility
+NET-*        networking
+TERM-*       terminal
+PKG-*        package manager
+STOREUI-*    SB Store
+SEC-*        security
+ERR-*        normal errors
+PANIC-*      BSOD/RSOD/panic
+DIAG-*       diagnostics
+REC-*        recovery
+UPD-*        updates
+DATA-*       data lifecycle/cleanup
+APP-*        applications
+MC-*         Minecraft/JVM/server tooling
+PERF-*       performance
+INST-*       installer/live environment
+CI-*         CI/build
+REL-*        releases
+WEB-*        public website/ecosystem
+DOC-*        documentation
+AI-*         AI handoff/protocol
 ```
 
 ---
 
-# PART XXXI — COMPLETE DEFINITION OF DONE
+# APPENDIX B — FINAL TEST MATRIX CATEGORIES
 
-## 104. SB Desktop v1 is not finished until
+Before a major release, evaluate at least:
 
-A normal user can:
-
-1. install SB on a supported machine;
-2. boot it without terminal commands;
-3. reach a graphical desktop;
-4. see the graphical first-run language selector when required;
-5. select 日本語, English, 中文 or Español;
-6. use a suitable keyboard layout independently of UI language;
-7. complete basic setup;
-8. reboot and retain settings;
-9. use keyboard and mouse;
-10. use the display system;
-11. manage files;
-12. configure networking;
-13. use the terminal;
-14. open Settings;
-15. install optional software from SB Store;
-16. manage the same packages through CLI;
-17. update/remove software safely;
-18. recover from supported application/service/package failures;
-19. generate useful diagnostic/support reports;
-20. understand serious failures;
-21. enter recovery mode when required;
-22. receive safe update/rollback behavior;
-23. operate without unnecessary optional services consuming base resources.
-
-And the project must have evidence for:
-
-- QEMU runtime tests;
-- clean-install tests;
-- persistence tests;
-- package transaction tests;
-- update/rollback tests;
-- supported real-hardware tests;
-- release artifact integrity.
-
----
-
-# PART XXXII — MASTER CHECKLIST FROM ZERO TO RELEASE
-
-## 105. Build foundation
-
-- [ ] Toolchain pinned/documented
-- [ ] Freestanding kernel build
-- [ ] Assembly architecture verified
-- [ ] Linker script validated
-- [ ] ISO reproducible enough for CI
-- [ ] QEMU invocation documented
-- [ ] Serial diagnostics available
-- [ ] CI artifact retention configured
-
-## 106. Boot
-
-- [ ] Bootloader entry
-- [ ] CPU state
-- [ ] stack
-- [ ] boot information validation
-- [ ] memory reservation
-- [ ] boot failure diagnostics
-
-## 107. Kernel foundation
-
-- [ ] PMM
-- [ ] VMM
-- [ ] heap
-- [ ] GDT/TSS/IDT
-- [ ] exception handling
-- [ ] interrupts
-- [ ] timer
-- [ ] synchronization
-
-## 108. Execution
-
-- [ ] SMP groundwork
-- [ ] scheduler
-- [ ] threads
-- [ ] processes
-- [ ] IPC
-- [ ] syscall ABI
-- [ ] ELF/userspace
-- [ ] init/service manager
-
-## 109. Storage
-
-- [ ] block layer
-- [ ] partition handling
-- [ ] filesystem
-- [ ] VFS
-- [ ] permissions
-- [ ] configuration persistence
-- [ ] installer
-- [ ] recovery storage tools
-
-## 110. Hardware
-
-- [ ] PCI
-- [ ] ACPI
-- [ ] keyboard
-- [ ] mouse/HID
-- [ ] USB
-- [ ] display/framebuffer
-- [ ] audio
-- [ ] network
-- [ ] power
-- [ ] GPU abstraction
-
-## 111. GUI
-
-- [ ] rendering
-- [ ] text
-- [ ] fonts
-- [ ] localization
-- [ ] event system
-- [ ] windows
-- [ ] compositor
-- [ ] toolkit
-- [ ] desktop shell
-- [ ] Settings
-- [ ] File Manager
-- [ ] Terminal
-- [ ] notifications
-- [ ] clipboard
-- [ ] accessibility
-
-## 112. Software platform
-
-- [ ] package format
-- [ ] repository metadata
-- [ ] downloader
-- [ ] verification
-- [ ] transaction engine
-- [ ] CLI package management
-- [ ] SB Store
-- [ ] GUI/CLI locking
-- [ ] update system
-- [ ] rollback
-
-## 113. Diagnostics/recovery
-
-- [ ] error IDs
-- [ ] structured logging
-- [ ] support report
-- [ ] crash data
-- [ ] BSOD
-- [ ] RSOD
-- [ ] recovery mode
-- [ ] failure escalation
-
-## 114. Minecraft ecosystem
-
-- [ ] JVM integration
-- [ ] Minecraft runtime management
-- [ ] instance management
-- [ ] server management
-- [ ] benchmark suite
-- [ ] performance policies
-
-## 115. Release
-
-- [ ] clean install
-- [ ] upgrade
-- [ ] update interruption recovery
-- [ ] supported hardware matrix
-- [ ] performance regression checks
-- [ ] security review
-- [ ] documentation
-- [ ] checksum/signature
-- [ ] release artifacts
-- [ ] official website/docs
+```text
+BOOT
+REBOOT
+SHUTDOWN
+CLEAN INSTALL
+UPGRADE
+ROLLBACK
+RECOVERY
+LANGUAGE
+KEYBOARD LAYOUT
+IME
+UNICODE
+DISPLAY
+MULTI-DISPLAY where supported
+MOUSE
+KEYBOARD
+AUDIO
+NETWORK
+DNS
+DHCP
+TERMINAL
+FILESYSTEM
+PACKAGE INSTALL
+PACKAGE REMOVE
+PACKAGE UPDATE
+PACKAGE CONCURRENCY
+ERROR UX
+CRASH REPORT
+SUPPORT REPORT
+PRIVILEGE BOUNDARY
+USER ISOLATION
+GPU FALLBACK
+GPU ACCELERATION where claimed
+POWER MANAGEMENT
+PERFORMANCE
+CACHE CLEANUP
+DATA SAFETY
+QEMU
+REAL HARDWARE
+```
 
 ---
 
-# PART XXXIII — RECOVERY IF PROJECT CONTEXT IS LOST
+# APPENDIX C — OFFICIAL EXTERNAL SPECIFICATION SOURCES TO CONSULT
 
-## 116. Complete recovery procedure
+The implementation must rely on current authoritative specifications rather than memory or informal assumptions.
 
-If this project is handed to a new person or AI with no conversation history:
+- Intel® 64 and IA-32 Architectures Software Developer Manuals for processor architecture, memory management, protection, interrupts, multiprocessing and system programming. citeturn511015search0turn511015search9
+- UEFI Forum specifications for UEFI firmware interfaces. The current published UEFI specification is version 2.11. citeturn511015search3turn511015search5
+- PCI-SIG specifications for PCI Express and related platform/device behavior. citeturn511015search4turn511015search11
+- USB-IF documentation for USB/USB Type-C/UCSI interfaces and compliance material. citeturn342371search3turn342371search4
+- NVM Express specifications for NVMe storage. The current published NVMe set includes NVMe Base 2.4 and associated command/transport specifications as of August 2026. citeturn342371search0turn342371search1
+- Khronos Vulkan specification if/when Vulkan is adopted as a userspace graphics API. citeturn342371search60
 
-1. Read this entire `SB_OS_DESIGN.md`.
-2. Read the repository README.
-3. Inspect the repository tree.
-4. Read the individual subsystem docs referenced by the tree.
-5. Run the build.
-6. Run the existing CI/QEMU path.
-7. Inspect the latest logs.
-8. Identify the highest-priority failed prerequisite.
-9. Do not skip ahead just because later source files already exist.
-10. Compare implementation to this specification.
-11. Record discrepancies.
-12. Fix the earliest blocking dependency.
-13. Re-run validation.
-14. Continue through the implementation order.
-
-The new developer/AI must assume nothing is complete until verified.
+These references are normative external inputs. SB-specific behavior must still be documented in this file rather than left implicit.
 
 ---
 
-# PART XXXIV — EXTERNAL STANDARDS AND REFERENCE PRINCIPLES
+# APPENDIX D — THE SINGLE MOST IMPORTANT RULE
 
-## 117. Standards policy
+When a future developer or AI opens this repository and asks:
 
-SB should reuse stable, published standards rather than inventing protocols unnecessarily.
+> “What is SB supposed to be?”
 
-Examples of relevant external standards include:
+the first answer must be:
 
-- Multiboot2 for boot information where used;
-- UEFI for modern firmware interfaces;
-- ACPI for system configuration/power management;
-- ELF for executable loading where used;
-- IPv4/IPv6/DNS/DHCP/TCP/UDP networking standards;
-- PCI/PCIe device conventions;
-- USB class standards;
-- established filesystem and package-signing concepts where appropriate.
+**Read `SB_OS_DESIGN.md`.**
 
-External standards are dependencies of the implementation, not substitutes for an SB architecture.
+When they ask:
 
----
+> “What is actually implemented?”
 
-# PART XXXV — IMPORTANT NON-DECISIONS
+the answer must be obtained from:
 
-## 118. Things intentionally not frozen yet
+**the code + tests + CI + runtime evidence.**
 
-The following must not be invented merely to fill space. They become fixed only after engineering review and testing:
+When they ask:
 
-- final filesystem format;
-- final package serialization format;
-- final package repository protocol;
-- final GUI theme/visual language;
-- exact window/compositor protocol;
-- final application sandbox mechanism;
-- final update slot mechanism;
-- final cryptographic key-management infrastructure;
-- final choice of bundled JVM distribution;
-- final NVIDIA/AMD/Intel driver strategy for every GPU generation;
-- final release profile split.
+> “What should I implement next?”
 
-When one of these is decided, document:
+the answer must be:
 
-1. chosen design;
-2. reason;
-3. alternatives;
-4. compatibility implications;
-5. migration path if needed;
-6. implementation status.
+**the earliest incomplete prerequisite in the dependency order defined by this document.**
 
-Never present an undecided implementation detail as a completed product requirement.
-
----
-
-# PART XXXVI — MASTER PRINCIPLE
-
-## 119. The SB standard
-
-The finished SB should embody one consistent idea:
-
-> **The base system should contain only what it genuinely needs; everything else should be easy to add, easy to configure, easy to remove safely, and easy to understand.**
-
-At the same time:
-
-> **Freedom does not mean chaos. The system must have stable interfaces, clear ownership, reliable diagnostics, strong defaults, controlled privileges and recoverable state.**
-
-And:
-
-> **Performance must come from good architecture and measurement, not from deleting correctness.**
-
-And:
-
-> **Minecraft optimization must make SB better for its primary workload without making SB cease to be a useful general desktop operating system.**
-
-And most importantly:
-
-> **This document exists so that the project does not depend on one conversation, one developer, or one AI remembering what SB was supposed to become.**
-
-The implementation may change. The specification may be refined. But any change to what SB fundamentally is must be deliberate, recorded and verified.
-
----
-
-# Appendix A — Canonical current scope
-
-**Active:** SB Desktop.
-
-**Architecture:** x86_64 first.
-
-**Primary development environment:** repository + CI + QEMU; browser/cloud development is acceptable when locally applicable.
-
-**Kernel languages:** C + x86_64 Assembly.
-
-**Primary normal UI:** GUI desktop.
-
-**Required advanced UI:** Terminal/CLI.
-
-**Initial UI languages:** Japanese, English, Chinese, Spanish.
-
-**First-run language UI:** graphical popup with select/drop-down control.
-
-**Initial compatibility target:** generic x86_64 PC / QEMU.
-
-**Long-term compatibility:** broad consumer, gaming, workstation and high-performance GPU hardware; server/data-center expansion later.
-
-**Base philosophy:** minimal core, optional components, fast verified downloads, detailed usable settings, strong diagnostics, safe cleanup, recoverability and user choice.
-
-**Current implementation blocker:** PMM initialization must be proven in CI before the memory layer can be considered verified.
-
----
-
-# Appendix B — Current state notation
-
-When updating this document or reporting progress, use exact language such as:
-
-- `planned`
-- `designed`
-- `implemented but untested`
-- `build verified`
-- `QEMU verified`
-- `real hardware verified`
-- `release ready`
-
-Avoid vague phrases such as:
-
-- "basically done";
-- "should work";
-- "supported" without test scope;
-- "finished" when only the source exists.
-
----
-
-# Appendix C — Reference sources
-
-External standards referenced in this specification should always be checked against current official publications when implementation depends on version-specific behavior.
-
-- Multiboot2 Specification: GNU GRUB documentation. citeturn441644search30
-- UEFI Specifications: UEFI Forum. Current published UEFI specification information is available from the official specifications pages. citeturn441644search0turn441644search2
-- ACPI Specifications: UEFI Forum. Current published ACPI specification information is available from the official specifications pages. citeturn441644search0turn441644search13
+That is the mechanism that keeps SB coherent as the project grows across developers, AI agents, machines, releases and years of development.
