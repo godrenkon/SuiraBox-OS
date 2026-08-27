@@ -21,8 +21,7 @@ static uint32_t pci_config_address(uint8_t bus, uint8_t device,
 
 uint32_t pci_config_read32(uint8_t bus, uint8_t device,
                            uint8_t function, uint8_t offset) {
-    if (device >= PCI_MAX_DEVICES || function >= PCI_MAX_FUNCTIONS ||
-        offset >= 0x100u) {
+    if (device >= PCI_MAX_DEVICES || function >= PCI_MAX_FUNCTIONS) {
         return 0xFFFFFFFFu;
     }
 
