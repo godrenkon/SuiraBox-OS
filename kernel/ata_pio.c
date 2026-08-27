@@ -2,7 +2,6 @@
 
 #define ATA_PRIMARY_IO 0x1F0u
 #define ATA_PRIMARY_CTRL 0x3F6u
-
 #define ATA_REG_DATA 0u
 #define ATA_REG_SECCOUNT0 2u
 #define ATA_REG_LBA0 3u
@@ -20,6 +19,7 @@
 #define ATA_STATUS_DRQ 0x08u
 #define ATA_STATUS_ERR 0x01u
 #define ATA_STATUS_DF 0x20u
+#define ATA_POLL_LIMIT 1000000u
 
 static sb_block_device_t g_ata_device;
 static uint8_t g_ata_ready;
@@ -51,11 +51,28 @@ static void outw(uint16_t port, uint16_t value) {
     __asm__ volatile ("outw %0, %1" : : "a"(value), "Nd"(port));
 }
 
-static uint8_t ata_wait_ready(void) {
-    uint8_t status;
-    do {
+static uint8_t ata_wait_not_busy(void) {
+    uint8_t status = 0;
+    for (uint32_t poll = 0; poll < ATA_POLL_LIMIT; ++poll) {
         status = inb(ATA_PRIMARY_IO + ATA_REG_STATUS);
-    } while (status & ATA_STATUS_BSY);
+        if ((status & ATA_STATUS_BSY) == 0u) {
+            return status;
+        }
+    }
+    return status | ATA_STATUS_BSY;
+}
+
+static uint8_t ata_wait_drq(void) {
+    uint8_t status = 0;
+    for (uint32_t poll = 0; poll < ATA_POLL_LIMIT; ++poll) {
+        status = inb(ATA_PRIMARY_IO + ATA_REG_STATUS);
+        if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
+            return status;
+        }
+        if (status & ATA_STATUS_DRQ) {
+            return status;
+        }
+    }
     return status;
 }
 
@@ -84,15 +101,16 @@ static sb_block_status_t ata_read(sb_block_device_t *device,
         outb(ATA_PRIMARY_IO + ATA_REG_LBA2, (uint8_t)((current >> 16) & 0xFFu));
         outb(ATA_PRIMARY_IO + ATA_REG_COMMAND, ATA_CMD_READ_SECTORS);
 
-        uint8_t status = ata_wait_ready();
+        uint8_t status = ata_wait_not_busy();
+        if (status & (ATA_STATUS_BSY | ATA_STATUS_ERR | ATA_STATUS_DF)) {
+            return SB_BLOCK_NOT_READY;
+        }
+        status = ata_wait_drq();
         if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
             return SB_BLOCK_NOT_READY;
         }
-        while (!(status & ATA_STATUS_DRQ)) {
-            status = inb(ATA_PRIMARY_IO + ATA_REG_STATUS);
-            if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
-                return SB_BLOCK_NOT_READY;
-            }
+        if ((status & ATA_STATUS_DRQ) == 0u) {
+            return SB_BLOCK_NOT_READY;
         }
 
         uint16_t *words = (uint16_t *)(dst + (sector * device->sector_size));
@@ -122,23 +140,24 @@ static sb_block_status_t ata_write(sb_block_device_t *device,
         outb(ATA_PRIMARY_IO + ATA_REG_LBA2, (uint8_t)((current >> 16) & 0xFFu));
         outb(ATA_PRIMARY_IO + ATA_REG_COMMAND, ATA_CMD_WRITE_SECTORS);
 
-        uint8_t status = ata_wait_ready();
+        uint8_t status = ata_wait_not_busy();
+        if (status & (ATA_STATUS_BSY | ATA_STATUS_ERR | ATA_STATUS_DF)) {
+            return SB_BLOCK_NOT_READY;
+        }
+        status = ata_wait_drq();
         if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
             return SB_BLOCK_NOT_READY;
         }
-        while (!(status & ATA_STATUS_DRQ)) {
-            status = inb(ATA_PRIMARY_IO + ATA_REG_STATUS);
-            if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
-                return SB_BLOCK_NOT_READY;
-            }
+        if ((status & ATA_STATUS_DRQ) == 0u) {
+            return SB_BLOCK_NOT_READY;
         }
 
         const uint16_t *words = (const uint16_t *)(src + (sector * device->sector_size));
         for (uint32_t i = 0; i < device->sector_size / 2u; ++i) {
             outw(ATA_PRIMARY_IO + ATA_REG_DATA, words[i]);
         }
-        status = ata_wait_ready();
-        if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
+        status = ata_wait_not_busy();
+        if (status & (ATA_STATUS_BSY | ATA_STATUS_ERR | ATA_STATUS_DF)) {
             return SB_BLOCK_NOT_READY;
         }
     }
@@ -162,24 +181,24 @@ sb_block_status_t sb_ata_pio_init(void) {
         return SB_BLOCK_NOT_READY;
     }
 
-    status = ata_wait_ready();
-    if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
+    status = ata_wait_not_busy();
+    if (status & (ATA_STATUS_BSY | ATA_STATUS_ERR | ATA_STATUS_DF)) {
         return SB_BLOCK_NOT_READY;
     }
 
-    while (!(status & ATA_STATUS_DRQ)) {
-        status = inb(ATA_PRIMARY_IO + ATA_REG_STATUS);
-        if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
-            return SB_BLOCK_NOT_READY;
-        }
+    status = ata_wait_drq();
+    if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) {
+        return SB_BLOCK_NOT_READY;
+    }
+    if ((status & ATA_STATUS_DRQ) == 0u) {
+        return SB_BLOCK_NOT_READY;
     }
 
-    uint16_t identify[256];
+    static uint16_t identify[256];
     for (uint32_t i = 0; i < 256u; ++i) {
         identify[i] = inw(ATA_PRIMARY_IO + ATA_REG_DATA);
     }
 
-    /* LBA28 sector count from IDENTIFY words 60-61. */
     g_ata_sectors = ((uint64_t)identify[61] << 16) | identify[60];
     if (g_ata_sectors == 0u) {
         return SB_BLOCK_NOT_READY;
