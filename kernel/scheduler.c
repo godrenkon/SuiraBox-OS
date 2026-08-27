@@ -10,52 +10,51 @@ static uint32_t task_count;
 static uint32_t current_index;
 static uint64_t scheduler_tick_count;
 
-void scheduler_init(void) {
-    for (uint32_t i = 0; i < SB_SCHED_MAX_TASKS; ++i) {
-        tasks[i] = (sb_task_t){0};
-        tasks[i].state = SB_TASK_UNUSED;
+static void sched_debug_char(char c) {
+    while (1) {
+        uint8_t status;
+        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+        if (status & 0x20u) break;
     }
+    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
+}
 
+static void sched_debug(const char *s) {
+    while (*s) sched_debug_char(*s++);
+}
+
+void scheduler_init(void) {
+    sched_debug("[SCHED] init begin\r\n");
+    /* Static storage is ELF-zeroed. Do not clear the full task table here. */
     tasks[0].id = SB_BOOTSTRAP_TASK_ID;
-    tasks[0].runtime_ticks = 0;
+    tasks[0].runtime_ticks = 0u;
     tasks[0].priority = SB_BOOTSTRAP_PRIORITY;
     tasks[0].state = SB_TASK_RUNNING;
+    sched_debug("[SCHED] bootstrap task ready\r\n");
 
     task_count = 1u;
     current_index = 0u;
-    scheduler_tick_count = 0;
+    scheduler_tick_count = 0u;
+    sched_debug("[SCHED] scalar state ready\r\n");
 }
 
 void scheduler_tick(void) {
     ++scheduler_tick_count;
-
-    if (task_count == 0u) {
-        return;
-    }
-
-    if (tasks[current_index].state == SB_TASK_RUNNING) {
-        ++tasks[current_index].runtime_ticks;
-    }
+    if (task_count == 0u) return;
+    if (tasks[current_index].state == SB_TASK_RUNNING) ++tasks[current_index].runtime_ticks;
 }
 
-uint64_t scheduler_ticks(void) {
-    return scheduler_tick_count;
-}
+uint64_t scheduler_ticks(void) { return scheduler_tick_count; }
 
 sb_task_t *scheduler_current(void) {
-    if (task_count == 0u) {
-        return 0;
-    }
+    if (task_count == 0u) return 0;
     return &tasks[current_index];
 }
 
 int scheduler_add_kernel_task(uint64_t id, uint32_t priority) {
-    if (task_count >= SB_SCHED_MAX_TASKS || id == 0u) {
-        return -1;
-    }
-
+    if (task_count >= SB_SCHED_MAX_TASKS || id == 0u) return -1;
     tasks[task_count].id = id;
-    tasks[task_count].runtime_ticks = 0;
+    tasks[task_count].runtime_ticks = 0u;
     tasks[task_count].priority = priority;
     tasks[task_count].state = SB_TASK_READY;
     ++task_count;
@@ -63,24 +62,17 @@ int scheduler_add_kernel_task(uint64_t id, uint32_t priority) {
 }
 
 sb_task_t *scheduler_pick_next(void) {
-    if (task_count == 0u) {
-        return 0;
-    }
-
+    if (task_count == 0u) return 0;
     for (uint32_t step = 1u; step <= task_count; ++step) {
         const uint32_t candidate = (current_index + step) % task_count;
-        if (tasks[candidate].state == SB_TASK_READY ||
-            tasks[candidate].state == SB_TASK_RUNNING) {
+        if (tasks[candidate].state == SB_TASK_READY || tasks[candidate].state == SB_TASK_RUNNING) {
             tasks[current_index].state = SB_TASK_READY;
             current_index = candidate;
             tasks[current_index].state = SB_TASK_RUNNING;
             return &tasks[current_index];
         }
     }
-
     return &tasks[current_index];
 }
 
-uint32_t scheduler_task_count(void) {
-    return task_count;
-}
+uint32_t scheduler_task_count(void) { return task_count; }
