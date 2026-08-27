@@ -3,6 +3,7 @@
 #include "block.h"
 #include "vfs.h"
 #include "ata_pio.h"
+#include "mm/pmm.h"
 
 static void serial_init(void) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
@@ -28,6 +29,25 @@ static void serial_write_char(char c) {
 static void serial_write(const char *s) {
     while (*s) {
         serial_write_char(*s++);
+    }
+}
+
+static void serial_write_u64(uint64_t value) {
+    static const char digits[] = "0123456789";
+    char buffer[21];
+    uint32_t pos = 0;
+
+    if (value == 0u) {
+        serial_write_char('0');
+        return;
+    }
+
+    while (value != 0u && pos < sizeof(buffer)) {
+        buffer[pos++] = digits[value % 10u];
+        value /= 10u;
+    }
+    while (pos > 0u) {
+        serial_write_char(buffer[--pos]);
     }
 }
 
@@ -83,8 +103,6 @@ static int real_disk_selftest(void) {
 }
 
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
-    (void)multiboot_info;
-
     serial_init();
     serial_write("================================\r\n");
     serial_write("        SUIRABOX OS              \r\n");
@@ -117,6 +135,23 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
             "Storage: real disk read FAILED\r\n");
     } else {
         serial_write("Storage: no supported ATA primary-master disk\r\n");
+    }
+
+    serial_write("Memory: initializing PMM from Multiboot2 map...\r\n");
+    pmm_init_from_multiboot(multiboot_info);
+    serial_write("Memory: PMM total pages = ");
+    serial_write_u64(pmm_total_pages());
+    serial_write("\r\nMemory: PMM free pages = ");
+    serial_write_u64(pmm_free_pages());
+    serial_write("\r\n");
+
+    void *page = pmm_alloc_page();
+    if (page != 0) {
+        serial_write("Memory: page allocation OK\r\n");
+        pmm_free_page(page);
+        serial_write("Memory: page free OK\r\n");
+    } else {
+        serial_write("Memory: page allocation FAILED\r\n");
     }
 
     serial_write("Phase 1 bootstrap complete.\r\n");
