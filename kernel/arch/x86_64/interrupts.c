@@ -20,25 +20,29 @@ static struct idt_ptr idt_descriptor;
 
 extern void sb_exception_irq_stub(void);
 
-static void idt_set_gate(uint8_t vector, uintptr_t handler) {
+static void idt_set_gate(uint8_t vector, uintptr_t handler, uint8_t dpl) {
     struct idt_entry *entry = &idt[vector];
     entry->offset_low = (uint16_t)(handler & 0xFFFFu);
     entry->selector = 0x18u;
     entry->ist = 0;
-    entry->type_attr = 0x8Eu;
+    entry->type_attr = (uint8_t)(0x8Eu | ((dpl & 3u) << 5));
     entry->offset_mid = (uint16_t)((handler >> 16) & 0xFFFFu);
     entry->offset_high = (uint32_t)(handler >> 32);
     entry->zero = 0;
 }
 
 void interrupts_set_handler(uint8_t vector, uintptr_t handler) {
-    idt_set_gate(vector, handler);
+    idt_set_gate(vector, handler, 0);
+}
+
+void interrupts_set_user_handler(uint8_t vector, uintptr_t handler) {
+    idt_set_gate(vector, handler, 3);
 }
 
 void interrupts_init(void) {
     for (uint32_t i = 0; i < 256u; ++i) {
         idt[i] = (struct idt_entry){0};
-        idt_set_gate((uint8_t)i, (uintptr_t)sb_exception_irq_stub);
+        idt_set_gate((uint8_t)i, (uintptr_t)sb_exception_irq_stub, 0);
     }
 
     idt_descriptor.limit = (uint16_t)(sizeof(idt) - 1u);
