@@ -4,6 +4,7 @@
 #include "vfs.h"
 #include "ata_pio.h"
 #include "mm/pmm.h"
+#include "mm/vmm.h"
 
 static void serial_init(void) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
@@ -102,6 +103,49 @@ static int real_disk_selftest(void) {
     return 1;
 }
 
+static int vmm_selftest(void) {
+    const uint64_t test_virtual = 0x0000004000000000ull;
+    void *page = pmm_alloc_page();
+    uint64_t translated;
+
+    if (page == 0) {
+        return 0;
+    }
+
+    if (vmm_map_page(test_virtual, (uint64_t)(uintptr_t)page,
+                     SB_VMM_WRITABLE) != 0) {
+        pmm_free_page(page);
+        return 0;
+    }
+
+    translated = vmm_translate(test_virtual);
+    if (translated != (uint64_t)(uintptr_t)page) {
+        uint64_t discarded;
+        (void)vmm_unmap_page(test_virtual, &discarded);
+        pmm_free_page(page);
+        return 0;
+    }
+
+    *(volatile uint64_t *)(uintptr_t)test_virtual = 0x5342554D4D544553ull;
+    if (*(volatile uint64_t *)(uintptr_t)test_virtual != 0x5342554D4D544553ull) {
+        uint64_t discarded;
+        (void)vmm_unmap_page(test_virtual, &discarded);
+        pmm_free_page(page);
+        return 0;
+    }
+
+    {
+        uint64_t physical = 0;
+        if (vmm_unmap_page(test_virtual, &physical) != 0 || physical != (uint64_t)(uintptr_t)page) {
+            pmm_free_page(page);
+            return 0;
+        }
+    }
+
+    pmm_free_page(page);
+    return 1;
+}
+
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_init();
     serial_write("================================\r\n");
@@ -152,6 +196,14 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
         serial_write("Memory: page free OK\r\n");
     } else {
         serial_write("Memory: page allocation FAILED\r\n");
+    }
+
+    serial_write("Memory: initializing VMM...\r\n");
+    vmm_init();
+    if (vmm_selftest()) {
+        serial_write("Memory: VMM map/translate/unmap OK\r\n");
+    } else {
+        serial_write("Memory: VMM map/translate/unmap FAILED\r\n");
     }
 
     serial_write("Phase 1 bootstrap complete.\r\n");
