@@ -27,6 +27,8 @@ IRQ_OBJ := $(BUILD)/irq.o
 TIMER_OBJ := $(BUILD)/timer.o
 SCHED_OBJ := $(BUILD)/scheduler.o
 CONTEXT_OBJ := $(BUILD)/context.o
+PROCESS_OBJ := $(BUILD)/process.o
+SYSCALL_OBJ := $(BUILD)/syscall.o
 
 .PHONY: all clean iso check
 
@@ -89,8 +91,14 @@ $(SCHED_OBJ): kernel/scheduler.c kernel/scheduler.h kernel/timer.h | $(BUILD)
 $(CONTEXT_OBJ): kernel/arch/x86_64/context.S kernel/arch/x86_64/context.h | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(KERNEL): $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ)
+$(PROCESS_OBJ): kernel/process.c kernel/process.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
+$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/timer.h kernel/scheduler.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
+$(KERNEL): $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(SYSCALL_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(SYSCALL_OBJ)
 
 iso: $(KERNEL) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub
