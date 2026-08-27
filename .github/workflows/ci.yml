@@ -1,0 +1,50 @@
+name: SuiraBox CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc \
+            binutils \
+            grub-pc-bin \
+            grub-common \
+            xorriso \
+            qemu-system-x86
+
+      - name: Build ISO
+        run: make
+
+      - name: Validate Multiboot2 image
+        run: make check
+
+      - name: Boot smoke test
+        run: |
+          set -o pipefail
+          timeout 8s qemu-system-x86_64 \
+            -cdrom build/suirabox.iso \
+            -serial stdio \
+            -display none \
+            -no-reboot \
+            -no-shutdown \
+            2>&1 | tee qemu.log || test ${PIPESTATUS[0]} -eq 124
+          grep -F "Kernel initialized." qemu.log
+          grep -F "Phase 1 bootstrap complete." qemu.log
+
+      - name: Upload kernel artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: suirabox-kernel
+          path: |
+            build/suirabox.iso
+            build/suirabox.elf
