@@ -18,6 +18,8 @@ extern int scheduler_add_kernel_task(uint64_t id, uint32_t priority);
 extern sb_task_t *scheduler_pick_next(void);
 extern uint32_t scheduler_task_count(void);
 extern void sb_syscall_int80_stub(void);
+extern char __kernel_start;
+extern char __kernel_end;
 
 static void serial_init(void) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
@@ -26,7 +28,7 @@ static void serial_init(void) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x03), "Nd"((uint16_t)0x3FB));
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0xC7), "Nd"((uint16_t)0x3FA));
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x0B), "Nd"((uint16_t)0x3FC));
+    __asm__ volatile ("outb %0, %1" : : "a"((uint16_t)0x0B), "Nd"((uint16_t)0x3FC));
 }
 
 static void serial_write_char(char c) {
@@ -111,9 +113,10 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     pci_enumerate();
 
     serial_write("Storage: probing drivers later; bootstrap continues.\r\n");
-    serial_write("Memory: initializing PMM from Multiboot2 map...\r\n");
-    pmm_init_from_multiboot(multiboot_info);
-    serial_write("Memory: PMM free pages = "); serial_write_u64(pmm_free_pages()); serial_write("\r\n");
+    serial_write("Memory: initializing bootstrap PMM...\r\n");
+    pmm_init(0x01000000ull, 0x04000000ull);
+    pmm_reserve_range((uint64_t)(uintptr_t)&__kernel_start, (uint64_t)(uintptr_t)&__kernel_end);
+    serial_write("Memory: PMM bootstrap free pages = "); serial_write_u64(pmm_free_pages()); serial_write("\r\n");
     void *page = pmm_alloc_page();
     serial_write(page ? "Memory: page allocation OK\r\n" : "Memory: page allocation FAILED\r\n");
     if (page) { pmm_free_page(page); serial_write("Memory: page free OK\r\n"); }
@@ -132,6 +135,10 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     syscall_init();
     interrupts_set_user_handler(0x80u, (uintptr_t)sb_syscall_int80_stub);
     serial_write("Syscall: int 0x80 user gate ready\r\n");
+
+    serial_write("Memory: importing Multiboot memory map after core init...\r\n");
+    pmm_init_from_multiboot(multiboot_info);
+    serial_write("Memory: full PMM map import complete\r\n");
 
     serial_write("Userspace: loading user-hello module...\r\n");
     serial_write(userspace_prepare_selftest(multiboot_info) ?
