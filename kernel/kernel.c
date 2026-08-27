@@ -1,9 +1,7 @@
 #include <stdint.h>
+#include "pci.h"
 
 static void serial_init(void) {
-    volatile uint8_t *com1 = (volatile uint8_t *)0x3F8;
-    (void)com1;
-
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x80), "Nd"((uint16_t)0x3FB));
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x03), "Nd"((uint16_t)0x3F8));
@@ -17,7 +15,7 @@ static void serial_write_char(char c) {
     while (1) {
         uint8_t status;
         __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
-        if (status & 0x20) {
+        if (status & 0x20u) {
             break;
         }
     }
@@ -47,6 +45,10 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     }
 
     serial_write("Kernel initialized.\r\n");
+
+    /* First hardware-discovery milestone: enumerate PCI functions. */
+    pci_enumerate();
+
     serial_write("Phase 1 bootstrap complete.\r\n");
 
     for (;;) {
