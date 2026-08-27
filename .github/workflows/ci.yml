@@ -28,11 +28,17 @@ jobs:
       - name: Validate Multiboot2 image
         run: make check
 
+      - name: Create QEMU test disk
+        run: |
+          dd if=/dev/zero of=testdisk.img bs=1M count=16 status=none
+          printf 'SUIRABOX-DISK-TEST' | dd of=testdisk.img bs=1 seek=0 conv=notrunc status=none
+
       - name: Boot smoke test
         run: |
           set -o pipefail
           timeout 8s qemu-system-x86_64 \
             -cdrom build/suirabox.iso \
+            -drive file=testdisk.img,format=raw,if=ide,index=0,media=disk \
             -serial stdio \
             -display none \
             -no-reboot \
@@ -41,6 +47,8 @@ jobs:
           grep -F "Kernel initialized." qemu.log
           grep -F "PCI: scanning bus/device/function space..." qemu.log
           grep -F "PCI: scan complete." qemu.log
+          grep -F "Storage: ATA device registered" qemu.log
+          grep -F "Storage: real disk read OK" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
 
       - name: Upload kernel artifacts
