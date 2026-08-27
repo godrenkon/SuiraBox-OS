@@ -25,8 +25,12 @@ all: iso
 $(BUILD):
 	mkdir -p $(BUILD)
 
+# The bootstrap executes in 32-bit mode first, then switches to x86_64
+# long mode. Assemble the whole source as an ELF64 object so 64-bit
+# relocations used by the long-mode section are representable; .code32
+# keeps the bootstrap instructions 32-bit.
 $(BOOT_OBJ): boot/boot.S | $(BUILD)
-	$(AS) --32 $< -o $@
+	$(AS) --64 $< -o $@
 
 $(KERNEL_OBJ): kernel/kernel.c kernel/pci.h kernel/vfs.h kernel/block.h kernel/ata_pio.h kernel/fs/fat32.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
