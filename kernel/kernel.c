@@ -9,6 +9,7 @@
 #include "timer.h"
 #include "scheduler.h"
 #include "process.h"
+#include "process_exec.h"
 #include "syscall.h"
 #include "arch/x86_64/interrupts.h"
 #include "arch/x86_64/gdt.h"
@@ -107,6 +108,22 @@ static int process_syscall_selftest(void) {
     return process_get(100u) == process;
 }
 
+static int userspace_prepare_selftest(uint64_t multiboot_info) {
+    sb_process_t *process;
+    sb_process_image_t image;
+    process = process_create(200u);
+    if (process == 0) return 0;
+    if (process_prepare_boot_module(process, multiboot_info, "user-hello", &image) != 0) {
+        process_destroy(process);
+        return 0;
+    }
+    if (image.entry_point == 0u || image.user_stack_top != SB_USER_STACK_TOP) {
+        process_destroy(process);
+        return 0;
+    }
+    return 1;
+}
+
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_init();
     serial_write("================================\r\n        SUIRABOX OS              \r\n================================\r\n");
@@ -142,8 +159,14 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     syscall_init();
     interrupts_set_user_handler(0x80u, (uintptr_t)sb_syscall_int80_stub);
     serial_write("Syscall: int 0x80 user gate ready\r\n");
+
+    serial_write("Userspace: loading user-hello module...\r\n");
+    serial_write(userspace_prepare_selftest(multiboot_info) ?
+        "Userspace: ELF + address-space + stack preparation OK\r\n" :
+        "Userspace: ELF + address-space + stack preparation FAILED\r\n");
+
     serial_write("Timer: initializing PIT at 100 Hz...\r\n"); timer_init(100u); serial_write("Timer: IRQ0 enabled\r\n");
-    serial_write("Userspace: ring3 GDT/TSS + address-space foundation ready\r\n");
+    serial_write("Userspace: ring3 execution path prepared\r\n");
     serial_write("Phase 1 bootstrap complete.\r\n");
     for (;;) __asm__ volatile ("hlt");
 }
