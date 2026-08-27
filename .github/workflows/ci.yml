@@ -30,12 +30,13 @@ jobs:
 
       - name: Inspect kernel layout
         run: |
-          nm -nS build/suirabox.elf | grep -E 'stack_(bottom|top)|pml4|pdpt|pd$|bitmap|page_count|free_count' || true
+          nm -nS build/suirabox.elf | grep -E 'stack_(bottom|top)|pml4|pdpt|pd$|bitmap|page_count|free_count|next_page' || true
 
       - name: Boot smoke test
         run: |
           set -o pipefail
           timeout 20s qemu-system-x86_64 \
+            -m 256M \
             -cdrom build/suirabox.iso \
             -serial stdio \
             -display none \
