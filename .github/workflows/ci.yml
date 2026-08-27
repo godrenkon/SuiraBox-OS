@@ -28,6 +28,10 @@ jobs:
       - name: Validate Multiboot2 image
         run: make check
 
+      - name: Inspect kernel layout
+        run: |
+          nm -nS build/suirabox.elf | grep -E 'stack_(bottom|top)|pml4|pdpt|pd$|bitmap|page_count|free_count' || true
+
       - name: Boot smoke test
         run: |
           set -o pipefail
