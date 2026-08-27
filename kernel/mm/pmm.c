@@ -1,12 +1,20 @@
 #include "pmm.h"
 
-/* Bootstrap PMM tracks the first 64 MiB of physical memory in 4 KiB pages. */
 #define PMM_MAX_PAGES (64u * 1024u * 1024u / SB_PAGE_SIZE)
 #define PMM_BITMAP_WORDS ((PMM_MAX_PAGES + 63u) / 64u)
 
 static uint64_t bitmap[PMM_BITMAP_WORDS];
 static uint64_t page_count;
 static uint64_t free_count;
+
+static void pmm_debug_char(char c) {
+    while (1) {
+        uint8_t status;
+        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+        if (status & 0x20u) break;
+    }
+    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
+}
 
 static uint64_t address_to_index(uint64_t address) {
     return address / SB_PAGE_SIZE;
@@ -103,24 +111,32 @@ static void update_range(uint64_t start, uint64_t end, int make_free) {
 }
 
 void pmm_reset(void) {
+    pmm_debug_char('R');
     for (uint32_t i = 0; i < PMM_BITMAP_WORDS; ++i) {
         bitmap[i] = UINT64_MAX;
     }
     page_count = PMM_MAX_PAGES;
     free_count = 0;
+    pmm_debug_char('r');
 }
 
 void pmm_add_usable_range(uint64_t usable_start, uint64_t usable_end) {
+    pmm_debug_char('A');
     update_range(usable_start, usable_end, 1);
+    pmm_debug_char('a');
 }
 
 void pmm_reserve_range(uint64_t start, uint64_t end) {
+    pmm_debug_char('V');
     update_range(start, end, 0);
+    pmm_debug_char('v');
 }
 
 void pmm_init(uint64_t usable_start, uint64_t usable_end) {
+    pmm_debug_char('I');
     pmm_reset();
     pmm_add_usable_range(usable_start, usable_end);
+    pmm_debug_char('i');
 }
 
 void *pmm_alloc_page(void) {
@@ -153,10 +169,5 @@ void pmm_free_page(void *page) {
     ++free_count;
 }
 
-uint64_t pmm_total_pages(void) {
-    return page_count;
-}
-
-uint64_t pmm_free_pages(void) {
-    return free_count;
-}
+uint64_t pmm_total_pages(void) { return page_count; }
+uint64_t pmm_free_pages(void) { return free_count; }
