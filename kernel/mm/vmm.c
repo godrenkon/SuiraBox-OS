@@ -71,6 +71,12 @@ static uint64_t *ensure_table(uint64_t *table, uint16_t index, uint64_t flags) {
     debug_write("[VMM] allocate table\r\n");
     void *page = pmm_alloc_page();
     if (page == 0) return 0;
+
+    /* PMM pages are not guaranteed to be zeroed. Page-table pages must start
+     * empty or stale PTEs can be interpreted as live mappings. */
+    uint64_t *new_table = (uint64_t *)page;
+    for (uint32_t i = 0u; i < PT_ENTRIES; ++i) new_table[i] = 0u;
+
     debug_write("[VMM] table page=");
     debug_write_hex((uint64_t)(uintptr_t)page);
     debug_write("\r\n");
@@ -79,7 +85,7 @@ static uint64_t *ensure_table(uint64_t *table, uint16_t index, uint64_t flags) {
                    SB_VMM_PRESENT |
                    (flags & (SB_VMM_WRITABLE | SB_VMM_USER));
     debug_write("[VMM] entry write complete\r\n");
-    return (uint64_t *)page;
+    return new_table;
 }
 
 static uint16_t pml4_index(uint64_t address) { return (uint16_t)((address >> 39) & 0x1FFu); }
