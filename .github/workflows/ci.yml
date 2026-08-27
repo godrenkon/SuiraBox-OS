@@ -39,6 +39,8 @@ jobs:
             -no-shutdown \
             2>&1 | tee qemu.log || test ${PIPESTATUS[0]} -eq 124
           grep -F "Kernel initialized." qemu.log
+          grep -F "PCI: scanning bus/device/function space..." qemu.log
+          grep -F "PCI: scan complete." qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
 
       - name: Upload kernel artifacts
@@ -48,3 +50,4 @@ jobs:
           path: |
             build/suirabox.iso
             build/suirabox.elf
+            qemu.log
