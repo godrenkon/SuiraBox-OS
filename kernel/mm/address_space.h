@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-/* Keep user mappings in PML4 slot 0, above the low 4 GiB identity map. */
-#define SB_USER_BASE       0x0000004000000000ull
-#define SB_USER_STACK_TOP  0x0000004000100000ull
+/* User mappings occupy PML4 slot 1, separate from kernel PML4[0]. */
+#define SB_USER_BASE       0x0000008000000000ull
+#define SB_USER_STACK_TOP  0x0000008000100000ull
 #define SB_USER_PML4_INDEX ((SB_USER_BASE >> 39) & 0x1FFull)
 
 /* User virtual addresses are intentionally kept below the canonical upper half. */
