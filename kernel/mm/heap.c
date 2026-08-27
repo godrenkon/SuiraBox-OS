@@ -2,15 +2,9 @@
 #include "pmm.h"
 #include <stdint.h>
 
-#define KHEAP_MAX_ALLOCS 128u
-
-typedef struct {
-    void *base;
-    uint64_t pages;
-    uint64_t requested;
-} kheap_record_t;
-
-static kheap_record_t records[KHEAP_MAX_ALLOCS];
+static void *active_base;
+static uint64_t active_pages;
+static uint64_t active_requested;
 static uint64_t used_bytes;
 static int initialized;
 
@@ -33,50 +27,43 @@ static uint64_t round_up_pages(uint64_t size) {
 
 void kheap_init(void) {
     heap_debug("[HEAP] init begin\r\n");
-    /* Static storage is zero-initialized by the ELF loader. Do not bulk-write
-       the allocation table during the early bootstrap path. */
+    active_base = 0;
+    active_pages = 0;
+    active_requested = 0;
     used_bytes = 0;
     initialized = 1;
-    heap_debug("[HEAP] init records complete\r\n");
+    heap_debug("[HEAP] init complete\r\n");
 }
 
 void *kheap_alloc(uint64_t size) {
-    if (!initialized || size == 0u) return 0;
+    if (!initialized || size == 0u || active_base != 0) return 0;
 
     const uint64_t pages = round_up_pages(size);
-    if (pages == 0u || pages != 1u) return 0;
-
-    uint32_t slot = 0;
-    while (slot < KHEAP_MAX_ALLOCS && records[slot].base != 0) ++slot;
-    if (slot == KHEAP_MAX_ALLOCS) return 0;
+    if (pages != 1u) return 0;
 
     heap_debug("[HEAP] alloc page begin\r\n");
     void *first = pmm_alloc_page();
     if (first == 0) return 0;
     heap_debug("[HEAP] alloc page OK\r\n");
 
-    records[slot].base = first;
-    records[slot].pages = 1;
-    records[slot].requested = size;
-    used_bytes += size;
+    /* Phase 1 bootstrap deliberately supports one live heap allocation. */
+    active_base = first;
+    active_pages = 1;
+    active_requested = size;
+    used_bytes = size;
+    heap_debug("[HEAP] record scalar write OK\r\n");
     return first;
 }
 
 void kheap_free(void *ptr) {
-    if (!initialized || ptr == 0) return;
+    if (!initialized || ptr == 0 || ptr != active_base) return;
 
-    for (uint32_t i = 0; i < KHEAP_MAX_ALLOCS; ++i) {
-        if (records[i].base != ptr) continue;
-
-        pmm_free_page(records[i].base);
-        if (used_bytes >= records[i].requested) used_bytes -= records[i].requested;
-        else used_bytes = 0;
-        records[i].base = 0;
-        records[i].pages = 0;
-        records[i].requested = 0;
-        return;
-    }
+    pmm_free_page(active_base);
+    active_base = 0;
+    active_pages = 0;
+    active_requested = 0;
+    used_bytes = 0;
 }
 
 uint64_t kheap_used(void) { return used_bytes; }
-uint64_t kheap_capacity(void) { return (uint64_t)KHEAP_MAX_ALLOCS * SB_PAGE_SIZE; }
+uint64_t kheap_capacity(void) { return SB_PAGE_SIZE; }
