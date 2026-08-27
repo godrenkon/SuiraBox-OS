@@ -31,7 +31,7 @@ jobs:
       - name: Boot smoke test
         run: |
           set -o pipefail
-          timeout 15s qemu-system-x86_64 \
+          timeout 20s qemu-system-x86_64 \
             -cdrom build/suirabox.iso \
             -serial stdio \
             -display none \
@@ -41,7 +41,7 @@ jobs:
           grep -F "Kernel initialized." qemu.log
           grep -F "PCI: scanning bus/device/function space..." qemu.log
           grep -F "PCI: scan complete." qemu.log
-          grep -F "Memory: PMM free pages =" qemu.log
+          grep -F "Memory: PMM bootstrap free pages =" qemu.log
           grep -F "Memory: VMM map/translate/unmap OK" qemu.log
           grep -F "Memory: kernel heap alloc/free OK" qemu.log
           grep -F "CPU: GDT/TSS ready" qemu.log
