@@ -1,8 +1,8 @@
 #include "pmm.h"
 
 #define PMM_MAX_PAGES (64u * 1024u * 1024u / SB_PAGE_SIZE)
-#define PMM_FIRST_PAGE (16u * 1024u * 1024u / SB_PAGE_SIZE)
-#define PMM_LAST_PAGE  (64u * 1024u * 1024u / SB_PAGE_SIZE)
+#define PMM_FIRST_PAGE (96u * 1024u * 1024u / SB_PAGE_SIZE)
+#define PMM_LAST_PAGE  (120u * 1024u * 1024u / SB_PAGE_SIZE)
 
 static uint64_t page_count;
 static uint64_t free_count;
