@@ -136,10 +136,6 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     interrupts_set_user_handler(0x80u, (uintptr_t)sb_syscall_int80_stub);
     serial_write("Syscall: int 0x80 user gate ready\r\n");
 
-    serial_write("Memory: importing Multiboot memory map after core init...\r\n");
-    pmm_init_from_multiboot(multiboot_info);
-    serial_write("Memory: full PMM map import complete\r\n");
-
     serial_write("Userspace: loading user-hello module...\r\n");
     serial_write(userspace_prepare_selftest(multiboot_info) ?
         "Userspace: ELF + address-space + stack preparation OK\r\n" :
