@@ -27,20 +27,41 @@ Processes / Runtime / JVM
 
 ## Initial PMM
 
-The first implementation is deliberately small and testable. It manages 4 KiB physical pages using a bitmap and exposes allocation/free counters.
+The first implementation manages 4 KiB physical pages using a bitmap and exposes allocation/free counters.
+
+For the bootstrap, the allocator tracks the first 64 MiB of physical memory. Pages start reserved; ranges reported as available by the Multiboot2 memory map are released, and the linked kernel image range is reserved again afterward.
 
 This is a bootstrap allocator, not the final performance design.
 
+## Initial VMM
+
+The x86_64 VMM uses the standard four-level page-table hierarchy:
+
+```text
+PML4 -> PDPT -> PD -> PT -> 4 KiB page
+```
+
+The early boot code establishes a 0–1 GiB identity map with 2 MiB pages. The VMM reuses that address space and allocates lower-level tables on demand for new 4 KiB mappings.
+
+Initial operations:
+
+- map a 4 KiB virtual page
+- translate a virtual address
+- unmap a 4 KiB page
+- invalidate a changed mapping with `invlpg`
+
+The bootstrap VMM does not split an existing 2 MiB large-page leaf. New test mappings therefore use an address outside the current large-page identity map.
+
 ## Planned evolution
 
-1. Parse the Multiboot2 memory map.
-2. Reserve kernel/image/modules/bootloader-owned regions.
-3. Initialize the PMM from genuinely usable memory ranges.
-4. Add x86_64 page-table management.
-5. Create isolated process address spaces.
-6. Add kernel heap allocation.
-7. Add cache-aware and large-page strategies where benchmarks justify them.
-8. Add resource accounting for Minecraft and server profiles.
+1. Improve Multiboot2 memory-map validation and reservation coverage.
+2. Add isolated process address spaces.
+3. Add guard pages and stronger page-permission enforcement.
+4. Add kernel heap allocation.
+5. Add copy-on-write and shared-memory facilities.
+6. Evaluate buddy allocation, per-CPU caches, huge pages, and NUMA-aware policies.
+7. Add DMA/IOMMU-aware memory isolation.
+8. Add resource accounting and workload-aware policies for Minecraft and JVM workloads.
 
 ## Safety rules
 
@@ -51,4 +72,4 @@ This is a bootstrap allocator, not the final performance design.
 
 ## Performance direction
 
-The target is predictable latency and efficient memory use rather than simply maximizing allocated bandwidth. JVM and Minecraft optimizations should be measured against representative workloads.
+The target is predictable latency and efficient memory use rather than simply maximizing bandwidth. JVM and Minecraft optimizations should be measured against representative workloads and compared with reproducible baselines.
