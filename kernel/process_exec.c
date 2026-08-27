@@ -3,6 +3,7 @@
 #include "mm/address_space.h"
 #include "mm/multiboot_modules.h"
 #include "mm/pmm.h"
+#include "mm/vmm.h"
 
 #define SB_USER_STACK_PAGES 4u
 
@@ -33,18 +34,20 @@ int process_prepare_elf(sb_process_t *process,
                         sb_process_image_t *image_info) {
     if (process == 0 || image == 0 || image_size == 0u || image_info == 0) return -1;
 
-    if (address_space_create(&process->address_space) != 0) return -1;
+    /* process_create() normally creates the address space already. */
+    if (process->address_space.pml4_physical == 0u &&
+        address_space_create(&process->address_space) != 0) {
+        return -1;
+    }
 
     uint64_t entry = 0;
     if (elf64_load_image(&process->address_space, image, image_size, &entry) != 0) {
-        address_space_destroy(&process->address_space);
         return -1;
     }
 
     const uint64_t stack_top = SB_USER_STACK_TOP;
     const uint64_t stack_bottom = stack_top - SB_USER_STACK_PAGES * SB_PAGE_SIZE;
     if (map_user_stack(&process->address_space, stack_bottom, stack_top) != 0) {
-        address_space_destroy(&process->address_space);
         return -1;
     }
 
@@ -64,6 +67,7 @@ int process_prepare_boot_module(sb_process_t *process,
                                 sb_process_image_t *image_info) {
     sb_multiboot_module_t module;
     if (multiboot_find_module(multiboot_info, module_name, &module) != 0) return -1;
+    if (module.end <= module.start) return -1;
     return process_prepare_elf(process,
                                 (const void *)(uintptr_t)module.start,
                                 module.end - module.start,
