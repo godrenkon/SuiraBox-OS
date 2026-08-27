@@ -49,3 +49,5 @@ sb_syscall_int80_stub:
     iretq
 
 .size sb_syscall_int80_stub, .-sb_syscall_int80_stub
+
+.section .note.GNU-stack,"",@progbits
