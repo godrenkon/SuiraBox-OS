@@ -5,6 +5,7 @@
 #include "ata_pio.h"
 #include "mm/pmm.h"
 #include "mm/vmm.h"
+#include "mm/heap.h"
 
 static void serial_init(void) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
@@ -146,6 +147,31 @@ static int vmm_selftest(void) {
     return 1;
 }
 
+static int heap_selftest(void) {
+    uint8_t *memory;
+    uint64_t before = pmm_free_pages();
+
+    kheap_init();
+    memory = (uint8_t *)kheap_alloc(128u);
+    if (memory == 0) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; i < 128u; ++i) {
+        memory[i] = (uint8_t)(i ^ 0xA5u);
+    }
+
+    for (uint32_t i = 0; i < 128u; ++i) {
+        if (memory[i] != (uint8_t)(i ^ 0xA5u)) {
+            kheap_free(memory);
+            return 0;
+        }
+    }
+
+    kheap_free(memory);
+    return pmm_free_pages() == before;
+}
+
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_init();
     serial_write("================================\r\n");
@@ -164,11 +190,9 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     pci_enumerate();
 
     serial_write("Storage: running block/VFS self-test...\r\n");
-    if (storage_selftest()) {
-        serial_write("Storage: block/VFS self-test OK\r\n");
-    } else {
-        serial_write("Storage: block/VFS self-test FAILED\r\n");
-    }
+    serial_write(storage_selftest() ?
+        "Storage: block/VFS self-test OK\r\n" :
+        "Storage: block/VFS self-test FAILED\r\n");
 
     serial_write("Storage: probing ATA primary master...\r\n");
     if (sb_ata_pio_init() == SB_BLOCK_OK) {
@@ -200,11 +224,14 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
 
     serial_write("Memory: initializing VMM...\r\n");
     vmm_init();
-    if (vmm_selftest()) {
-        serial_write("Memory: VMM map/translate/unmap OK\r\n");
-    } else {
-        serial_write("Memory: VMM map/translate/unmap FAILED\r\n");
-    }
+    serial_write(vmm_selftest() ?
+        "Memory: VMM map/translate/unmap OK\r\n" :
+        "Memory: VMM map/translate/unmap FAILED\r\n");
+
+    serial_write("Memory: initializing kernel heap...\r\n");
+    serial_write(heap_selftest() ?
+        "Memory: kernel heap alloc/free OK\r\n" :
+        "Memory: kernel heap alloc/free FAILED\r\n");
 
     serial_write("Phase 1 bootstrap complete.\r\n");
 
