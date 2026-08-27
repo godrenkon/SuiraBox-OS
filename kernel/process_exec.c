@@ -1,0 +1,71 @@
+#include "process_exec.h"
+#include "elf_loader.h"
+#include "mm/address_space.h"
+#include "mm/multiboot_modules.h"
+#include "mm/pmm.h"
+
+#define SB_USER_STACK_PAGES 4u
+
+static int map_user_stack(sb_address_space_t *space,
+                          uint64_t bottom,
+                          uint64_t top) {
+    if (space == 0 || top <= bottom || ((top - bottom) % SB_PAGE_SIZE) != 0u) return -1;
+
+    for (uint64_t va = bottom; va < top; va += SB_PAGE_SIZE) {
+        void *page = pmm_alloc_page();
+        if (page == 0) return -1;
+        for (uint32_t i = 0; i < SB_PAGE_SIZE; ++i) {
+            ((uint8_t *)page)[i] = 0;
+        }
+        if (address_space_map_user(space, va,
+                                   (uint64_t)(uintptr_t)page,
+                                   SB_VMM_WRITABLE | SB_VMM_NX) != 0) {
+            pmm_free_page(page);
+            return -1;
+        }
+    }
+    return 0;
+}
+
+int process_prepare_elf(sb_process_t *process,
+                        const void *image,
+                        uint64_t image_size,
+                        sb_process_image_t *image_info) {
+    if (process == 0 || image == 0 || image_size == 0u || image_info == 0) return -1;
+
+    if (address_space_create(&process->address_space) != 0) return -1;
+
+    uint64_t entry = 0;
+    if (elf64_load_image(&process->address_space, image, image_size, &entry) != 0) {
+        address_space_destroy(&process->address_space);
+        return -1;
+    }
+
+    const uint64_t stack_top = SB_USER_STACK_TOP;
+    const uint64_t stack_bottom = stack_top - SB_USER_STACK_PAGES * SB_PAGE_SIZE;
+    if (map_user_stack(&process->address_space, stack_bottom, stack_top) != 0) {
+        address_space_destroy(&process->address_space);
+        return -1;
+    }
+
+    process->state = SB_PROCESS_CREATED;
+    process->entry_point = entry;
+    process->user_stack_top = stack_top;
+
+    image_info->entry_point = entry;
+    image_info->user_stack_top = stack_top;
+    image_info->user_stack_bottom = stack_bottom;
+    return 0;
+}
+
+int process_prepare_boot_module(sb_process_t *process,
+                                uint64_t multiboot_info,
+                                const char *module_name,
+                                sb_process_image_t *image_info) {
+    sb_multiboot_module_t module;
+    if (multiboot_find_module(multiboot_info, module_name, &module) != 0) return -1;
+    return process_prepare_elf(process,
+                                (const void *)(uintptr_t)module.start,
+                                module.end - module.start,
+                                image_info);
+}
