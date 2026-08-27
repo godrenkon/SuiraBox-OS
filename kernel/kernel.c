@@ -52,15 +52,44 @@ static void serial_write_u64(uint64_t value) {
 
 static int vmm_selftest(void) {
     const uint64_t test_virtual = 0x0000004000000000ull;
-    void *page = pmm_alloc_page(); uint64_t translated;
+    void *page;
+    uint64_t translated;
+    int result;
+
+    serial_write("Memory: VMM test allocate begin\r\n");
+    page = pmm_alloc_page();
+    serial_write(page ? "Memory: VMM test allocate OK\r\n" : "Memory: VMM test allocate FAILED\r\n");
     if (page == 0) return 0;
-    if (vmm_map_page(test_virtual, (uint64_t)(uintptr_t)page, SB_VMM_WRITABLE) != 0) { pmm_free_page(page); return 0; }
+
+    serial_write("Memory: VMM test map begin\r\n");
+    result = vmm_map_page(test_virtual, (uint64_t)(uintptr_t)page, SB_VMM_WRITABLE);
+    serial_write(result == 0 ? "Memory: VMM test map OK\r\n" : "Memory: VMM test map FAILED\r\n");
+    if (result != 0) { pmm_free_page(page); return 0; }
+
+    serial_write("Memory: VMM test translate begin\r\n");
     translated = vmm_translate(test_virtual);
-    if ((translated & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != ((uint64_t)(uintptr_t)page & ~(uint64_t)(SB_PAGE_SIZE - 1u))) { uint64_t discarded; (void)vmm_unmap_page(test_virtual, &discarded); pmm_free_page(page); return 0; }
+    serial_write("Memory: VMM test translate returned\r\n");
+    if ((translated & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != ((uint64_t)(uintptr_t)page & ~(uint64_t)(SB_PAGE_SIZE - 1u))) {
+        serial_write("Memory: VMM test translate FAILED\r\n");
+        { uint64_t discarded; (void)vmm_unmap_page(test_virtual, &discarded); }
+        pmm_free_page(page); return 0;
+    }
+
+    serial_write("Memory: VMM test store begin\r\n");
     *(volatile uint64_t *)(uintptr_t)test_virtual = 0x5342554D4D544553ull;
-    if (*(volatile uint64_t *)(uintptr_t)test_virtual != 0x5342554D4D544553ull) { uint64_t discarded; (void)vmm_unmap_page(test_virtual, &discarded); pmm_free_page(page); return 0; }
-    { uint64_t physical = 0; if (vmm_unmap_page(test_virtual, &physical) != 0 || (physical & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != ((uint64_t)(uintptr_t)page & ~(uint64_t)(SB_PAGE_SIZE - 1u))) { pmm_free_page(page); return 0; } }
-    pmm_free_page(page); return 1;
+    serial_write("Memory: VMM test store returned\r\n");
+    if (*(volatile uint64_t *)(uintptr_t)test_virtual != 0x5342554D4D544553ull) {
+        serial_write("Memory: VMM test store FAILED\r\n");
+        { uint64_t discarded; (void)vmm_unmap_page(test_virtual, &discarded); }
+        pmm_free_page(page); return 0;
+    }
+
+    serial_write("Memory: VMM test unmap begin\r\n");
+    { uint64_t physical = 0; result = vmm_unmap_page(test_virtual, &physical);
+      serial_write(result == 0 ? "Memory: VMM test unmap OK\r\n" : "Memory: VMM test unmap FAILED\r\n");
+      if (result != 0 || (physical & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != ((uint64_t)(uintptr_t)page & ~(uint64_t)(SB_PAGE_SIZE - 1u))) { pmm_free_page(page); return 0; } }
+    pmm_free_page(page);
+    return 1;
 }
 
 static int heap_selftest(void) {
