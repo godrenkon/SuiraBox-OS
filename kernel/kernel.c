@@ -2,7 +2,6 @@
 #include "pci.h"
 #include "block.h"
 #include "vfs.h"
-#include "ata_pio.h"
 #include "mm/pmm.h"
 #include "mm/vmm.h"
 #include "mm/heap.h"
@@ -47,15 +46,6 @@ static void serial_write_u64(uint64_t value) {
     if (value == 0u) { serial_write_char('0'); return; }
     while (value != 0u && pos < sizeof(buffer)) { buffer[pos++] = digits[value % 10u]; value /= 10u; }
     while (pos > 0u) serial_write_char(buffer[--pos]);
-}
-
-static int real_disk_selftest(void) {
-    sb_block_device_t *device = sb_ata_pio_device();
-    static uint8_t buffer[SB_BLOCK_SECTOR_SIZE];
-    static const char marker[] = "SUIRABOX-DISK-TEST";
-    if (device == 0 || device->read(device, 0, 1, buffer) != SB_BLOCK_OK) return 0;
-    for (uint32_t i = 0; marker[i] != '\0'; ++i) if (buffer[i] != (uint8_t)marker[i]) return 0;
-    return 1;
 }
 
 static int vmm_selftest(void) {
@@ -120,14 +110,7 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Kernel initialized.\r\n");
     pci_enumerate();
 
-    serial_write("Storage: ATA init start...\r\n");
-    if (sb_ata_pio_init() == SB_BLOCK_OK) {
-        serial_write("Storage: ATA device registered\r\nStorage: real disk sector test...\r\n");
-        serial_write(real_disk_selftest() ? "Storage: real disk read OK\r\n" : "Storage: real disk read FAILED\r\n");
-    } else {
-        serial_write("Storage: no supported ATA primary-master disk\r\n");
-    }
-
+    serial_write("Storage: probing drivers later; bootstrap continues.\r\n");
     serial_write("Memory: initializing PMM from Multiboot2 map...\r\n");
     pmm_init_from_multiboot(multiboot_info);
     serial_write("Memory: PMM free pages = "); serial_write_u64(pmm_free_pages()); serial_write("\r\n");
