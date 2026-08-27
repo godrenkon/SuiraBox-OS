@@ -3,13 +3,10 @@
 #define PMM_MAX_PAGES (64u * 1024u * 1024u / SB_PAGE_SIZE)
 #define PMM_BITMAP_WORDS ((PMM_MAX_PAGES + 63u) / 64u)
 
-static uint64_t bitmap[PMM_BITMAP_WORDS];
-static uint64_t page_count;
-static uint64_t free_count;
-
-static void pmm_debug_char(char c) {
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
-}
+/* Keep bootstrap allocator state in the loadable RW data segment. */
+static uint64_t bitmap[PMM_BITMAP_WORDS] = { 0 };
+static uint64_t page_count = 0;
+static uint64_t free_count = 0;
 
 static uint64_t address_to_index(uint64_t address) { return address / SB_PAGE_SIZE; }
 static int page_index_valid(uint64_t index) { return index < PMM_MAX_PAGES; }
@@ -82,32 +79,22 @@ static void update_range(uint64_t start, uint64_t end, int make_free) {
 }
 
 void pmm_reset(void) {
-    pmm_debug_char('R');
-    /* Keep bootstrap initialization intentionally explicit: 256 x 64-bit stores. */
     for (uint32_t i = 0u; i < PMM_BITMAP_WORDS; ++i) bitmap[i] = UINT64_MAX;
-    pmm_debug_char('r');
     page_count = PMM_MAX_PAGES;
     free_count = 0u;
-    pmm_debug_char('S');
 }
 
 void pmm_add_usable_range(uint64_t usable_start, uint64_t usable_end) {
-    pmm_debug_char('A');
     update_range(usable_start, usable_end, 1);
-    pmm_debug_char('a');
 }
 
 void pmm_reserve_range(uint64_t start, uint64_t end) {
-    pmm_debug_char('V');
     update_range(start, end, 0);
-    pmm_debug_char('v');
 }
 
 void pmm_init(uint64_t usable_start, uint64_t usable_end) {
-    pmm_debug_char('I');
     pmm_reset();
     pmm_add_usable_range(usable_start, usable_end);
-    pmm_debug_char('i');
 }
 
 void *pmm_alloc_page(void) {
