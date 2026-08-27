@@ -8,33 +8,14 @@ static uint64_t page_count;
 static uint64_t free_count;
 
 static void pmm_debug_char(char c) {
-    while (1) {
-        uint8_t status;
-        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
-        if (status & 0x20u) break;
-    }
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
 }
 
-static uint64_t address_to_index(uint64_t address) {
-    return address / SB_PAGE_SIZE;
-}
-
-static int page_index_valid(uint64_t index) {
-    return index < PMM_MAX_PAGES;
-}
-
-static void mark_used(uint64_t index) {
-    bitmap[index / 64u] |= (1ull << (index % 64u));
-}
-
-static void mark_free(uint64_t index) {
-    bitmap[index / 64u] &= ~(1ull << (index % 64u));
-}
-
-static int is_free(uint64_t index) {
-    return (bitmap[index / 64u] & (1ull << (index % 64u))) == 0u;
-}
+static uint64_t address_to_index(uint64_t address) { return address / SB_PAGE_SIZE; }
+static int page_index_valid(uint64_t index) { return index < PMM_MAX_PAGES; }
+static void mark_used(uint64_t index) { bitmap[index / 64u] |= (1ull << (index % 64u)); }
+static void mark_free(uint64_t index) { bitmap[index / 64u] &= ~(1ull << (index % 64u)); }
+static int is_free(uint64_t index) { return (bitmap[index / 64u] & (1ull << (index % 64u))) == 0u; }
 
 static uint64_t low_bits_mask(uint32_t count) {
     if (count == 0u) return 0u;
@@ -44,19 +25,13 @@ static uint64_t low_bits_mask(uint32_t count) {
 
 static uint32_t count_bits64(uint64_t value) {
     uint32_t count = 0u;
-    while (value != 0u) {
-        value &= value - 1u;
-        ++count;
-    }
+    while (value != 0u) { value &= value - 1u; ++count; }
     return count;
 }
 
 static uint32_t first_set_bit64(uint64_t value) {
     uint32_t bit = 0u;
-    while ((value & 1u) == 0u) {
-        value >>= 1;
-        ++bit;
-    }
+    while ((value & 1u) == 0u) { value >>= 1; ++bit; }
     return bit;
 }
 
@@ -64,9 +39,8 @@ static void recount_free_pages(void) {
     uint64_t count = 0u;
     for (uint32_t word = 0u; word < PMM_BITMAP_WORDS; ++word) {
         uint64_t available = ~bitmap[word];
-        if (word == PMM_BITMAP_WORDS - 1u && (PMM_MAX_PAGES & 63u) != 0u) {
+        if (word == PMM_BITMAP_WORDS - 1u && (PMM_MAX_PAGES & 63u) != 0u)
             available &= low_bits_mask(PMM_MAX_PAGES & 63u);
-        }
         count += (uint64_t)count_bits64(available);
     }
     free_count = count;
@@ -99,25 +73,22 @@ static void update_range(uint64_t start, uint64_t end, int make_free) {
     if (make_free) bitmap[first_word] &= ~((uint64_t)UINT64_MAX << first_bit);
     else bitmap[first_word] |= ((uint64_t)UINT64_MAX << first_bit);
 
-    for (uint32_t word = first_word + 1u; word < last_word; ++word) {
+    for (uint32_t word = first_word + 1u; word < last_word; ++word)
         bitmap[word] = make_free ? 0u : UINT64_MAX;
-    }
 
-    const uint64_t end_mask = low_bits_mask(last_bit);
-    if (make_free) bitmap[last_word] &= ~end_mask;
-    else bitmap[last_word] |= end_mask;
-
+    if (make_free) bitmap[last_word] &= ~low_bits_mask(last_bit);
+    else bitmap[last_word] |= low_bits_mask(last_bit);
     recount_free_pages();
 }
 
 void pmm_reset(void) {
     pmm_debug_char('R');
-    for (uint32_t i = 0; i < PMM_BITMAP_WORDS; ++i) {
-        bitmap[i] = UINT64_MAX;
-    }
-    page_count = PMM_MAX_PAGES;
-    free_count = 0;
+    /* Keep bootstrap initialization intentionally explicit: 256 x 64-bit stores. */
+    for (uint32_t i = 0u; i < PMM_BITMAP_WORDS; ++i) bitmap[i] = UINT64_MAX;
     pmm_debug_char('r');
+    page_count = PMM_MAX_PAGES;
+    free_count = 0u;
+    pmm_debug_char('S');
 }
 
 void pmm_add_usable_range(uint64_t usable_start, uint64_t usable_end) {
@@ -142,17 +113,13 @@ void pmm_init(uint64_t usable_start, uint64_t usable_end) {
 void *pmm_alloc_page(void) {
     for (uint32_t word = 0u; word < PMM_BITMAP_WORDS; ++word) {
         uint64_t available = ~bitmap[word];
-        if (word == PMM_BITMAP_WORDS - 1u && (PMM_MAX_PAGES & 63u) != 0u) {
+        if (word == PMM_BITMAP_WORDS - 1u && (PMM_MAX_PAGES & 63u) != 0u)
             available &= low_bits_mask(PMM_MAX_PAGES & 63u);
-        }
         if (available == 0u) continue;
-
         const uint32_t bit = first_set_bit64(available);
         const uint64_t index = (uint64_t)word * 64u + bit;
         if (!page_index_valid(index) || !is_free(index)) continue;
-
-        mark_used(index);
-        --free_count;
+        mark_used(index); --free_count;
         return (void *)(uintptr_t)(index * SB_PAGE_SIZE);
     }
     return 0;
@@ -161,12 +128,9 @@ void *pmm_alloc_page(void) {
 void pmm_free_page(void *page) {
     const uint64_t address = (uint64_t)(uintptr_t)page;
     if ((address & (SB_PAGE_SIZE - 1u)) != 0u) return;
-
     const uint64_t index = address_to_index(address);
     if (!page_index_valid(index) || is_free(index)) return;
-
-    mark_free(index);
-    ++free_count;
+    mark_free(index); ++free_count;
 }
 
 uint64_t pmm_total_pages(void) { return page_count; }
