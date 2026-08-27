@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="SuiraBox OS — 軽く、速く、自由に。Minecraft-firstのオープンソースOS。">
+  <meta name="theme-color" content="#0b1020">
+  <title>SuiraBox OS — 軽く、速く、自由に。</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="nav shell">
+    <a class="brand" href="#top" aria-label="SuiraBox OS home">SB</a>
+    <nav>
+      <a href="#vision">思想</a>
+      <a href="#features">特徴</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="https://github.com/godrenkon/SuiraBox-OS">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero shell">
+      <div class="eyebrow">OPEN SOURCE • MINECRAFT-FIRST • USER CHOICE</div>
+      <h1>軽く、速く、自由に。<br><span>SuiraBox OS</span></h1>
+      <p class="lead">必要なものだけを選び、必要なときに追加する。<br>PCとして普通に使えて、Minecraftには本気で強いOSを目指す。</p>
+      <div class="actions">
+        <a class="button primary" href="https://github.com/godrenkon/SuiraBox-OS">GitHubで見る</a>
+        <a class="button ghost" href="#roadmap">開発状況を見る</a>
+      </div>
+      <div class="status-card"><span class="dot"></span><strong>Early Development</strong><span> x86_64 + QEMU</span></div>
+    </section>
+
+    <section id="vision" class="section shell">
+      <div class="section-head"><span>01</span><h2>思想</h2></div>
+      <div class="grid two">
+        <article class="card"><h3>Minimal Core</h3><p>OS本体は必要最小限。大型アプリ、ランタイム、専門機能は必要なときだけ追加する。</p></article>
+        <article class="card"><h3>User Choice</h3><p>GUIだけでも使える。でもCLIも第一級。細かく設定したい人にも、簡単に使いたい人にも対応する。</p></article>
+        <article class="card"><h3>No Silent Waste</h3><p>不要な常駐サービスや再生成可能なゴミをできるだけ残さない。削除や更新は所有関係を追跡して安全に行う。</p></article>
+        <article class="card"><h3>Open by Design</h3><p>パッケージ、設定、プロファイル、仕様を公開し、コミュニティが参加できるOSを作る。</p></article>
+      </div>
+    </section>
+
+    <section id="features" class="section shell">
+      <div class="section-head"><span>02</span><h2>特徴</h2></div>
+      <div class="feature-list">
+        <div><b>SB Store</b><span>アプリや機能を探して、ボタンひとつで追加。</span></div>
+        <div><b>CLI</b><span>Storeでできることをコマンドでも操作可能。</span></div>
+        <div><b>Fast Delivery</b><span>小さなメタデータ、差分更新、再開可能な転送、キャッシュを前提に設計。</span></div>
+        <div><b>Fine Settings</b><span>初心者向け表示からExpert向け詳細設定まで一つの設定センターで扱う。</span></div>
+        <div><b>Minecraft-first</b><span>JVM、I/O、ネットワーク、GPU、管理ツールをMinecraft中心に最適化。</span></div>
+        <div><b>Profiles</b><span>Desktop / Gaming / Minecraft / Server / DataCenterへ後から派生。</span></div>
+      </div>
+    </section>
+
+    <section id="roadmap" class="section shell">
+      <div class="section-head"><span>03</span><h2>Roadmap</h2></div>
+      <div class="timeline">
+        <div class="done"><b>Kernel Foundation</b><span>Boot • PMM • VMM • Heap • IDT • Timer • Scheduler • Process</span></div>
+        <div class="active"><b>Bootable System</b><span>ISO生成、Multiboot2検証、QEMU smoke testの安定化</span></div>
+        <div><b>Userspace</b><span>Ring 3 • ELF execution • Syscall • Shell</span></div>
+        <div><b>Desktop</b><span>Graphics • Input • Network • File Manager • Settings</span></div>
+        <div><b>SB Runtime</b><span>JVM integration • App model • Package manager</span></div>
+        <div><b>Minecraft Layer</b><span>Launcher • Mod management • Server management • Performance tooling</span></div>
+      </div>
+    </section>
+
+    <section class="cta shell">
+      <div><span class="eyebrow">BUILD WITH US</span><h2>SuiraBoxを、みんなで育てる。</h2><p>コード、テスト、ドキュメント、アイデア。公開されたOSだからこそ、改善を積み重ねられる。</p></div>
+      <a class="button primary" href="https://github.com/godrenkon/SuiraBox-OS">Repository</a>
+    </section>
+  </main>
+
+  <footer class="footer shell"><span>© SuiraBox Project</span><span>Open Source • Built in public</span></footer>
+</body>
+</html>
