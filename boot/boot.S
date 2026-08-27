@@ -17,8 +17,10 @@ header_end:
 .type _start, @function
 _start:
     cli
-    movl %eax, %edi              /* Multiboot2 magic, saved for kmain. */
-    movl %ebx, %esi              /* Multiboot2 information pointer. */
+
+    /* Save Multiboot2 arguments before using the working registers. */
+    movl %eax, multiboot_magic_saved
+    movl %ebx, multiboot_info_saved
 
     movl $stack_top, %esp
 
@@ -81,8 +83,9 @@ long_mode_entry:
     movw %ax, %fs
     movw %ax, %gs
 
-    movq %rsi, %rsi              /* Keep multiboot pointer. */
-    movq %rdi, %rdi              /* Keep magic. */
+    /* Restore Multiboot2 arguments into the x86_64 C ABI registers. */
+    movl multiboot_magic_saved, %edi
+    movl multiboot_info_saved, %esi
 
     call kmain
 
@@ -99,9 +102,17 @@ gdt64:
     .quad 0x00209A0000000000   /* 64-bit code */
 gdt64_descriptor:
     .word gdt64_descriptor - gdt64 - 1
-    .quad gdt64
+    /* Bootstrap sections are linked below 4 GiB. */
+    .long gdt64
+    .long 0
 
 .section .bss
+.align 4
+multiboot_magic_saved:
+    .long 0
+multiboot_info_saved:
+    .long 0
+
 .align 16
 stack_bottom:
     .skip 16384
