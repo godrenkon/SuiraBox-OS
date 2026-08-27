@@ -86,14 +86,18 @@ int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs) {
         total_sectors = (uint32_t)mount->total_sectors;
     }
 
+    fat_size = fs->fat_size_sectors;
     if (fs->bytes_per_sector == 0 || fs->sectors_per_cluster == 0 ||
-        fs->reserved_sectors == 0 || fs->fat_size_sectors == 0 ||
+        fs->reserved_sectors == 0 || fat_size == 0 ||
         fs->root_cluster < 2 || total_sectors == 0) {
         return 0;
     }
 
     root_dir_sectors = 0;
-    first_data = fs->reserved_sectors + (2u * fs->fat_size_sectors) + root_dir_sectors;
+    if (fat_size > (UINT32_MAX - fs->reserved_sectors - root_dir_sectors) / 2u) {
+        return 0;
+    }
+    first_data = fs->reserved_sectors + (2u * fat_size) + root_dir_sectors;
     if ((uint64_t)first_data >= mount->total_sectors) {
         return 0;
     }
@@ -160,7 +164,7 @@ int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
     uint32_t remaining;
 
     if (fs == 0 || entry == 0 || buffer == 0 ||
-        entry->attributes & SB_FAT32_ATTR_DIRECTORY ||
+        (entry->attributes & SB_FAT32_ATTR_DIRECTORY) != 0u ||
         offset > entry->file_size || length > entry->file_size - offset ||
         entry->first_cluster < 2u || fs->bytes_per_sector != SB_FAT32_SECTOR_BYTES) {
         return 0;
