@@ -6,11 +6,17 @@
 .extern sb_syscall_dispatch_entry
 
 /*
- * Temporary compatibility-style syscall entry through IDT vector 0x80.
- * The full SYSCALL/SYSRET fast path will be added after user-mode setup.
- * Arguments follow the kernel-side convention:
+ * Temporary kernel-side syscall entry through IDT vector 0x80.
+ * User mode is intentionally not enabled yet; ring-3 entry and SYSCALL/SYSRET
+ * will be added together with process address spaces.
+ *
+ * Input ABI:
  *   rax = syscall number
- *   rdi, rsi, rdx, r10, r8 = arguments
+ *   rdi = arg0
+ *   rsi = arg1
+ *   rdx = arg2
+ *   r10 = arg3
+ *   r8  = arg4
  */
 sb_syscall_int80_stub:
     pushq %r11
@@ -26,9 +32,9 @@ sb_syscall_int80_stub:
     movq 0(%rsp), %rdi
     movq 8(%rsp), %rsi
     movq 16(%rsp), %rdx
-    movq 24(%rsp), %rcx
-    movq 32(%rsp), %r8
-    movq 40(%rsp), %r9
+    movq 56(%rsp), %rcx
+    movq 40(%rsp), %r8
+    movq 24(%rsp), %r9
     call sb_syscall_dispatch_entry
 
     addq $72, %rsp
