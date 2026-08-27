@@ -2,17 +2,6 @@
 
 extern char stack_top;
 
-struct __attribute__((packed)) gdt_tss_descriptor {
-    uint16_t limit_low;
-    uint16_t base_low;
-    uint8_t base_mid;
-    uint8_t type;
-    uint8_t limit_high_flags;
-    uint8_t base_high;
-    uint32_t base_upper;
-    uint32_t reserved;
-};
-
 struct __attribute__((packed)) tss64 {
     uint32_t reserved0;
     uint64_t rsp0;
@@ -36,7 +25,9 @@ struct __attribute__((packed)) gdt_ptr {
     uint64_t base;
 };
 
-static uint64_t gdt[8] __attribute__((aligned(8)));
+/* Volatile prevents GCC from combining the tiny descriptor writes into a
+ * bulk BSS store during the fragile early bootstrap phase. */
+static volatile uint64_t gdt[8] __attribute__((aligned(8)));
 static struct tss64 tss __attribute__((aligned(16)));
 static struct gdt_ptr descriptor;
 
@@ -59,9 +50,23 @@ static uint64_t segment_descriptor(uint8_t access, uint8_t flags) {
            0x0000FFFFFFFFFFFFull;
 }
 
+static void gdt_write_tss_descriptor(uint64_t base, uint32_t limit) {
+    const uint64_t low =
+        ((uint64_t)(limit & 0xFFFFu)) |
+        ((uint64_t)(base & 0xFFFFu) << 16) |
+        ((uint64_t)((base >> 16) & 0xFFu) << 32) |
+        ((uint64_t)0x89u << 40) |
+        ((uint64_t)((limit >> 16) & 0x0Fu) << 48) |
+        ((uint64_t)((base >> 24) & 0xFFu) << 56);
+    const uint64_t high = (base >> 32) & 0xFFFFFFFFu;
+    gdt[6] = low;
+    gdt[7] = high;
+}
+
 void gdt_init(void) {
     gdt_debug("[GDT] begin\r\n");
-    gdt[0] = 0;
+
+    gdt[0] = 0u;
     gdt[1] = segment_descriptor(0x9Au, 0xCu);
     gdt[2] = segment_descriptor(0x92u, 0xCu);
     gdt[3] = segment_descriptor(0x9Au, 0xAu);
@@ -71,16 +76,7 @@ void gdt_init(void) {
 
     const uint64_t base = (uint64_t)(uintptr_t)&tss;
     const uint32_t limit = (uint32_t)(sizeof(tss) - 1u);
-    struct gdt_tss_descriptor *tss_desc =
-        (struct gdt_tss_descriptor *)&gdt[6];
-    tss_desc->limit_low = (uint16_t)(limit & 0xFFFFu);
-    tss_desc->base_low = (uint16_t)(base & 0xFFFFu);
-    tss_desc->base_mid = (uint8_t)((base >> 16) & 0xFFu);
-    tss_desc->type = 0x89u;
-    tss_desc->limit_high_flags = (uint8_t)((limit >> 16) & 0x0Fu);
-    tss_desc->base_high = (uint8_t)((base >> 24) & 0xFFu);
-    tss_desc->base_upper = (uint32_t)(base >> 32);
-    tss_desc->reserved = 0;
+    gdt_write_tss_descriptor(base, limit);
     gdt_debug("[GDT] TSS descriptor ready\r\n");
 
     tss.rsp0 = (uint64_t)(uintptr_t)&stack_top;
@@ -95,7 +91,6 @@ void gdt_init(void) {
     __asm__ volatile ("lgdt %0" : : "m"(descriptor) : "memory");
     gdt_debug("[GDT] lgdt returned\r\n");
 
-    /* Reload data segments against the new GDT before loading TR. */
     __asm__ volatile ("movw %0, %%ax\n\t"
                       "movw %%ax, %%ds\n\t"
                       "movw %%ax, %%es\n\t"
