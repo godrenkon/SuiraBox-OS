@@ -18,6 +18,7 @@ header_end:
 .type _start, @function
 _start:
     cli
+    cld
 
     /* Save Multiboot2 arguments before using the working registers. */
     movl %eax, multiboot_magic_saved
@@ -88,6 +89,8 @@ long_mode_entry:
     movl multiboot_magic_saved, %edi
     movl multiboot_info_saved, %esi
 
+    /* Preserve the C ABI invariant that DF is clear for kmain and callees. */
+    cld
     call kmain
 
 .hang:
