@@ -18,13 +18,7 @@ struct __attribute__((packed)) idt_ptr {
 static struct idt_entry idt[256];
 static struct idt_ptr idt_descriptor;
 
-__attribute__((interrupt)) static void exception_stub(void *frame) {
-    (void)frame;
-    __asm__ volatile ("cli");
-    for (;;) {
-        __asm__ volatile ("hlt");
-    }
-}
+extern void sb_exception_irq_stub(void);
 
 static void idt_set_gate(uint8_t vector, uintptr_t handler) {
     struct idt_entry *entry = &idt[vector];
@@ -37,15 +31,19 @@ static void idt_set_gate(uint8_t vector, uintptr_t handler) {
     entry->zero = 0;
 }
 
+void interrupts_set_handler(uint8_t vector, uintptr_t handler) {
+    idt_set_gate(vector, handler);
+}
+
 void interrupts_init(void) {
     for (uint32_t i = 0; i < 256u; ++i) {
         idt[i] = (struct idt_entry){0};
-        idt_set_gate((uint8_t)i, (uintptr_t)exception_stub);
+        idt_set_gate((uint8_t)i, (uintptr_t)sb_exception_irq_stub);
     }
 
     idt_descriptor.limit = (uint16_t)(sizeof(idt) - 1u);
     idt_descriptor.base = (uint64_t)(uintptr_t)&idt[0];
-    __asm__ volatile ("lidt %0" : : "m"(idt_descriptor));
+    __asm__ volatile ("lidt %0" : : "m"(idt_descriptor) : "memory");
 }
 
 void interrupts_enable(void) {
