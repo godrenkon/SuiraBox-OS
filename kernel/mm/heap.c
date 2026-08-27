@@ -33,13 +33,10 @@ static uint64_t round_up_pages(uint64_t size) {
 
 void kheap_init(void) {
     heap_debug("[HEAP] init begin\r\n");
+    /* Static storage is zero-initialized by the ELF loader. Do not bulk-write
+       the allocation table during the early bootstrap path. */
     used_bytes = 0;
     initialized = 1;
-    for (uint32_t i = 0; i < KHEAP_MAX_ALLOCS; ++i) {
-        records[i].base = 0;
-        records[i].pages = 0;
-        records[i].requested = 0;
-    }
     heap_debug("[HEAP] init records complete\r\n");
 }
 
