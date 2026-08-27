@@ -2,6 +2,7 @@
 #include "pci.h"
 #include "block.h"
 #include "vfs.h"
+#include "ata_pio.h"
 
 static void serial_init(void) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
@@ -64,6 +65,23 @@ static int storage_selftest(void) {
     return 1;
 }
 
+static int real_disk_selftest(void) {
+    sb_block_device_t *device = sb_ata_pio_device();
+    uint8_t buffer[SB_BLOCK_SECTOR_SIZE];
+    const char marker[] = "SUIRABOX-DISK-TEST";
+
+    if (device == 0 || device->read(device, 0, 1, buffer) != SB_BLOCK_OK) {
+        return 0;
+    }
+
+    for (uint32_t i = 0; marker[i] != '\0'; ++i) {
+        if (buffer[i] != (uint8_t)marker[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     (void)multiboot_info;
 
@@ -88,6 +106,17 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
         serial_write("Storage: block/VFS self-test OK\r\n");
     } else {
         serial_write("Storage: block/VFS self-test FAILED\r\n");
+    }
+
+    serial_write("Storage: probing ATA primary master...\r\n");
+    if (sb_ata_pio_init() == SB_BLOCK_OK) {
+        serial_write("Storage: ATA device registered\r\n");
+        serial_write("Storage: real disk sector test...\r\n");
+        serial_write(real_disk_selftest() ?
+            "Storage: real disk read OK\r\n" :
+            "Storage: real disk read FAILED\r\n");
+    } else {
+        serial_write("Storage: no supported ATA primary-master disk\r\n");
     }
 
     serial_write("Phase 1 bootstrap complete.\r\n");
