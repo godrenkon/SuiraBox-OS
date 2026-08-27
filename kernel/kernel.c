@@ -1,6 +1,8 @@
 #include <stdint.h>
 #include "pci.h"
 
+int sb_storage_selftest(void);
+
 static void serial_init(void) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x80), "Nd"((uint16_t)0x3FB));
@@ -48,6 +50,13 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
 
     /* First hardware-discovery milestone: enumerate PCI functions. */
     pci_enumerate();
+
+    serial_write("Storage: running block/VFS self-test...\r\n");
+    if (sb_storage_selftest()) {
+        serial_write("Storage: block/VFS self-test OK\r\n");
+    } else {
+        serial_write("Storage: block/VFS self-test FAILED\r\n");
+    }
 
     serial_write("Phase 1 bootstrap complete.\r\n");
 
