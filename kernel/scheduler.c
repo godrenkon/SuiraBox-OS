@@ -5,7 +5,10 @@
 #define SB_BOOTSTRAP_PRIORITY 128u
 #define SB_SCHED_MAX_TASKS 64u
 
-static sb_task_t tasks[SB_SCHED_MAX_TASKS];
+/* Scheduler starts before the kernel has initialized SIMD/FPU state. Keep the
+ * task table volatile so GCC cannot synthesize SSE vector stores for struct
+ * initialization or updates. */
+static volatile sb_task_t tasks[SB_SCHED_MAX_TASKS];
 static uint32_t task_count;
 static uint32_t current_index;
 static uint64_t scheduler_tick_count;
@@ -25,7 +28,6 @@ static void sched_debug(const char *s) {
 
 void scheduler_init(void) {
     sched_debug("[SCHED] init begin\r\n");
-    /* Static storage is ELF-zeroed. Do not clear the full task table here. */
     tasks[0].id = SB_BOOTSTRAP_TASK_ID;
     tasks[0].runtime_ticks = 0u;
     tasks[0].priority = SB_BOOTSTRAP_PRIORITY;
@@ -48,7 +50,7 @@ uint64_t scheduler_ticks(void) { return scheduler_tick_count; }
 
 sb_task_t *scheduler_current(void) {
     if (task_count == 0u) return 0;
-    return &tasks[current_index];
+    return (sb_task_t *)(uintptr_t)&tasks[current_index];
 }
 
 int scheduler_add_kernel_task(uint64_t id, uint32_t priority) {
@@ -69,10 +71,10 @@ sb_task_t *scheduler_pick_next(void) {
             tasks[current_index].state = SB_TASK_READY;
             current_index = candidate;
             tasks[current_index].state = SB_TASK_RUNNING;
-            return &tasks[current_index];
+            return (sb_task_t *)(uintptr_t)&tasks[current_index];
         }
     }
-    return &tasks[current_index];
+    return (sb_task_t *)(uintptr_t)&tasks[current_index];
 }
 
 uint32_t scheduler_task_count(void) { return task_count; }
