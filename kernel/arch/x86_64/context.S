@@ -34,3 +34,5 @@ sb_context_switch:
     retq
 
 .size sb_context_switch, .-sb_context_switch
+
+.section .note.GNU-stack,"",@progbits
