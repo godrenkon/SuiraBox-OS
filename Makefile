@@ -11,6 +11,7 @@ LDFLAGS := -nostdlib -z max-page-size=0x1000 -T linker.ld
 
 BOOT_OBJ := $(BUILD)/boot.o
 KERNEL_OBJ := $(BUILD)/kernel.o
+PCI_OBJ := $(BUILD)/pci.o
 
 .PHONY: all clean iso check
 
@@ -22,11 +23,14 @@ $(BUILD):
 $(BOOT_OBJ): boot/boot.S | $(BUILD)
 	$(AS) --32 $< -o $@
 
-$(KERNEL_OBJ): kernel/kernel.c | $(BUILD)
-	$(CC) $(CFLAGS) -c $< -o $@
+$(KERNEL_OBJ): kernel/kernel.c kernel/pci.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(KERNEL): $(BOOT_OBJ) $(KERNEL_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(KERNEL_OBJ)
+$(PCI_OBJ): kernel/pci.c kernel/pci.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
+$(KERNEL): $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(KERNEL_OBJ) $(PCI_OBJ)
 
 iso: $(KERNEL) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub
