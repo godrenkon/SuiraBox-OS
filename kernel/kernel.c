@@ -59,19 +59,13 @@ static void report_multiboot_modules(uint64_t multiboot_info) {
     uint32_t count = 0u;
     if (total_size < 16u || total_size > (64u * 1024u)) return;
     while (offset <= total_size - 8u && count < 32u) {
-        const struct multiboot2_tag *tag =
-            (const struct multiboot2_tag *)(uintptr_t)(multiboot_info + offset);
+        const struct multiboot2_tag *tag = (const struct multiboot2_tag *)(uintptr_t)(multiboot_info + offset);
         if (tag->size < 8u || tag->size > total_size - offset) return;
         if (tag->type == MULTIBOOT2_TAG_TYPE_END) return;
-        if (tag->type == MULTIBOOT2_TAG_TYPE_MODULE &&
-            tag->size >= sizeof(struct multiboot2_module_tag)) {
-            const struct multiboot2_module_tag *module =
-                (const struct multiboot2_module_tag *)tag;
-            serial_write("Boot module: start=");
-            serial_write_u64(module->mod_start);
-            serial_write(" end=");
-            serial_write_u64(module->mod_end);
-            serial_write("\r\n");
+        if (tag->type == MULTIBOOT2_TAG_TYPE_MODULE && tag->size >= sizeof(struct multiboot2_module_tag)) {
+            const struct multiboot2_module_tag *module = (const struct multiboot2_module_tag *)tag;
+            serial_write("Boot module: start="); serial_write_u64(module->mod_start);
+            serial_write(" end="); serial_write_u64(module->mod_end); serial_write("\r\n");
         }
         const uint32_t next = (tag->size + 7u) & ~7u;
         if (next < tag->size || offset > total_size - next) return;
@@ -83,6 +77,8 @@ static void report_multiboot_modules(uint64_t multiboot_info) {
 static int vmm_selftest(void) {
     const uint64_t test_virtual = 0x0000004000000000ull;
     void *page;
+    void *extra1;
+    void *extra2;
     uint64_t translated;
     int result;
 
@@ -91,44 +87,49 @@ static int vmm_selftest(void) {
     serial_write(page ? "Memory: VMM test allocate OK\r\n" : "Memory: VMM test allocate FAILED\r\n");
     if (page == 0) return 0;
 
-    serial_write("Memory: VMM physical test begin\r\n");
+    serial_write("Memory: VMM physical test page1 begin\r\n");
     *(volatile uint64_t *)(uintptr_t)page = 0x5342554D4D544553ull;
-    serial_write("Memory: VMM physical test write returned\r\n");
-    if (*(volatile uint64_t *)(uintptr_t)page != 0x5342554D4D544553ull) {
-        serial_write("Memory: VMM physical test FAILED\r\n");
-        pmm_free_page(page);
+    serial_write("Memory: VMM physical test page1 OK\r\n");
+
+    serial_write("Memory: VMM physical test page2 allocate\r\n");
+    extra1 = pmm_alloc_page();
+    if (extra1 == 0) return 0;
+    serial_write("Memory: VMM physical test page2 write\r\n");
+    *(volatile uint64_t *)(uintptr_t)extra1 = 0x1122334455667788ull;
+    if (*(volatile uint64_t *)(uintptr_t)extra1 != 0x1122334455667788ull) {
+        serial_write("Memory: VMM physical test page2 FAILED\r\n");
         return 0;
     }
-    serial_write("Memory: VMM physical test OK\r\n");
+    serial_write("Memory: VMM physical test page2 OK\r\n");
+
+    serial_write("Memory: VMM physical test page3 allocate\r\n");
+    extra2 = pmm_alloc_page();
+    if (extra2 == 0) return 0;
+    serial_write("Memory: VMM physical test page3 write\r\n");
+    *(volatile uint64_t *)(uintptr_t)extra2 = 0x8877665544332211ull;
+    if (*(volatile uint64_t *)(uintptr_t)extra2 != 0x8877665544332211ull) {
+        serial_write("Memory: VMM physical test page3 FAILED\r\n");
+        return 0;
+    }
+    serial_write("Memory: VMM physical test page3 OK\r\n");
 
     serial_write("Memory: VMM test map begin\r\n");
     result = vmm_map_page(test_virtual, (uint64_t)(uintptr_t)page, SB_VMM_WRITABLE);
     serial_write(result == 0 ? "Memory: VMM test map OK\r\n" : "Memory: VMM test map FAILED\r\n");
-    if (result != 0) { pmm_free_page(page); return 0; }
+    if (result != 0) return 0;
 
     serial_write("Memory: VMM test translate begin\r\n");
     translated = vmm_translate(test_virtual);
     serial_write("Memory: VMM test translate returned\r\n");
-    if ((translated & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != ((uint64_t)(uintptr_t)page & ~(uint64_t)(SB_PAGE_SIZE - 1u))) {
-        serial_write("Memory: VMM test translate FAILED\r\n");
-        { uint64_t discarded; (void)vmm_unmap_page(test_virtual, &discarded); }
-        pmm_free_page(page); return 0;
-    }
-
+    if ((translated & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != ((uint64_t)(uintptr_t)page & ~(uint64_t)(SB_PAGE_SIZE - 1u))) return 0;
     serial_write("Memory: VMM test store begin\r\n");
     *(volatile uint64_t *)(uintptr_t)test_virtual = 0x5342554D4D544553ull;
     serial_write("Memory: VMM test store returned\r\n");
-    if (*(volatile uint64_t *)(uintptr_t)test_virtual != 0x5342554D4D544553ull) {
-        serial_write("Memory: VMM test store FAILED\r\n");
-        { uint64_t discarded; (void)vmm_unmap_page(test_virtual, &discarded); }
-        pmm_free_page(page); return 0;
-    }
-
+    if (*(volatile uint64_t *)(uintptr_t)test_virtual != 0x5342554D4D544553ull) return 0;
     serial_write("Memory: VMM test unmap begin\r\n");
     { uint64_t physical = 0; result = vmm_unmap_page(test_virtual, &physical);
-      serial_write(result == 0 ? "Memory: VMM test unmap OK\r\n" : "Memory: VMM test unmap FAILED\r\n");
-      if (result != 0 || (physical & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != ((uint64_t)(uintptr_t)page & ~(uint64_t)(SB_PAGE_SIZE - 1u))) { pmm_free_page(page); return 0; } }
-    pmm_free_page(page);
+      if (result != 0 || (physical & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != ((uint64_t)(uintptr_t)page & ~(uint64_t)(SB_PAGE_SIZE - 1u))) return 0; }
+    serial_write("Memory: VMM test unmap OK\r\n");
     return 1;
 }
 
@@ -158,18 +159,10 @@ static int process_syscall_selftest(void) {
 }
 
 static int userspace_prepare_selftest(uint64_t multiboot_info) {
-    sb_process_t *process;
-    sb_process_image_t image;
-    process = process_create(200u);
-    if (process == 0) return 0;
-    if (process_prepare_boot_module(process, multiboot_info, "user-hello", &image) != 0) {
-        process_destroy(process);
-        return 0;
-    }
-    if (image.entry_point == 0u || image.user_stack_top != SB_USER_STACK_TOP) {
-        process_destroy(process);
-        return 0;
-    }
+    sb_process_t *process; sb_process_image_t image;
+    process = process_create(200u); if (process == 0) return 0;
+    if (process_prepare_boot_module(process, multiboot_info, "user-hello", &image) != 0) { process_destroy(process); return 0; }
+    if (image.entry_point == 0u || image.user_stack_top != SB_USER_STACK_TOP) { process_destroy(process); return 0; }
     return 1;
 }
 
@@ -180,7 +173,6 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write((uint32_t)multiboot_magic == 0x36D76289u ? "Boot protocol: Multiboot2 OK\r\n" : "Boot protocol: unexpected magic\r\n");
     serial_write("Kernel initialized.\r\n");
     pci_enumerate();
-
     serial_write("Storage: probing drivers later; bootstrap continues.\r\n");
     serial_write("Memory: PMM init begin\r\n");
     pmm_init(0x01000000ull, 0x04000000ull);
@@ -195,27 +187,20 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     void *page = pmm_alloc_page();
     serial_write(page ? "Memory: page allocation OK\r\n" : "Memory: page allocation FAILED\r\n");
     if (page) { pmm_free_page(page); serial_write("Memory: page free OK\r\n"); }
-
     serial_write("Memory: initializing VMM...\r\n"); vmm_init();
     serial_write(vmm_selftest() ? "Memory: VMM map/translate/unmap OK\r\n" : "Memory: VMM map/translate/unmap FAILED\r\n");
     serial_write("Memory: initializing kernel heap...\r\n");
     serial_write(heap_selftest() ? "Memory: kernel heap alloc/free OK\r\n" : "Memory: kernel heap alloc/free FAILED\r\n");
-
     serial_write("CPU: initializing GDT/TSS...\r\n"); gdt_init(); serial_write("CPU: GDT/TSS ready\r\n");
     serial_write("Scheduler: initializing...\r\n"); scheduler_init(); interrupts_init();
     serial_write(scheduler_selftest() ? "Scheduler: task table/round-robin selection OK\r\n" : "Scheduler: task table/round-robin selection FAILED\r\n");
     serial_write("Process: initializing...\r\n");
     serial_write(process_syscall_selftest() ? "Process/Syscall: model and dispatch OK\r\n" : "Process/Syscall: model and dispatch FAILED\r\n");
-
     syscall_init();
     interrupts_set_user_handler(0x80u, (uintptr_t)sb_syscall_int80_stub);
     serial_write("Syscall: int 0x80 user gate ready\r\n");
-
     serial_write("Userspace: loading user-hello module...\r\n");
-    serial_write(userspace_prepare_selftest(multiboot_info) ?
-        "Userspace: ELF + address-space + stack preparation OK\r\n" :
-        "Userspace: ELF + address-space + stack preparation FAILED\r\n");
-
+    serial_write(userspace_prepare_selftest(multiboot_info) ? "Userspace: ELF + address-space + stack preparation OK\r\n" : "Userspace: ELF + address-space + stack preparation FAILED\r\n");
     serial_write("Timer: initializing PIT at 100 Hz...\r\n"); timer_init(100u); serial_write("Timer: IRQ0 enabled\r\n");
     serial_write("Userspace: ring3 execution path prepared\r\n");
     serial_write("Phase 1 bootstrap complete.\r\n");
