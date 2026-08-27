@@ -36,7 +36,8 @@ struct __attribute__((packed)) gdt_ptr {
     uint64_t base;
 };
 
-static uint64_t gdt[7] __attribute__((aligned(8)));
+/* Null + kernel code/data + user code/data + 16-byte TSS descriptor. */
+static uint64_t gdt[8] __attribute__((aligned(8)));
 static struct tss64 tss __attribute__((aligned(16)));
 static struct gdt_ptr descriptor;
 
