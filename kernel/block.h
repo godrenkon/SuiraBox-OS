@@ -29,5 +29,6 @@ typedef struct sb_block_device {
 sb_block_status_t sb_block_register(sb_block_device_t *device);
 sb_block_device_t *sb_block_get(uint32_t index);
 uint32_t sb_block_count(void);
+sb_block_status_t sb_block_selftest(void);
 
 #endif
