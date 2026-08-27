@@ -77,8 +77,8 @@ sb_block_status_t sb_block_selftest(void) {
         test_disk_write,
         0,
     };
-    uint8_t write_buffer[SB_BLOCK_SECTOR_SIZE];
-    uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
+    static uint8_t write_buffer[SB_BLOCK_SECTOR_SIZE];
+    static uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
 
     for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         write_buffer[i] = (uint8_t)(i ^ 0xA5u);
