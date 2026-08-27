@@ -6,6 +6,7 @@
 #define PIT_COMMAND 0x43u
 #define PIT_CHANNEL0 0x40u
 #define PIT_BASE_HZ 1193182u
+#define SB_SCHED_QUANTUM_TICKS 10u
 
 static volatile uint64_t ticks;
 
@@ -55,4 +56,8 @@ uint64_t timer_ticks(void) { return ticks; }
 void sb_timer_tick(void) {
     ++ticks;
     scheduler_tick();
+
+    if ((ticks % SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1u) {
+        (void)scheduler_pick_next();
+    }
 }
