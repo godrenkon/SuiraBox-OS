@@ -61,7 +61,7 @@ void sb_timer_tick(void) {
     ++ticks;
     scheduler_tick();
 
-    if ((ticks % SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1u) {
+    if ((ticks % SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1) {
         (void)scheduler_pick_next();
     }
 }
