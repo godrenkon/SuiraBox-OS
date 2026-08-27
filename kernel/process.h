@@ -28,6 +28,8 @@ typedef struct {
     uint32_t thread_count;
     sb_thread_t threads[SB_MAX_THREADS_PER_PROCESS];
     sb_address_space_t address_space;
+    uint64_t entry_point;
+    uint64_t user_stack_top;
 } sb_process_t;
 
 void process_init(void);
