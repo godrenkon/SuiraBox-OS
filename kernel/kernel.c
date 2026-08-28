@@ -16,6 +16,7 @@
 #include "arch/x86_64/gdt.h"
 #include "arch/x86_64/user_mode.h"
 #include "framebuffer.h"
+#include "desktop_bootstrap.h"
 
 extern int scheduler_add_kernel_task(uint64_t id, uint32_t priority);
 extern sb_task_t *scheduler_pick_next(void);
@@ -221,10 +222,15 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
         serial_write("Display: mapping framebuffer into kernel virtual memory...\r\n");
         if (sb_framebuffer_map()) {
             serial_write("Display: framebuffer mapped\r\n");
-            if (sb_framebuffer_clear(12u, 16u, 24u) == 0)
+            if (sb_framebuffer_clear(12u, 16u, 24u) == 0) {
                 serial_write("Display: framebuffer clear OK\r\n");
-            else
+                if (sb_desktop_bootstrap_render() == 0)
+                    serial_write("Desktop: bootstrap surface rendered\r\n");
+                else
+                    serial_write("Desktop: bootstrap surface unavailable\r\n");
+            } else {
                 serial_write("Display: framebuffer clear deferred\r\n");
+            }
         } else {
             serial_write("Display: framebuffer mapping unavailable; keeping fallback console\r\n");
         }
