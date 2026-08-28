@@ -6,6 +6,9 @@
 #define SB_GUI_MAX_WINDOWS 16u
 #define SB_GUI_TITLEBAR_HEIGHT 36u
 #define SB_GUI_CONTROL_SIZE 24u
+#define SB_GUI_RESIZE_GRIP_SIZE 12u
+#define SB_GUI_MIN_WINDOW_WIDTH 96u
+#define SB_GUI_MIN_WINDOW_HEIGHT 64u
 
 typedef enum {
     SB_GUI_EVENT_NONE = 0,
@@ -21,6 +24,13 @@ typedef enum {
     SB_GUI_CONTROL_MAXIMIZE = 2,
     SB_GUI_CONTROL_CLOSE = 3,
 } sb_gui_control_t;
+
+typedef enum {
+    SB_GUI_RESIZE_NONE = 0,
+    SB_GUI_RESIZE_RIGHT = 1,
+    SB_GUI_RESIZE_BOTTOM = 2,
+    SB_GUI_RESIZE_BOTTOM_RIGHT = 3,
+} sb_gui_resize_edge_t;
 
 typedef struct {
     sb_gui_event_type_t type;
@@ -69,6 +79,7 @@ int sb_gui_set_maximized(sb_gui_window_manager_t *wm, uint32_t id,
 sb_gui_window_t *sb_gui_find_window(sb_gui_window_manager_t *wm, uint32_t id);
 sb_gui_window_t *sb_gui_hit_test(sb_gui_window_manager_t *wm, int32_t x, int32_t y);
 sb_gui_control_t sb_gui_hit_control(const sb_gui_window_t *window, int32_t x, int32_t y);
+sb_gui_resize_edge_t sb_gui_hit_resize(const sb_gui_window_t *window, int32_t x, int32_t y);
 int sb_gui_focus_window(sb_gui_window_manager_t *wm, uint32_t id);
 
 #endif
