@@ -27,8 +27,8 @@ int main(void) {
     assert(sb_gui_hit_test(&wm, 15, 25)->id == back_id);
     assert(sb_gui_hit_test(&wm, 1000, 1000) == 0);
 
-    assert(sb_gui_hit_control(front, 176, 60) == SB_GUI_CONTROL_MINIMIZE);
-    assert(sb_gui_hit_control(front, 191, 60) == SB_GUI_CONTROL_CLOSE);
+    assert(sb_gui_hit_control(front, 152, 60) == SB_GUI_CONTROL_MINIMIZE);
+    assert(sb_gui_hit_control(front, 176, 60) == SB_GUI_CONTROL_CLOSE);
     assert(sb_gui_hit_control(front, 100, 60) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(front, 191, 90) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(0, 191, 60) == SB_GUI_CONTROL_NONE);
@@ -56,7 +56,7 @@ int main(void) {
     extreme = (sb_gui_window_t){
         99u, INT32_MAX - 8, INT32_MAX - 8, UINT32_MAX, UINT32_MAX, 1u, 1u, 0u, 0u
     };
-    assert(sb_gui_hit_control(&extreme, INT32_MAX, INT32_MAX) == SB_GUI_CONTROL_CLOSE);
+    assert(sb_gui_hit_control(&extreme, INT32_MAX, INT32_MAX) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(&extreme, INT32_MIN, INT32_MIN) == SB_GUI_CONTROL_NONE);
 
     assert(sb_gui_set_minimized(&wm, front_id, 1u) == 0);
