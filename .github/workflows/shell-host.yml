@@ -1,0 +1,19 @@
+name: SuiraBox Shell Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  shell-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile shell host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -DSB_HOST_TEST -Iuserspace tests/shell_host_test.c userspace/shell.c -o /tmp/shell-host-test
+      - name: Run shell host test
+        run: /tmp/shell-host-test
