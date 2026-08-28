@@ -11,6 +11,7 @@
 #define SB_SYS_DISPLAY_RECT    5u
 #define SB_SYS_INPUT_KEY       6u
 #define SB_SYS_DISPLAY_GLYPH   7u
+#define SB_SYS_INPUT_MOUSE     8u
 
 static inline uint64_t sb_syscall0(uint64_t number) {
     uint64_t result;
@@ -75,6 +76,10 @@ static inline uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width,
 
 static inline uint64_t sb_input_key(void) {
     return sb_syscall0(SB_SYS_INPUT_KEY);
+}
+
+static inline uint64_t sb_input_mouse(void) {
+    return sb_syscall0(SB_SYS_INPUT_MOUSE);
 }
 
 static inline uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
