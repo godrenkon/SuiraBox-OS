@@ -32,7 +32,7 @@ _start:
     xor %edi, %edi           /* x */
     xor %esi, %esi           /* y */
     mov %r13d, %edx          /* width */
-    mov $56, %ecx            /* height */
+    mov $56, %r10d           /* height */
     mov $0x182230, %r8d      /* RGB */
     int $0x80
 
@@ -46,7 +46,7 @@ _start:
     mov %eax, %edi
     mov $96, %esi
     mov $720, %edx
-    mov $460, %ecx
+    mov $460, %r10d
     mov $0x202A38, %r8d
     mov $5, %rax
     int $0x80
@@ -57,7 +57,7 @@ _start:
     mov %eax, %edi
     mov $132, %esi
     mov $300, %edx
-    mov $360, %ecx
+    mov $360, %r10d
     mov $0x283443, %r8d
     mov $5, %rax
     int $0x80
@@ -68,7 +68,7 @@ _start:
     mov %eax, %edi
     mov $132, %esi
     mov $360, %edx
-    mov $360, %ecx
+    mov $360, %r10d
     mov $0x242F3D, %r8d
     mov $5, %rax
     int $0x80
@@ -78,7 +78,7 @@ _start:
     mov %r14d, %esi
     sub $72, %esi
     mov %r13d, %edx
-    mov $72, %ecx
+    mov $72, %r10d
     mov $0x16202C, %r8d
     mov $5, %rax
     int $0x80
