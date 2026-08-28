@@ -9,6 +9,9 @@
 #define SB_GUI_RESIZE_GRIP_SIZE 12u
 #define SB_GUI_MIN_WINDOW_WIDTH 96u
 #define SB_GUI_MIN_WINDOW_HEIGHT 64u
+#define SB_GUI_TASKBAR_HEIGHT 72u
+#define SB_GUI_TASKBAR_BUTTON_WIDTH 176u
+#define SB_GUI_TASKBAR_GAP 8u
 
 typedef enum {
     SB_GUI_EVENT_NONE = 0,
@@ -76,10 +79,15 @@ int sb_gui_resize_window(sb_gui_window_manager_t *wm, uint32_t id,
 int sb_gui_set_minimized(sb_gui_window_manager_t *wm, uint32_t id, uint8_t minimized);
 int sb_gui_set_maximized(sb_gui_window_manager_t *wm, uint32_t id,
                          uint8_t maximized, uint32_t screen_width, uint32_t screen_height);
+int sb_gui_restore_window(sb_gui_window_manager_t *wm, uint32_t id);
 sb_gui_window_t *sb_gui_find_window(sb_gui_window_manager_t *wm, uint32_t id);
 sb_gui_window_t *sb_gui_hit_test(sb_gui_window_manager_t *wm, int32_t x, int32_t y);
 sb_gui_control_t sb_gui_hit_control(const sb_gui_window_t *window, int32_t x, int32_t y);
 sb_gui_resize_edge_t sb_gui_hit_resize(const sb_gui_window_t *window, int32_t x, int32_t y);
+uint32_t sb_gui_minimized_count(const sb_gui_window_manager_t *wm);
+sb_gui_window_t *sb_gui_minimized_at(sb_gui_window_manager_t *wm, uint32_t index);
+uint32_t sb_gui_hit_taskbar(const sb_gui_window_manager_t *wm, int32_t x, int32_t y,
+                            uint32_t screen_width, uint32_t screen_height);
 int sb_gui_focus_window(sb_gui_window_manager_t *wm, uint32_t id);
 
 #endif
