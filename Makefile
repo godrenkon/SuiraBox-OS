@@ -5,6 +5,7 @@ USER_ELF := $(BUILD)/user-hello.elf
 DESKTOP_ELF := $(BUILD)/sb-desktop.elf
 PMM_HOST_TEST := $(BUILD)/pmm-host-test
 FAT32_HOST_TEST := $(BUILD)/fat32-host-test
+GUI_HOST_TEST := $(BUILD)/gui-host-test
 
 CC ?= gcc
 AS ?= as
@@ -13,6 +14,7 @@ LD ?= ld
 # The kernel has no early FPU/SIMD context management. Disable MMX/SSE/SSE2
 # so GCC cannot emit SIMD stores during bootstrap and exception paths.
 CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2
+USER_CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -fno-builtin -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2
 LDFLAGS := -nostdlib -z max-page-size=0x1000 -T linker.ld
 USER_LDFLAGS := -nostdlib -z max-page-size=0x1000 -T userspace/user.ld
 
@@ -50,8 +52,9 @@ USERMODE_OBJ := $(BUILD)/user_mode.o
 MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
 DESKTOP_USER_OBJ := $(BUILD)/sb_desktop.o
+GUI_OBJ := $(BUILD)/gui.o
 
-.PHONY: all clean iso userspace check host-pmm-test host-fat32-test
+.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test
 
 all: iso userspace
 
@@ -160,11 +163,14 @@ $(USER_OBJ): userspace/hello.S | $(BUILD)
 $(DESKTOP_USER_OBJ): userspace/sb_desktop.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
+$(GUI_OBJ): userspace/gui.c userspace/gui.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
 
-$(DESKTOP_ELF): $(DESKTOP_USER_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_USER_OBJ)
+$(DESKTOP_ELF): $(DESKTOP_USER_OBJ) $(GUI_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_USER_OBJ) $(GUI_OBJ)
 
 userspace: $(USER_ELF) $(DESKTOP_ELF)
 
@@ -191,7 +197,13 @@ $(FAT32_HOST_TEST): tests/fat32_host_test.c kernel/fs/fat32.c kernel/fs/fat32.h 
 host-fat32-test: $(FAT32_HOST_TEST)
 	$(FAT32_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test
+$(GUI_HOST_TEST): tests/gui_host_test.c userspace/gui.c userspace/gui.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iuserspace tests/gui_host_test.c userspace/gui.c -o $@
+
+host-gui-test: $(GUI_HOST_TEST)
+	$(GUI_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
