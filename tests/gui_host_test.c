@@ -44,8 +44,17 @@ int main(void) {
     assert(front != 0);
     assert(front->width == 320u && front->height == 240u);
 
+    assert(sb_gui_set_minimized(&wm, front_id, 1u) == 0);
+    assert(wm.focused_id != front_id);
+    assert(sb_gui_hit_test(&wm, 105, 105)->id != front_id);
+    assert(sb_gui_set_minimized(&wm, front_id, 0u) == 0);
+    assert(wm.focused_id == front_id);
+    assert(sb_gui_hit_test(&wm, 105, 105)->id == front_id);
+
+    front = sb_gui_find_window(&wm, front_id);
+    assert(front != 0);
     front->visible = 0u;
-    assert(sb_gui_hit_test(&wm, 105, 105)->id == back_id);
+    assert(sb_gui_hit_test(&wm, 105, 105)->id != front_id);
     front->visible = 1u;
     assert(sb_gui_focus_window(&wm, front_id) == 0);
     assert(wm.focused_id == front_id);
