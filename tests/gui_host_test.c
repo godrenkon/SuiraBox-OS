@@ -83,7 +83,8 @@ int main(void) {
     assert(front->height == screen_height - SB_GUI_TITLEBAR_HEIGHT);
     assert(sb_gui_move_window(&wm, front_id, 10, 10) != 0);
     assert(sb_gui_resize_window(&wm, front_id, 200u, 100u) != 0);
-    assert(sb_gui_hit_control(front, 100, 80) == SB_GUI_CONTROL_MAXIMIZE);
+    assert(sb_gui_hit_control(front, 988, 50) == SB_GUI_CONTROL_MAXIMIZE);
+    assert(sb_gui_hit_control(front, 100, 80) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_resize(front, 1020, 760) == SB_GUI_RESIZE_NONE);
     assert(sb_gui_set_maximized(&wm, front_id, 0u, screen_width, screen_height) == 0);
     front = sb_gui_find_window(&wm, front_id);
