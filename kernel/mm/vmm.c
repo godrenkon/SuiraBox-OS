@@ -79,18 +79,18 @@ int vmm_map_page(uint64_t virtual_address, uint64_t physical_address, uint64_t f
 
     debug_write("[VMM] map pml4="); debug_write_u64(i4); debug_write("\r\n");
     uint64_t *pdpt_table = ensure_table(root, i4, flags);
-    debug_write("[VMM] map pdpt=" ); debug_write_u64((uint64_t)(uintptr_t)pdpt_table); debug_write("\r\n");
+    debug_write("[VMM] map pdpt="); debug_write_u64((uint64_t)(uintptr_t)pdpt_table); debug_write("\r\n");
     if (pdpt_table == 0) return -1;
 
     uint64_t *pd_table = ensure_table(pdpt_table, i3, flags);
-    debug_write("[VMM] map pd=" ); debug_write_u64((uint64_t)(uintptr_t)pd_table); debug_write("\r\n");
+    debug_write("[VMM] map pd="); debug_write_u64((uint64_t)(uintptr_t)pd_table); debug_write("\r\n");
     if (pd_table == 0) return -1;
 
     uint64_t *pt_table = ensure_table(pd_table, i2, flags);
-    debug_write("[VMM] map pt=" ); debug_write_u64((uint64_t)(uintptr_t)pt_table); debug_write("\r\n");
+    debug_write("[VMM] map pt="); debug_write_u64((uint64_t)(uintptr_t)pt_table); debug_write("\r\n");
     if (pt_table == 0) return -1;
 
-    debug_write("[VMM] map write pte idx=" ); debug_write_u64(i1); debug_write("\r\n");
+    debug_write("[VMM] map write pte idx="); debug_write_u64(i1); debug_write("\r\n");
     if ((pt_table[i1] & SB_VMM_PRESENT) != 0u) return -2;
     pt_table[i1] = (physical_address & ENTRY_ADDR_MASK) |
                    SB_VMM_PRESENT |
@@ -143,7 +143,6 @@ void vmm_init(void) {
     if (bootstrap_ready) return;
 
     const uint64_t high_test_virtual = 0x0000008000000000ull;
-    const uint16_t high_pml4_i = pml4_index(high_test_virtual);
     const uint16_t high_pdpt_i = pdpt_index(high_test_virtual);
 
     for (uint32_t i = 0u; i < PT_ENTRIES; ++i) {
