@@ -1,11 +1,13 @@
 #include <assert.h>
 #include <stdint.h>
+#include <limits.h>
 #include "../userspace/desktop_shell.h"
 
 int main(void) {
     sb_desktop_shell_t shell;
     const char *activated = 0;
 
+    assert(sb_desktop_shell_click(0, 30, 730, &activated) != 0);
     sb_desktop_shell_init(&shell, 1024u, 768u);
     assert(shell.initialized == 1u);
     assert(sb_desktop_shell_register_default_apps(&shell) == 0);
@@ -25,6 +27,15 @@ int main(void) {
 
     activated = 0;
     assert(sb_desktop_shell_click(&shell, 300, 700, &activated) != 0);
+    assert(activated == 0);
+
+    sb_desktop_shell_init(&shell, 0u, 768u);
+    assert(shell.initialized == 0u);
+    assert(sb_desktop_shell_register_default_apps(&shell) != 0);
+
+    sb_desktop_shell_init(&shell, 1024u, UINT32_MAX);
+    assert(shell.initialized == 1u);
+    assert(sb_desktop_shell_click(&shell, 30, 10, &activated) != 0);
     assert(activated == 0);
     return 0;
 }
