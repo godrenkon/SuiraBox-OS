@@ -4,6 +4,9 @@
 
 static uint32_t display_rect_calls;
 static uint32_t display_rect_pixels;
+static uint32_t display_glyph_calls;
+static uint32_t last_glyph_x;
+static uint32_t last_glyph_y;
 
 int sb_display_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t rgb) {
     (void)x;
@@ -11,6 +14,15 @@ int sb_display_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uin
     (void)rgb;
     ++display_rect_calls;
     display_rect_pixels += width * height;
+    return 0;
+}
+
+int sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap, uint32_t color) {
+    (void)bitmap;
+    (void)color;
+    ++display_glyph_calls;
+    last_glyph_x = x;
+    last_glyph_y = y;
     return 0;
 }
 
@@ -26,6 +38,7 @@ int main(void) {
     assert(style.width == 1024u);
     assert(style.height == 768u);
     assert(style.background_rgb == 0x0C1018u);
+    assert(style.cursor_rgb == 0xE9F2FFu);
 
     assert(sb_compositor_clip_rect(10, 20, 100u, 50u, 1024u, 768u,
                                    &x, &y, &width, &height) == 0);
@@ -71,5 +84,13 @@ int main(void) {
     sb_compositor_present_damage(&style, &wm, damage, 2u, 1u);
     assert(display_rect_calls > 0u);
     assert(display_rect_pixels > 1024u * 768u);
+
+    display_glyph_calls = 0u;
+    sb_compositor_present_cursor(&style, 100, 200);
+    assert(display_glyph_calls == 1u);
+    assert(last_glyph_x == 100u && last_glyph_y == 200u);
+    sb_compositor_present_cursor(&style, -20, -30);
+    assert(display_glyph_calls == 2u);
+    assert(last_glyph_x == 0u && last_glyph_y == 0u);
     return 0;
 }
