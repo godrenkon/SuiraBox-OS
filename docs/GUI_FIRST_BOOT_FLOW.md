@@ -28,6 +28,8 @@ Initial choices:
 
 The selector has one closed field showing the current value and one expandable option list. Keyboard navigation uses `Space` to open/close, `Up`/`Down` to change the highlighted option, and `Enter` to accept the highlighted option. The closed selector can then be confirmed to continue.
 
+The GUI implementation also exposes a PS/2 mouse event path. A primary-button click on the closed field opens the dropdown; a click on an option selects it and closes the list; a click on `Continue` proceeds to the desktop when the dropdown is closed. Clicking outside an open dropdown closes it without changing the selected value.
+
 The pre-selection UI may use English because the user must be able to understand the selector before choosing a language.
 
 ## Persistence requirements
