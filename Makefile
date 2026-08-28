@@ -177,7 +177,7 @@ iso: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) boot/grub.cfg
 	cp $(USER_ELF) $(BUILD)/iso/boot/user-hello.elf
 	cp $(DESKTOP_ELF) $(BUILD)/iso/boot/sb-desktop.elf
 	cp boot/grub.cfg $(BUILD)/iso/boot/grub/grub.cfg
-	grub-mkrescue -o $(ISO) $(BUILD)/suirabox.iso >/dev/null
+	grub-mkrescue -o $(ISO) $(BUILD)/iso >/dev/null
 
 $(PMM_HOST_TEST): tests/pmm_host_test.c kernel/mm/pmm.c kernel/mm/pmm.h | $(BUILD)
 	$(CC) -Wall -Wextra -Werror -Ikernel/mm tests/pmm_host_test.c kernel/mm/pmm.c -o $@
