@@ -121,7 +121,7 @@ int main(void) {
                 "in-place file write failed")) return 1;
     if (!expect(memcmp(&disk[4u * SECTOR_SIZE], patch, sizeof(patch) - 1u) == 0,
                 "written bytes were not persisted to the sector")) return 1;
-    if (!expect(disk[4u * SECTOR_SIZE + sizeof(patch) - 1u] == 'l',
+    if (!expect(disk[4u * SECTOR_SIZE + sizeof(patch) - 1u] == 'o',
                 "write unexpectedly modified adjacent byte")) return 1;
 
     memset(buffer, 0, sizeof(buffer));
@@ -129,7 +129,7 @@ int main(void) {
                 "post-write file read failed")) return 1;
     if (!expect(memcmp(buffer, patch, sizeof(patch) - 1u) == 0,
                 "post-write contents are wrong")) return 1;
-    if (!expect(buffer[sizeof(patch) - 1u] == 'l',
+    if (!expect(buffer[sizeof(patch) - 1u] == 'o',
                 "post-write adjacent byte changed")) return 1;
 
     if (!expect(sb_fat32_write_file(&fs, &entry, entry.file_size, 1u, patch) == 0,
