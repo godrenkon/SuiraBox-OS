@@ -12,6 +12,7 @@ int main(void) {
     assert(sb_launcher_add(&launcher, "settings", "Settings") == 0);
     assert(sb_launcher_add(&launcher, "files", "File Manager") == 0);
     assert(sb_launcher_add(&launcher, "terminal", "Terminal") == 0);
+    assert(sb_launcher_add(&launcher, "settings", "Settings Again") != 0);
     assert(launcher.count == 3u);
 
     assert(sb_launcher_set_open(&launcher, 1u) == 0);
