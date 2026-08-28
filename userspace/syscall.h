@@ -13,6 +13,26 @@
 #define SB_SYS_DISPLAY_GLYPH   7u
 #define SB_SYS_INPUT_MOUSE     8u
 
+#ifdef SB_HOST_TEST
+
+uint64_t sb_syscall0(uint64_t number);
+uint64_t sb_syscall1(uint64_t number, uint64_t arg0);
+uint64_t sb_syscall3(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2);
+uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1,
+                     uint64_t arg2, uint64_t arg3);
+uint64_t sb_get_ticks(void);
+uint64_t sb_process_id(void);
+uint64_t sb_display_info(void);
+uint64_t sb_display_clear(uint32_t rgb);
+uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width,
+                         uint32_t height, uint32_t rgb);
+uint64_t sb_input_key(void);
+uint64_t sb_input_mouse(void);
+uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
+                          uint32_t rgb);
+
+#else
+
 static inline uint64_t sb_syscall0(uint64_t number) {
     uint64_t result;
     __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number) : "memory");
@@ -92,5 +112,7 @@ static inline uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
     __asm__ volatile ("int $0x80" : "=a"(result) : "a"(SB_SYS_DISPLAY_GLYPH), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10) : "memory");
     return result;
 }
+
+#endif
 
 #endif
