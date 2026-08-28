@@ -4,6 +4,18 @@ static int valid_string(const char *s) {
     return s != 0 && s[0] != '\0';
 }
 
+static int duplicate_id(const sb_launcher_t *launcher, const char *id) {
+    if (launcher == 0 || id == 0) return 0;
+    for (uint32_t i = 0u; i < launcher->count; ++i) {
+        const char *existing = launcher->items[i].id;
+        uint32_t j = 0u;
+        if (existing == 0) continue;
+        while (existing[j] != '\0' && id[j] != '\0' && existing[j] == id[j]) ++j;
+        if (existing[j] == '\0' && id[j] == '\0') return 1;
+    }
+    return 0;
+}
+
 void sb_launcher_init(sb_launcher_t *launcher) {
     if (launcher == 0) return;
     *launcher = (sb_launcher_t){0};
@@ -11,7 +23,7 @@ void sb_launcher_init(sb_launcher_t *launcher) {
 
 int sb_launcher_add(sb_launcher_t *launcher, const char *id, const char *label) {
     if (launcher == 0 || !valid_string(id) || !valid_string(label) ||
-        launcher->count >= SB_LAUNCHER_MAX_ITEMS) return -1;
+        launcher->count >= SB_LAUNCHER_MAX_ITEMS || duplicate_id(launcher, id)) return -1;
     launcher->items[launcher->count] = (sb_launcher_item_t){id, label, 1u};
     ++launcher->count;
     return 0;
