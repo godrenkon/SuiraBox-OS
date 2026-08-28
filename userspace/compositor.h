@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "gui.h"
+#include "surface.h"
 
 typedef struct {
     uint32_t width;
@@ -22,5 +23,10 @@ int sb_compositor_clip_rect(int32_t x, int32_t y, uint32_t width, uint32_t heigh
 uint32_t sb_compositor_visible_count(const sb_gui_window_manager_t *wm);
 void sb_compositor_present(const sb_compositor_style_t *style,
                            const sb_gui_window_manager_t *wm);
+void sb_compositor_present_damage(const sb_compositor_style_t *style,
+                                  const sb_gui_window_manager_t *wm,
+                                  const sb_surface_rect_t *damage,
+                                  uint32_t damage_count,
+                                  uint8_t full_damage);
 
 #endif
