@@ -2,6 +2,7 @@ BUILD := build
 ISO := $(BUILD)/suirabox.iso
 KERNEL := $(BUILD)/suirabox.elf
 USER_ELF := $(BUILD)/user-hello.elf
+DESKTOP_ELF := $(BUILD)/sb-desktop.elf
 PMM_HOST_TEST := $(BUILD)/pmm-host-test
 FAT32_HOST_TEST := $(BUILD)/fat32-host-test
 
@@ -48,6 +49,7 @@ GDT_OBJ := $(BUILD)/gdt.o
 USERMODE_OBJ := $(BUILD)/user_mode.o
 MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
+DESKTOP_USER_OBJ := $(BUILD)/desktop.o
 
 .PHONY: all clean iso userspace check host-pmm-test host-fat32-test
 
@@ -128,7 +130,7 @@ $(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/mm/address_space.h | $(
 $(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.h kernel/elf_loader.h kernel/mm/address_space.h kernel/mm/multiboot_modules.h kernel/mm/pmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/timer.h kernel/scheduler.h | $(BUILD)
+$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/timer.h kernel/scheduler.h kernel/framebuffer.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(SYSCALL_ARCH_OBJ): kernel/arch/x86_64/syscall.S | $(BUILD)
@@ -155,18 +157,25 @@ $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h |
 $(USER_OBJ): userspace/hello.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
+$(DESKTOP_USER_OBJ): userspace/desktop.S | $(BUILD)
+	$(AS) --64 $< -o $@
+
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
 
-userspace: $(USER_ELF)
+$(DESKTOP_ELF): $(DESKTOP_USER_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_USER_OBJ)
+
+userspace: $(USER_ELF) $(DESKTOP_ELF)
 
 $(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
-iso: $(KERNEL) $(USER_ELF) boot/grub.cfg
+iso: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub
 	cp $(KERNEL) $(BUILD)/iso/boot/suirabox.elf
 	cp $(USER_ELF) $(BUILD)/iso/boot/user-hello.elf
+	cp $(DESKTOP_ELF) $(BUILD)/iso/boot/sb-desktop.elf
 	cp boot/grub.cfg $(BUILD)/iso/boot/grub/grub.cfg
 	grub-mkrescue -o $(ISO) $(BUILD)/iso >/dev/null
 
@@ -182,13 +191,14 @@ $(FAT32_HOST_TEST): tests/fat32_host_test.c kernel/fs/fat32.c kernel/fs/fat32.h 
 host-fat32-test: $(FAT32_HOST_TEST)
 	$(FAT32_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) host-pmm-test host-fat32-test
+check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
 		printf '%s\n' 'warning: grub-file is unavailable; skipping Multiboot2 artifact validation'; \
 	fi
 	readelf -h $(USER_ELF) | grep -q 'Class:.*ELF64'
+	readelf -h $(DESKTOP_ELF) | grep -q 'Class:.*ELF64'
 
 clean:
 	rm -rf $(BUILD)
