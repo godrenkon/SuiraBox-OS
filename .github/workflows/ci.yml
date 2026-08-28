@@ -20,8 +20,7 @@ jobs:
             grub-common \
             xorriso \
             mtools \
-            qemu-system-x86 \
-            xvfb
+            qemu-system-x86
 
       - name: Build ISO
         run: make
@@ -54,25 +53,27 @@ jobs:
           grep -F "Scheduler: task table/round-robin selection OK" qemu.log
           grep -F "Process/Syscall: model and dispatch OK" qemu.log
           grep -F "Syscall: int 0x80 user gate ready" qemu.log
-          grep -F "Userspace: ELF + address-space + stack preparation OK" qemu.log
+          grep -F "Userspace: SB Desktop ELF + address-space + stack preparation OK" qemu.log
           grep -F "Timer: IRQ0 enabled" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
-          grep -F "Userspace: entering ring3" qemu.log
+          grep -F "Userspace: entering SB Desktop ring3" qemu.log
 
-      - name: Graphical framebuffer smoke test
+      - name: Framebuffer smoke test
         run: |
           set -o pipefail
-          timeout 20s xvfb-run -a qemu-system-x86_64 \
+          timeout 20s qemu-system-x86_64 \
             -m 256M \
             -cdrom build/suirabox.iso \
             -serial file:qemu-gui.log \
-            -display gtk,gl=off \
+            -display none \
+            -vga std \
             -no-reboot \
             -no-shutdown \
             2>&1 | tee qemu-gui-host.log || test ${PIPESTATUS[0]} -eq 124
           grep -F "Display: framebuffer ready" qemu-gui.log
           grep -F "Display: framebuffer mapped" qemu-gui.log
           grep -F "Display: framebuffer clear OK" qemu-gui.log
+          grep -F "Desktop: kernel fallback surface rendered" qemu-gui.log
           grep -F "Memory: VMM map/translate/unmap OK" qemu-gui.log
 
       - name: Upload kernel artifacts
