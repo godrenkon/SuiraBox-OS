@@ -5,7 +5,6 @@ header_start:
 .long 0
 .long header_end - header_start
 .long -(0xE85250D6 + 0 + (header_end - header_start))
-/* Required end tag. */
 .word 0
 .word 0
 .long 8
@@ -15,34 +14,30 @@ header_end:
 .code32
 .global _start
 .global stack_top
+.global pml4
+.global pdpt
+.global pd
 .type _start, @function
 _start:
     cli
     cld
-
-    /* Save Multiboot2 arguments before using the working registers. */
     movl %eax, multiboot_magic_saved
     movl %ebx, multiboot_info_saved
-
     movl $stack_top, %esp
 
-    /* Clear exactly the three 4 KiB page-table pages. */
     movl $pml4, %edi
     xorl %eax, %eax
     movl $(1024 * 3), %ecx
     rep stosl
 
-    /* PML4[0] -> PDPT. */
     movl $pdpt, %eax
     orl $0x3, %eax
     movl %eax, pml4
 
-    /* PDPT[0] -> Page Directory. */
     movl $pd, %eax
     orl $0x3, %eax
     movl %eax, pdpt
 
-    /* Identity-map the first 1 GiB with 2 MiB pages. */
     movl $pd, %edi
     movl $0x83, %eax
     movl $512, %ecx
@@ -52,22 +47,18 @@ _start:
     addl $8, %edi
     loop 1b
 
-    /* Enable PAE. */
     movl %cr4, %eax
     orl $0x20, %eax
     movl %eax, %cr4
 
-    /* Load page table root. */
     movl $pml4, %eax
     movl %eax, %cr3
 
-    /* Enable EFER.LME. */
     movl $0xC0000080, %ecx
     rdmsr
     orl $0x100, %eax
     wrmsr
 
-    /* Enable paging. */
     movl %cr0, %eax
     orl $0x80000000, %eax
     movl %eax, %cr0
@@ -85,11 +76,8 @@ long_mode_entry:
     movw %ax, %fs
     movw %ax, %gs
 
-    /* Restore Multiboot2 arguments into the x86_64 C ABI registers. */
     movl multiboot_magic_saved, %edi
     movl multiboot_info_saved, %esi
-
-    /* Preserve the C ABI invariant that DF is clear for kmain and callees. */
     cld
     call kmain
 
