@@ -154,8 +154,14 @@ void sb_compositor_present(const sb_compositor_style_t *style,
 void sb_compositor_present_cursor(const sb_compositor_style_t *style,
                                   int32_t x, int32_t y) {
     static const uint64_t cursor_bitmap = 0xE0C0808080C0E0F0ULL;
-    if (style == 0) return;
-    (void)sb_display_glyph((uint32_t)(x < 0 ? 0 : x),
-                            (uint32_t)(y < 0 ? 0 : y),
-                            cursor_bitmap, style->cursor_rgb);
+    uint32_t cursor_x;
+    uint32_t cursor_y;
+    if (style == 0 || style->width < 8u || style->height < 8u) return;
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x >= (int32_t)style->width - 7) x = (int32_t)style->width - 8;
+    if (y >= (int32_t)style->height - 7) y = (int32_t)style->height - 8;
+    cursor_x = (uint32_t)x;
+    cursor_y = (uint32_t)y;
+    (void)sb_display_glyph(cursor_x, cursor_y, cursor_bitmap, style->cursor_rgb);
 }
