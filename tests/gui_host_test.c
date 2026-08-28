@@ -76,8 +76,11 @@ int main(void) {
     assert(sb_gui_focus_window(&wm, front_id) == 0);
     assert(wm.focused_id == front_id);
 
+    assert(sb_gui_set_minimized(&wm, top->id, 1u) == 0);
+    assert(top->minimized == 1u);
     assert(sb_gui_destroy_window(&wm, front_id) == 0);
     assert(wm.count == 2u);
+    assert(wm.focused_id == back_id);
     assert(sb_gui_find_window(&wm, front_id) == 0);
     assert(sb_gui_destroy_window(&wm, 0u) != 0);
     return 0;
