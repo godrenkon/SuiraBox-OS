@@ -19,6 +19,7 @@ extern int scheduler_add_kernel_task(uint64_t id, uint32_t priority);
 extern sb_task_t *scheduler_pick_next(void);
 extern uint32_t scheduler_task_count(void);
 extern void sb_syscall_int80_stub(void);
+extern void arch_enter_user(uint64_t entry_point, uint64_t user_stack);
 extern char __kernel_start;
 extern char __kernel_end;
 
@@ -112,6 +113,9 @@ static int vmm_selftest(void) {
     { uint64_t physical = 0; result = vmm_unmap_page(test_virtual, &physical);
       if (result != 0 || (physical & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != ((uint64_t)(uintptr_t)page & ~(uint64_t)(SB_PAGE_SIZE - 1u))) return 0; }
     serial_write("Memory: VMM test unmap OK\r\n");
+    pmm_free_page(page);
+    pmm_free_page(extra1);
+    pmm_free_page(extra2);
     return 1;
 }
 
@@ -156,7 +160,26 @@ static int userspace_prepare_selftest(uint64_t multiboot_info) {
     return 1;
 }
 
+static sb_process_t *prepare_init_process(uint64_t multiboot_info, sb_process_image_t *image) {
+    sb_process_t *process;
+    if (image == 0) return 0;
+    process = process_create(1u);
+    if (process == 0) return 0;
+    if (process_prepare_boot_module(process, multiboot_info, "user-hello", image) != 0) {
+        process_destroy(process);
+        return 0;
+    }
+    if (process_create_thread(process, 10001u, 128u) == 0) {
+        process_destroy(process);
+        return 0;
+    }
+    return process;
+}
+
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
+    sb_process_t *init_process;
+    sb_process_image_t init_image;
+
     serial_init();
     serial_write("================================\r\n        SUIRABOX OS              \r\n================================\r\n");
     serial_write("SB Kernel v0.1\r\nArchitecture: x86_64\r\n");
@@ -196,14 +219,26 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Syscall: int 0x80 user gate ready\r\n");
 
     serial_write("Userspace: loading user-hello module...\r\n");
-    serial_write(userspace_prepare_selftest(multiboot_info) ?
-        "Userspace: ELF + address-space + stack preparation OK\r\n" :
-        "Userspace: ELF + address-space + stack preparation FAILED\r\n");
+    init_process = prepare_init_process(multiboot_info, &init_image);
+    serial_write(init_process != 0 ? "Userspace: ELF + address-space + stack preparation OK\r\n" : "Userspace: ELF + address-space + stack preparation FAILED\r\n");
 
     serial_write("Timer: initializing PIT at 100 Hz...\r\n");
     timer_init(100u);
     serial_write("Timer: IRQ0 enabled\r\n");
     serial_write("Userspace: ring3 execution path prepared\r\n");
     serial_write("Phase 1 bootstrap complete.\r\n");
+
+    if (init_process != 0) {
+        serial_write("Userspace: activating init address space\r\n");
+        init_process->state = SB_PROCESS_RUNNING;
+        if (process_activate(init_process) == 0) {
+            serial_write("Userspace: entering ring3\r\n");
+            arch_enter_user(init_image.entry_point, init_image.user_stack_top);
+            serial_write("Userspace: returned unexpectedly; staying in kernel halt loop\r\n");
+        } else {
+            serial_write("Userspace: address-space activation FAILED\r\n");
+        }
+    }
+
     for (;;) __asm__ volatile ("hlt");
 }
