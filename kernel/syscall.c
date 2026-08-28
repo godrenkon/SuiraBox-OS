@@ -12,8 +12,7 @@ static uint64_t syscall_display_info(void) {
     const sb_framebuffer_info_t *fb;
     if (!sb_framebuffer_available()) return 0u;
     fb = sb_framebuffer_info();
-    if (fb == 0 || fb->width > UINT32_MAX || fb->height > UINT16_MAX || fb->bits_per_pixel > UINT8_MAX)
-        return 0u;
+    if (fb == 0 || fb->height > UINT16_MAX) return 0u;
     return ((uint64_t)fb->width << 32) | ((uint64_t)fb->height << 16) |
            ((uint64_t)fb->bits_per_pixel << 8) | 1u;
 }
