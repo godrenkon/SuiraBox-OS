@@ -147,11 +147,30 @@ static int scheduler_selftest(void) {
 }
 
 static int process_syscall_selftest(void) {
-    sb_process_t *process; sb_thread_t *thread;
-    process_init(); syscall_init();
-    process = process_create(100u); if (process == 0 || process_count() != 1u) return 0;
-    thread = process_create_thread(process, 1001u, 128u); if (thread == 0 || process->thread_count != 1u) return 0;
-    return process_get(100u) == process;
+    sb_process_t *process;
+    sb_thread_t *thread;
+    sb_process_t *second;
+
+    process_init();
+    syscall_init();
+
+    if (process_create(0u) != 0) return 0;
+    process = process_create(100u);
+    if (process == 0 || process_count() != 1u) return 0;
+    if (process_create(100u) != 0 || process_count() != 1u) return 0;
+
+    thread = process_create_thread(process, 1001u, 128u);
+    if (thread == 0 || process->thread_count != 1u) return 0;
+    if (process_create_thread(process, 1001u, 128u) != 0 || process->thread_count != 1u) return 0;
+    if (process_get(100u) != process || process_get(0u) != 0) return 0;
+
+    process_destroy(process);
+    if (process_count() != 0u || process_get(100u) != 0) return 0;
+
+    second = process_create(100u);
+    if (second == 0 || process_count() != 1u || process_get(100u) != second) return 0;
+    process_destroy(second);
+    return process_count() == 0u;
 }
 
 static sb_process_t *prepare_init_process(uint64_t multiboot_info, sb_process_image_t *image) {
@@ -217,59 +236,34 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Memory: initializing VMM...\r\n");
     vmm_init();
     serial_write(vmm_selftest() ? "Memory: VMM map/translate/unmap OK\r\n" : "Memory: VMM map/translate/unmap FAILED\r\n");
-
-    if (sb_framebuffer_available()) {
-        serial_write("Display: mapping framebuffer into kernel virtual memory...\r\n");
-        if (sb_framebuffer_map()) {
-            serial_write("Display: framebuffer mapped\r\n");
-            if (sb_framebuffer_clear(12u, 16u, 24u) == 0) {
-                serial_write("Display: framebuffer clear OK\r\n");
-                if (sb_desktop_bootstrap_render() == 0)
-                    serial_write("Desktop: kernel fallback surface rendered\r\n");
-                else
-                    serial_write("Desktop: kernel fallback surface unavailable\r\n");
-            } else {
-                serial_write("Display: framebuffer clear deferred\r\n");
-            }
-        } else {
-            serial_write("Display: framebuffer mapping unavailable; keeping fallback console\r\n");
-        }
-    }
-
     serial_write("Memory: initializing kernel heap...\r\n");
     serial_write(heap_selftest() ? "Memory: kernel heap alloc/free OK\r\n" : "Memory: kernel heap alloc/free FAILED\r\n");
-
-    serial_write("CPU: initializing GDT/TSS...\r\n"); gdt_init(); serial_write("CPU: GDT/TSS ready\r\n");
-    serial_write("Scheduler: initializing...\r\n"); scheduler_init();
+    serial_write("CPU: initializing GDT/TSS...\r\n");
+    arch_gdt_init();
+    serial_write("CPU: GDT/TSS ready\r\n");
+    serial_write("Scheduler: initializing...\r\n");
+    scheduler_init();
     serial_write(scheduler_selftest() ? "Scheduler: task table/round-robin selection OK\r\n" : "Scheduler: task table/round-robin selection FAILED\r\n");
-    serial_write("Process: initializing...\r\n");
+    serial_write("Process/Syscall: initializing...\r\n");
     serial_write(process_syscall_selftest() ? "Process/Syscall: model and dispatch OK\r\n" : "Process/Syscall: model and dispatch FAILED\r\n");
-
     syscall_init();
-    interrupts_set_user_handler(0x80u, (uintptr_t)sb_syscall_int80_stub);
     serial_write("Syscall: int 0x80 user gate ready\r\n");
-
-    serial_write("Userspace: loading sb-desktop module...\r\n");
+    report_multiboot_modules(multiboot_info);
     init_process = prepare_init_process(multiboot_info, &init_image);
-    serial_write(init_process != 0 ? "Userspace: SB Desktop ELF + address-space + stack preparation OK\r\n" : "Userspace: SB Desktop preparation FAILED\r\n");
-
-    serial_write("Timer: initializing PIT at 100 Hz...\r\n");
-    timer_init(100u);
-    serial_write("Timer: IRQ0 enabled\r\n");
-    serial_write("Userspace: SB Desktop ring3 execution path prepared\r\n");
-    serial_write("Phase 1 bootstrap complete.\r\n");
-
-    if (init_process != 0) {
-        serial_write("Userspace: activating SB Desktop address space\r\n");
-        init_process->state = SB_PROCESS_RUNNING;
-        if (process_activate(init_process) == 0) {
-            serial_write("Userspace: entering SB Desktop ring3\r\n");
-            arch_enter_user(init_image.entry_point, init_image.user_stack_top);
-            serial_write("Userspace: returned unexpectedly; staying in kernel halt loop\r\n");
-        } else {
-            serial_write("Userspace: SB Desktop address-space activation FAILED\r\n");
-        }
+    if (init_process == 0) {
+        serial_write("Userspace: SB Desktop ELF + address-space + stack preparation FAILED\r\n");
+        for (;;) __asm__ volatile ("hlt");
     }
-
+    serial_write("Userspace: SB Desktop ELF + address-space + stack preparation OK\r\n");
+    serial_write("Timer: initializing IRQ0...\r\n");
+    timer_init();
+    serial_write("Timer: IRQ0 enabled\r\n");
+    serial_write("Phase 1 bootstrap complete.\r\n");
+    serial_write("Userspace: entering SB Desktop ring3\r\n");
+    if (process_activate(init_process) != 0) {
+        serial_write("Userspace: process address-space activation FAILED\r\n");
+        for (;;) __asm__ volatile ("hlt");
+    }
+    arch_enter_user(init_image.entry_point, init_image.user_stack_top);
     for (;;) __asm__ volatile ("hlt");
 }
