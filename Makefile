@@ -157,7 +157,7 @@ $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h |
 $(USER_OBJ): userspace/hello.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(DESKTOP_USER_OBJ): userspace/desktop.S | $(BUILD)
+$(DESKTOP_USER_OBJ): userspace/desktop_select.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
@@ -195,7 +195,7 @@ check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
-		printf '%s\n' 'warning: grub-file is unavailable; skipping Multiboot2 artifact validation'; \
+		printf '%s\\n' 'warning: grub-file is unavailable; skipping Multiboot2 artifact validation'; \
 	fi
 	readelf -h $(USER_ELF) | grep -q 'Class:.*ELF64'
 	readelf -h $(DESKTOP_ELF) | grep -q 'Class:.*ELF64'
