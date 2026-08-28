@@ -1,5 +1,6 @@
 #include "framebuffer.h"
 #include "mm/vmm.h"
+#include "mm/pmm.h"
 #include <stdint.h>
 
 #define SB_MB2_MAX_INFO_SIZE (64u * 1024u)
@@ -146,6 +147,7 @@ int sb_framebuffer_map(void) {
 
     physical_start = current.address & SB_PAGE_MASK;
     physical_end = current.address + (uint64_t)current.pitch * current.height;
+    if (physical_end > UINT64_MAX - (SB_PAGE_SIZE - 1u)) return 0;
     physical_end = (physical_end + SB_PAGE_SIZE - 1u) & SB_PAGE_MASK;
     if (physical_end <= physical_start) return 0;
 
