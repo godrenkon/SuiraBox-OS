@@ -3,6 +3,7 @@
 #define SB_FAT32_EOC_MIN 0x0FFFFFF8u
 #define SB_FAT32_ENTRY_SIZE 32u
 #define SB_FAT32_SECTOR_BYTES 512u
+#define SB_FAT32_MAX_ROOT_LOOKUP_ENTRIES 4096u
 
 static uint16_t le16(const uint8_t *p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
@@ -13,6 +14,16 @@ static uint32_t le32(const uint8_t *p) {
            ((uint32_t)p[1] << 8) |
            ((uint32_t)p[2] << 16) |
            ((uint32_t)p[3] << 24);
+}
+
+static int str_equal(const char *a, const char *b) {
+    uint32_t i = 0u;
+    if (a == 0 || b == 0) return 0;
+    while (a[i] != '\0' && b[i] != '\0') {
+        if (a[i] != b[i]) return 0;
+        ++i;
+    }
+    return a[i] == '\0' && b[i] == '\0';
 }
 
 static int read_sector(sb_fat32_t *fs, uint64_t lba, uint8_t *buffer) {
@@ -129,8 +140,22 @@ int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *
         entry->attributes = raw[11];
         entry->first_cluster = ((uint32_t)le16(&raw[20]) << 16) | le16(&raw[26]);
         entry->file_size = le32(&raw[28]);
+        entry->root_index = index;
         return 1;
     }
+}
+
+int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t *entry) {
+    if (fs == 0 || name == 0 || name[0] == '\0' || entry == 0) return 0;
+    for (uint32_t index = 0u; index < SB_FAT32_MAX_ROOT_LOOKUP_ENTRIES; ++index) {
+        sb_fat32_dirent_t candidate;
+        if (!sb_fat32_read_root_entry(fs, index, &candidate)) return 0;
+        if (str_equal(candidate.name, name)) {
+            *entry = candidate;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
