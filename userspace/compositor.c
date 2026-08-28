@@ -1,4 +1,5 @@
 #include "compositor.h"
+#include "syscall.h"
 
 void sb_compositor_init(sb_compositor_style_t *style,
                         uint32_t width, uint32_t height) {
@@ -50,4 +51,40 @@ uint32_t sb_compositor_visible_count(const sb_gui_window_manager_t *wm) {
         if (window->visible != 0u && window->minimized == 0u) ++count;
     }
     return count;
+}
+
+static void compositor_rect(const sb_compositor_style_t *style,
+                            int32_t x, int32_t y, uint32_t width, uint32_t height,
+                            uint32_t rgb) {
+    uint32_t out_x;
+    uint32_t out_y;
+    uint32_t out_width;
+    uint32_t out_height;
+    if (style == 0) return;
+    if (sb_compositor_clip_rect(x, y, width, height,
+                                style->width, style->height,
+                                &out_x, &out_y, &out_width, &out_height) != 0) return;
+    (void)sb_display_rect(out_x, out_y, out_width, out_height, rgb);
+}
+
+void sb_compositor_present(const sb_compositor_style_t *style,
+                           const sb_gui_window_manager_t *wm) {
+    uint32_t i;
+    if (style == 0 || wm == 0) return;
+
+    compositor_rect(style, 0, 0, style->width, style->height, style->background_rgb);
+    compositor_rect(style, 0, 0, style->width, 72u, style->chrome_rgb);
+    compositor_rect(style, 0, (int32_t)style->height - 72, style->width, 72u, style->chrome_rgb);
+
+    /* Windows are submitted in manager order: later entries are visually above earlier ones. */
+    for (i = 0u; i < wm->count; ++i) {
+        const sb_gui_window_t *window = &wm->windows[i];
+        if (window->visible == 0u || window->minimized != 0u) continue;
+        compositor_rect(style, window->x, window->y,
+                        window->width, window->height, style->titlebar_rgb);
+        compositor_rect(style, window->x, window->y,
+                        window->width, 36u, style->accent_rgb);
+    }
+
+    compositor_rect(style, 18, (int32_t)style->height - 60, 56u, 48u, style->accent_rgb);
 }
