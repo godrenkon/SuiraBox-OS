@@ -31,7 +31,8 @@ sb_gui_window_t *sb_gui_create_window(sb_gui_window_manager_t *wm,
                                         int32_t x, int32_t y,
                                         uint32_t width, uint32_t height) {
     sb_gui_window_t *window;
-    if (wm == 0 || wm->count >= SB_GUI_MAX_WINDOWS || width == 0u || height == 0u) return 0;
+    if (wm == 0 || wm->count >= SB_GUI_MAX_WINDOWS || width < SB_GUI_MIN_WINDOW_WIDTH ||
+        height < SB_GUI_MIN_WINDOW_HEIGHT) return 0;
     window = &wm->windows[wm->count++];
     window->id = wm->next_id++;
     if (window->id == 0u) window->id = wm->next_id++;
@@ -128,6 +129,20 @@ int sb_gui_set_maximized(sb_gui_window_manager_t *wm, uint32_t id,
     return 0;
 }
 
+int sb_gui_restore_window(sb_gui_window_manager_t *wm, uint32_t id) {
+    sb_gui_window_t *window = find_slot(wm, id);
+    if (window == 0 || window->visible == 0u) return -1;
+    if (window->minimized != 0u) window->minimized = 0u;
+    if (window->maximized != 0u) {
+        window->x = window->restore_x;
+        window->y = window->restore_y;
+        window->width = window->restore_width;
+        window->height = window->restore_height;
+        window->maximized = 0u;
+    }
+    return sb_gui_focus_window(wm, id);
+}
+
 sb_gui_window_t *sb_gui_find_window(sb_gui_window_manager_t *wm, uint32_t id) {
     return find_slot(wm, id);
 }
@@ -182,6 +197,47 @@ sb_gui_resize_edge_t sb_gui_hit_resize(const sb_gui_window_t *window, int32_t x,
         (int64_t)x >= left && (int64_t)x < right)
         return SB_GUI_RESIZE_BOTTOM;
     return SB_GUI_RESIZE_NONE;
+}
+
+uint32_t sb_gui_minimized_count(const sb_gui_window_manager_t *wm) {
+    uint32_t count = 0u;
+    if (wm == 0) return 0u;
+    for (uint32_t i = 0u; i < wm->count; ++i) {
+        if (wm->windows[i].visible != 0u && wm->windows[i].minimized != 0u) ++count;
+    }
+    return count;
+}
+
+sb_gui_window_t *sb_gui_minimized_at(sb_gui_window_manager_t *wm, uint32_t index) {
+    if (wm == 0) return 0;
+    for (uint32_t i = 0u; i < wm->count; ++i) {
+        sb_gui_window_t *window = &wm->windows[i];
+        if (window->visible != 0u && window->minimized != 0u) {
+            if (index == 0u) return window;
+            --index;
+        }
+    }
+    return 0;
+}
+
+uint32_t sb_gui_hit_taskbar(const sb_gui_window_manager_t *wm, int32_t x, int32_t y,
+                            uint32_t screen_width, uint32_t screen_height) {
+    uint32_t index;
+    int64_t top;
+    if (wm == 0 || screen_width == 0u || screen_height < SB_GUI_TASKBAR_HEIGHT) return 0u;
+    top = (int64_t)screen_height - (int64_t)SB_GUI_TASKBAR_HEIGHT;
+    if ((int64_t)y < top || (int64_t)y >= (int64_t)screen_height || x < 0) return 0u;
+    for (index = 0u; index < sb_gui_minimized_count(wm); ++index) {
+        const int64_t left = (int64_t)SB_GUI_TASKBAR_GAP +
+                             (int64_t)index * ((int64_t)SB_GUI_TASKBAR_BUTTON_WIDTH +
+                                              (int64_t)SB_GUI_TASKBAR_GAP);
+        const int64_t right = left + (int64_t)SB_GUI_TASKBAR_BUTTON_WIDTH;
+        if ((int64_t)x >= left && (int64_t)x < right) {
+            sb_gui_window_t *window = sb_gui_minimized_at((sb_gui_window_manager_t *)wm, index);
+            return window != 0 ? window->id : 0u;
+        }
+    }
+    return 0u;
 }
 
 int sb_gui_focus_window(sb_gui_window_manager_t *wm, uint32_t id) {
