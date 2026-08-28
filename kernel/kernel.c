@@ -216,6 +216,20 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Memory: initializing VMM...\r\n");
     vmm_init();
     serial_write(vmm_selftest() ? "Memory: VMM map/translate/unmap OK\r\n" : "Memory: VMM map/translate/unmap FAILED\r\n");
+
+    if (sb_framebuffer_available()) {
+        serial_write("Display: mapping framebuffer into kernel virtual memory...\r\n");
+        if (sb_framebuffer_map()) {
+            serial_write("Display: framebuffer mapped\r\n");
+            if (sb_framebuffer_clear(12u, 16u, 24u) == 0)
+                serial_write("Display: framebuffer clear OK\r\n");
+            else
+                serial_write("Display: framebuffer clear deferred\r\n");
+        } else {
+            serial_write("Display: framebuffer mapping unavailable; keeping fallback console\r\n");
+        }
+    }
+
     serial_write("Memory: initializing kernel heap...\r\n");
     serial_write(heap_selftest() ? "Memory: kernel heap alloc/free OK\r\n" : "Memory: kernel heap alloc/free FAILED\r\n");
 
