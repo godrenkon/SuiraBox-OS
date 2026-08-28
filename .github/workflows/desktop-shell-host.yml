@@ -1,0 +1,19 @@
+name: SuiraBox Desktop Shell Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  desktop-shell-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile Desktop Shell host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Iuserspace tests/desktop_shell_host_test.c userspace/desktop_shell.c userspace/launcher.c -o /tmp/desktop-shell-host-test
+      - name: Run Desktop Shell host test
+        run: /tmp/desktop-shell-host-test
