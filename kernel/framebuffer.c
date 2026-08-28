@@ -60,10 +60,11 @@ static uint32_t scale_component(uint8_t value, uint8_t bits) {
 
 static int framebuffer_geometry_ok(void) {
     const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    const uint64_t row_bytes = (uint64_t)current.width * bytes_per_pixel;
     const uint64_t span = (uint64_t)current.pitch * current.height;
     if (current.type != SB_FB_DIRECT || bytes_per_pixel == 0u || bytes_per_pixel > 4u ||
-        current.bits_per_pixel > SB_FB_MAX_BPP || current.address == 0u ||
-        span == 0u || span > UINT64_MAX - current.address)
+        current.bits_per_pixel > SB_FB_MAX_BPP || current.address == 0u || current.pitch == 0u ||
+        row_bytes > current.pitch || span == 0u || span > UINT64_MAX - current.address)
         return 0;
     if (current.red_position >= 32u || current.green_position >= 32u || current.blue_position >= 32u ||
         current.red_mask_size > 32u || current.green_mask_size > 32u || current.blue_mask_size > 32u ||
@@ -128,10 +129,11 @@ int sb_framebuffer_init(uint64_t multiboot_info_address) {
                 tag->size >= sizeof(sb_mb2_fb_tag_prefix_t)) {
                 const sb_mb2_fb_tag_prefix_t *fb = (const sb_mb2_fb_tag_prefix_t *)tag;
                 const uint64_t bytes_per_pixel = ((uint64_t)fb->bpp + 7u) / 8u;
+                const uint64_t row_bytes = (uint64_t)fb->width * bytes_per_pixel;
                 const uint64_t total_bytes = (uint64_t)fb->pitch * fb->height;
                 if (fb->address != 0u && fb->pitch != 0u && fb->width != 0u &&
                     fb->height != 0u && fb->bpp != 0u && fb->bpp <= SB_FB_MAX_BPP &&
-                    bytes_per_pixel <= 4u && total_bytes <= UINT64_MAX - fb->address) {
+                    bytes_per_pixel <= 4u && row_bytes <= fb->pitch && total_bytes <= UINT64_MAX - fb->address) {
                     current.address = fb->address;
                     current.pitch = fb->pitch;
                     current.width = fb->width;
