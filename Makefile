@@ -50,7 +50,6 @@ USERMODE_OBJ := $(BUILD)/user_mode.o
 MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
 DESKTOP_USER_OBJ := $(BUILD)/desktop.o
-GLYPH_CONST_OBJ := $(BUILD)/glyph_constants.o
 
 .PHONY: all clean iso userspace check host-pmm-test host-fat32-test
 
@@ -159,16 +158,13 @@ $(USER_OBJ): userspace/hello.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
 $(DESKTOP_USER_OBJ): userspace/desktop_select.S | $(BUILD)
-	$(AS) --64 $< -o $@
-
-$(GLYPH_CONST_OBJ): userspace/glyph_constants.S | $(BUILD)
-	$(AS) --64 $< -o $@
+	$(AS) --64 --defsym GLYPH_G=0x003c42424e40423c $< -o $@
 
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
 
-$(DESKTOP_ELF): $(DESKTOP_USER_OBJ) $(GLYPH_CONST_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_USER_OBJ) $(GLYPH_CONST_OBJ)
+$(DESKTOP_ELF): $(DESKTOP_USER_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_USER_OBJ)
 
 userspace: $(USER_ELF) $(DESKTOP_ELF)
 
