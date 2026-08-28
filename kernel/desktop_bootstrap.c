@@ -17,7 +17,7 @@ int sb_desktop_bootstrap_render(void) {
     uint32_t panel_width;
     uint32_t panel_height;
 
-    if (!sb_framebuffer_available() || fb == 0u) return -1;
+    if (!sb_framebuffer_available() || fb == 0) return -1;
     if (fb->width < 640u || fb->height < 480u) return -1;
 
     bar_height = fb->height >= 720u ? 48u : 40u;
