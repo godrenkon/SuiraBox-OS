@@ -29,11 +29,11 @@ _start:
 
     /* Top bar. */
     mov $5, %rax
-    xor %edi, %edi           /* x */
-    xor %esi, %esi           /* y */
-    mov %r13d, %edx          /* width */
-    mov $56, %r10d           /* height */
-    mov $0x182230, %r8d      /* RGB */
+    xor %edi, %edi
+    xor %esi, %esi
+    mov %r13d, %edx
+    mov $56, %r10d
+    mov $0x182230, %r8d
     int $0x80
 
     /* Main window. */
@@ -51,25 +51,71 @@ _start:
     mov $5, %rax
     int $0x80
 
-    /* Left content panel. */
-    mov %edi, %eax
-    add $28, %eax
+    /* First-boot modal dialog. */
+    mov %r13d, %eax
+    sub $560, %eax
+    shr $1, %eax
     mov %eax, %edi
-    mov $132, %esi
-    mov $300, %edx
+    mov %r14d, %eax
+    sub $360, %eax
+    shr $1, %eax
+    mov %eax, %esi
+    mov $560, %edx
     mov $360, %r10d
-    mov $0x283443, %r8d
+    mov $0x313B4A, %r8d
     mov $5, %rax
     int $0x80
 
-    /* Right content panel. */
+    /* Dialog header. */
     mov %edi, %eax
-    add $332, %eax
+    add $24, %eax
     mov %eax, %edi
-    mov $132, %esi
-    mov $360, %edx
-    mov $360, %r10d
-    mov $0x242F3D, %r8d
+    add $24, %esi
+    mov $512, %edx
+    mov $52, %r10d
+    mov $0x3A485A, %r8d
+    mov $5, %rax
+    int $0x80
+
+    /* Japanese option. */
+    mov %esi, %eax
+    add $72, %eax
+    mov %eax, %esi
+    mov $112, %edx
+    mov $48, %r10d
+    mov $0x3F566B, %r8d
+    mov $5, %rax
+    int $0x80
+
+    /* English option. */
+    add $60, %esi
+    mov $112, %edx
+    mov $48, %r10d
+    mov $0x27313E, %r8d
+    mov $5, %rax
+    int $0x80
+
+    /* Chinese option. */
+    add $60, %esi
+    mov $112, %edx
+    mov $48, %r10d
+    mov $0x27313E, %r8d
+    mov $5, %rax
+    int $0x80
+
+    /* Spanish option. */
+    add $60, %esi
+    mov $112, %edx
+    mov $48, %r10d
+    mov $0x27313E, %r8d
+    mov $5, %rax
+    int $0x80
+
+    /* Continue button. */
+    add $68, %esi
+    mov $240, %edx
+    mov $44, %r10d
+    mov $0x536F8A, %r8d
     mov $5, %rax
     int $0x80
 
@@ -86,7 +132,7 @@ _start:
     /* Keep the first desktop process alive while the scheduler/window system
      * layers are still being developed. */
 .loop:
-    mov $0, %rax             /* SB_SYS_GET_TICKS */
+    mov $0, %rax
     int $0x80
     pause
     jmp .loop
