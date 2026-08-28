@@ -39,6 +39,7 @@ int main(void) {
     assert(style.height == 768u);
     assert(style.background_rgb == 0x0C1018u);
     assert(style.cursor_rgb == 0xE9F2FFu);
+    assert(style.maximize_rgb == 0x5EB88Cu);
 
     assert(sb_compositor_clip_rect(10, 20, 100u, 50u, 1024u, 768u,
                                    &x, &y, &width, &height) == 0);
