@@ -49,7 +49,7 @@ GDT_OBJ := $(BUILD)/gdt.o
 USERMODE_OBJ := $(BUILD)/user_mode.o
 MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
-DESKTOP_USER_OBJ := $(BUILD)/desktop.o
+DESKTOP_USER_OBJ := $(BUILD)/desktop_gui.o
 
 .PHONY: all clean iso userspace check host-pmm-test host-fat32-test
 
@@ -157,8 +157,8 @@ $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h |
 $(USER_OBJ): userspace/hello.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(DESKTOP_USER_OBJ): userspace/desktop_select.S | $(BUILD)
-	$(AS) --64 --defsym GLYPH_G=0x003c42424e40423c $< -o $@
+$(DESKTOP_USER_OBJ): userspace/desktop_gui.S | $(BUILD)
+	$(AS) --64 $< -o $@
 
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
@@ -177,7 +177,7 @@ iso: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) boot/grub.cfg
 	cp $(USER_ELF) $(BUILD)/iso/boot/user-hello.elf
 	cp $(DESKTOP_ELF) $(BUILD)/iso/boot/sb-desktop.elf
 	cp boot/grub.cfg $(BUILD)/iso/boot/grub/grub.cfg
-	grub-mkrescue -o $(ISO) $(BUILD)/iso >/dev/null
+	grub-mkrescue -o $(ISO) $(BUILD)/suirabox.iso >/dev/null
 
 $(PMM_HOST_TEST): tests/pmm_host_test.c kernel/mm/pmm.c kernel/mm/pmm.h | $(BUILD)
 	$(CC) -Wall -Wextra -Werror -Ikernel/mm tests/pmm_host_test.c kernel/mm/pmm.c -o $@
