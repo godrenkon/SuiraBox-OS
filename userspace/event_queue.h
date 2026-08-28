@@ -20,4 +20,7 @@ int sb_gui_event_queue_pop(sb_gui_event_queue_t *queue, sb_gui_event_t *event);
 uint32_t sb_gui_event_queue_size(const sb_gui_event_queue_t *queue);
 uint32_t sb_gui_event_queue_dropped(const sb_gui_event_queue_t *queue);
 
+/* Compatibility name used by desktop runtime code. */
+#define sb_gui_event_queue_count sb_gui_event_queue_size
+
 #endif
