@@ -132,14 +132,7 @@ int sb_gui_set_maximized(sb_gui_window_manager_t *wm, uint32_t id,
 int sb_gui_restore_window(sb_gui_window_manager_t *wm, uint32_t id) {
     sb_gui_window_t *window = find_slot(wm, id);
     if (window == 0 || window->visible == 0u) return -1;
-    if (window->minimized != 0u) window->minimized = 0u;
-    if (window->maximized != 0u) {
-        window->x = window->restore_x;
-        window->y = window->restore_y;
-        window->width = window->restore_width;
-        window->height = window->restore_height;
-        window->maximized = 0u;
-    }
+    window->minimized = 0u;
     return sb_gui_focus_window(wm, id);
 }
 
