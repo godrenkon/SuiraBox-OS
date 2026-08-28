@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include "syscall.h"
+#include "shell.h"
 
 /* Minimal userspace command dispatcher. Console I/O will be supplied by the
  * terminal device layer; for now these handlers expose the process/runtime ABI. */
