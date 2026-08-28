@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdint.h>
+#include <limits.h>
 #include "../userspace/launcher.h"
 
 int main(void) {
@@ -19,6 +20,10 @@ int main(void) {
     assert(sb_launcher_move_selection(&launcher, -1) == 0);
     assert(launcher.selected == 2u);
     assert(sb_launcher_move_selection(&launcher, 1) == 0);
+    assert(launcher.selected == 0u);
+    assert(sb_launcher_move_selection(&launcher, INT32_MAX) == 0);
+    assert(launcher.selected == 1u);
+    assert(sb_launcher_move_selection(&launcher, INT32_MIN) == 0);
     assert(launcher.selected == 0u);
 
     assert(sb_launcher_hit_test(&launcher, 20, 25, 10u, 10u, 200u, 40u, &index) == 0);
