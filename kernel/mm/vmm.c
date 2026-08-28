@@ -5,14 +5,18 @@
 #define PT_ENTRIES 512u
 #define PAGE_MASK (~(uint64_t)(SB_PAGE_SIZE - 1u))
 #define ENTRY_ADDR_MASK 0x000FFFFFFFFFF000ull
+#define BOOTSTRAP_TEST_PML4_INDEX 1u
 
 extern uint64_t pml4[PT_ENTRIES];
 extern uint64_t pdpt[PT_ENTRIES];
 extern uint64_t pd[PT_ENTRIES];
 
+/* Early page-table storage must itself be reachable through the identity map
+ * established by the boot path. Do not obtain these bootstrap tables from the
+ * PMM pool until paging is able to map arbitrary physical pages. */
 static uint64_t bootstrap_pd[PT_ENTRIES] __attribute__((aligned(4096)));
 static uint64_t bootstrap_pt[PT_ENTRIES] __attribute__((aligned(4096)));
-static uint64_t *high_pdpt;
+static uint64_t bootstrap_high_pdpt[PT_ENTRIES] __attribute__((aligned(4096)));
 static int bootstrap_ready;
 
 static void debug_write_char(char c) {
@@ -38,6 +42,9 @@ static uint64_t *ensure_table(uint64_t *table, uint16_t index, uint64_t flags) {
         return table_from_entry(table[index]);
     }
 
+    /* Once general paging is live, PMM pages are expected to be reachable by
+     * the kernel's virtual-memory policy. During the bootstrap self-test the
+     * prebuilt tables below avoid this path entirely. */
     void *page = pmm_alloc_page();
     if (page == 0) return 0;
     uint64_t *new_table = (uint64_t *)page;
@@ -115,29 +122,34 @@ uint64_t vmm_translate(uint64_t virtual_address) {
 void vmm_init(void) {
     if (bootstrap_ready) return;
 
-    /* PML4[0] owns the bootloader's 0..512 GiB address-space slot and must
-     * remain intact while the kernel is executing from low identity-mapped
-     * addresses. Use the next canonical positive PML4 slot for bootstrap VMM
-     * self-tests instead of replacing PML4[0]. */
-    const uint64_t test_virtual = 0x0000008000000000ull;
-    const uint16_t pml4_i = pml4_index(test_virtual);
-    const uint16_t pdpt_i = pdpt_index(test_virtual);
+    const uint64_t high_test_virtual = 0x0000008000000000ull;
+    const uint16_t high_pml4_i = pml4_index(high_test_virtual);
+    const uint16_t high_pdpt_i = pdpt_index(high_test_virtual);
 
     for (uint32_t i = 0u; i < PT_ENTRIES; ++i) {
         bootstrap_pd[i] = 0u;
         bootstrap_pt[i] = 0u;
+        bootstrap_high_pdpt[i] = 0u;
     }
 
-    high_pdpt = (uint64_t *)pmm_alloc_page();
-    if (high_pdpt == 0) return;
-    for (uint32_t i = 0u; i < PT_ENTRIES; ++i) high_pdpt[i] = 0u;
-
+    /* High bootstrap test region: PML4[1] -> static PDPT -> static PD -> PT. */
     bootstrap_pd[0] = ((uint64_t)(uintptr_t)bootstrap_pt & ENTRY_ADDR_MASK) |
                       SB_VMM_PRESENT | SB_VMM_WRITABLE;
-    high_pdpt[pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
-                        SB_VMM_PRESENT | SB_VMM_WRITABLE;
-    pml4[pml4_i] = ((uint64_t)(uintptr_t)high_pdpt & ENTRY_ADDR_MASK) |
-                   SB_VMM_PRESENT | SB_VMM_WRITABLE;
+    bootstrap_high_pdpt[high_pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
+                                       SB_VMM_PRESENT | SB_VMM_WRITABLE;
+    pml4[BOOTSTRAP_TEST_PML4_INDEX] = ((uint64_t)(uintptr_t)bootstrap_high_pdpt & ENTRY_ADDR_MASK) |
+                                      SB_VMM_PRESENT | SB_VMM_WRITABLE;
+
+    /* Preserve the bootloader's PML4[0]/PDPT while also reserving a known,
+     * currently-unused PDPT slot for the existing early self-test address.
+     * This lets the test operate without allocating a page-table page from a
+     * physical region that is not yet mapped into the bootstrap address space. */
+    const uint16_t legacy_pdpt_i = pdpt_index(0x0000004000000000ull);
+    if ((pdpt[legacy_pdpt_i] & SB_VMM_PRESENT) == 0u) {
+        pdpt[legacy_pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
+                              SB_VMM_PRESENT | SB_VMM_WRITABLE;
+    }
+
     bootstrap_ready = 1;
-    debug_write("[VMM] high address-space tables ready\r\n");
+    debug_write("[VMM] bootstrap page tables ready\r\n");
 }
