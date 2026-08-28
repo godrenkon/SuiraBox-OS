@@ -22,10 +22,12 @@ typedef struct {
     uint8_t attributes;
     uint32_t first_cluster;
     uint32_t file_size;
+    uint32_t root_index;
 } sb_fat32_dirent_t;
 
 int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs);
 int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *entry);
+int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t *entry);
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
                        uint32_t offset, uint32_t length, void *buffer);
 int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
