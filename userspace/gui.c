@@ -105,16 +105,20 @@ sb_gui_window_t *sb_gui_hit_test(sb_gui_window_manager_t *wm, int32_t x, int32_t
 }
 
 sb_gui_control_t sb_gui_hit_control(const sb_gui_window_t *window, int32_t x, int32_t y) {
-    int32_t close_x;
-    int32_t minimize_x;
+    const int64_t window_left = window != 0 ? (int64_t)window->x : 0;
+    const int64_t window_top = window != 0 ? (int64_t)window->y : 0;
+    const int64_t window_right = window_left + (window != 0 ? (int64_t)window->width : 0);
+    const int64_t titlebar_bottom = window_top + (int64_t)SB_GUI_TITLEBAR_HEIGHT;
+    const int64_t minimize_left = window_right - (int64_t)(SB_GUI_CONTROL_SIZE * 2u);
+    const int64_t minimize_right = window_right - (int64_t)SB_GUI_CONTROL_SIZE;
+    const int64_t close_left = window_right - (int64_t)SB_GUI_CONTROL_SIZE;
+    const int64_t close_right = window_right;
+
     if (window == 0 || window->visible == 0u || window->minimized != 0u) return SB_GUI_CONTROL_NONE;
     if (window->width < SB_GUI_CONTROL_SIZE * 2u) return SB_GUI_CONTROL_NONE;
-    if (y < window->y || y >= window->y + (int32_t)SB_GUI_TITLEBAR_HEIGHT) return SB_GUI_CONTROL_NONE;
-
-    minimize_x = window->x + (int32_t)window->width - (int32_t)(SB_GUI_CONTROL_SIZE * 2u);
-    close_x = window->x + (int32_t)window->width - (int32_t)SB_GUI_CONTROL_SIZE;
-    if (x >= close_x && x < close_x + (int32_t)SB_GUI_CONTROL_SIZE) return SB_GUI_CONTROL_CLOSE;
-    if (x >= minimize_x && x < minimize_x + (int32_t)SB_GUI_CONTROL_SIZE) return SB_GUI_CONTROL_MINIMIZE;
+    if ((int64_t)y < window_top || (int64_t)y >= titlebar_bottom) return SB_GUI_CONTROL_NONE;
+    if ((int64_t)x >= close_left && (int64_t)x < close_right) return SB_GUI_CONTROL_CLOSE;
+    if ((int64_t)x >= minimize_left && (int64_t)x < minimize_right) return SB_GUI_CONTROL_MINIMIZE;
     return SB_GUI_CONTROL_NONE;
 }
 
