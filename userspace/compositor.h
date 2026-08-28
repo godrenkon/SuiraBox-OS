@@ -15,6 +15,7 @@ typedef struct {
     uint32_t cursor_rgb;
     uint32_t close_rgb;
     uint32_t minimize_rgb;
+    uint32_t maximize_rgb;
 } sb_compositor_style_t;
 
 #define SB_GUI_TITLEBAR_HEIGHT 36u
