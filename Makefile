@@ -49,7 +49,7 @@ GDT_OBJ := $(BUILD)/gdt.o
 USERMODE_OBJ := $(BUILD)/user_mode.o
 MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
-DESKTOP_USER_OBJ := $(BUILD)/desktop_gui.o
+DESKTOP_USER_OBJ := $(BUILD)/sb_desktop.o
 
 .PHONY: all clean iso userspace check host-pmm-test host-fat32-test
 
@@ -157,7 +157,7 @@ $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h |
 $(USER_OBJ): userspace/hello.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(DESKTOP_USER_OBJ): userspace/desktop_gui.S | $(BUILD)
+$(DESKTOP_USER_OBJ): userspace/sb_desktop.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
