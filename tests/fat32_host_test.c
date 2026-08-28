@@ -100,6 +100,7 @@ int main(void) {
     sb_vfs_mount_t mount;
     sb_fat32_t fs;
     sb_fat32_dirent_t entry;
+    sb_fat32_dirent_t found;
     char buffer[64];
     static const char patch[] = "SBOS";
 
@@ -110,6 +111,15 @@ int main(void) {
     if (!expect(strcmp(entry.name, "HELLO.TXT") == 0, "8.3 filename formatting is wrong")) return 1;
     if (!expect(entry.first_cluster == 3u, "root entry cluster is wrong")) return 1;
     if (!expect(entry.file_size == 27u, "root entry file size is wrong")) return 1;
+    if (!expect(entry.root_index == 0u, "root entry index was not recorded")) return 1;
+    if (!expect(sb_fat32_find_root_entry(&fs, "HELLO.TXT", &found) != 0,
+                "root filename lookup failed")) return 1;
+    if (!expect(found.root_index == entry.root_index &&
+                found.first_cluster == entry.first_cluster &&
+                found.file_size == entry.file_size,
+                "root filename lookup returned inconsistent metadata")) return 1;
+    if (!expect(sb_fat32_find_root_entry(&fs, "MISSING.BIN", &found) == 0,
+                "missing root filename was unexpectedly found")) return 1;
 
     memset(buffer, 0, sizeof(buffer));
     if (!expect(sb_fat32_read_file(&fs, &entry, 0u, entry.file_size, buffer) != 0,
