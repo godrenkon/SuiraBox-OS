@@ -1,0 +1,212 @@
+#include <stdint.h>
+
+#include "gui.h"
+#include "syscall.h"
+
+static const uint64_t G_J = 0x003844040404043eULL;
+static const uint64_t G_P = 0x004040407c44447cULL;
+static const uint64_t G_E = 0x007c40407840407cULL;
+static const uint64_t G_N = 0x004242464a526242ULL;
+static const uint64_t G_Z = 0x007e20100804027eULL;
+static const uint64_t G_H = 0x004242427e424242ULL;
+static const uint64_t G_S = 0x007c02023c40403eULL;
+
+static void draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rgb) {
+    (void)sb_display_rect(x, y, w, h, rgb);
+}
+
+static void draw_glyph(uint32_t x, uint32_t y, uint64_t glyph) {
+    (void)sb_display_glyph(x, y, glyph, 0xE9F2FFu);
+}
+
+static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) {
+    draw_glyph(x, y, a);
+    draw_glyph(x + 10u, y, b);
+}
+
+static void screen_background(uint32_t width, uint32_t height) {
+    draw_rect(0u, 0u, width, height, 0x0C1018u);
+    draw_rect(0u, 0u, width, 72u, 0x16202Cu);
+    draw_rect(0u, height - 72u, width, 72u, 0x16202Cu);
+}
+
+static void draw_select(uint32_t width, uint32_t modal_y, uint32_t selection, int open) {
+    uint32_t x = (width - 420u) / 2u;
+    draw_rect(x, modal_y + 104u, 420u, 52u, 0x202A38u);
+    draw_rect(x + 356u, modal_y + 112u, 52u, 36u, 0x3A485Au);
+
+    if (selection == 0u) draw_pair(x + 20u, modal_y + 124u, G_J, G_P);
+    else if (selection == 1u) draw_pair(x + 20u, modal_y + 124u, G_E, G_N);
+    else if (selection == 2u) draw_pair(x + 20u, modal_y + 124u, G_Z, G_H);
+    else draw_pair(x + 20u, modal_y + 124u, G_E, G_S);
+
+    if (!open) return;
+
+    draw_rect(x, modal_y + 158u, 420u, 176u, 0x171D27u);
+    for (uint32_t i = 0u; i < 4u; ++i) {
+        draw_rect(x + 2u, modal_y + 160u + i * 44u, 416u, 40u, 0x27313Eu);
+    }
+    draw_rect(x + 2u, modal_y + 160u + selection * 44u, 416u, 40u, 0x536F8Au);
+
+    draw_pair(x + 20u, modal_y + 176u, G_J, G_P);
+    draw_pair(x + 20u, modal_y + 220u, G_E, G_N);
+    draw_pair(x + 20u, modal_y + 264u, G_Z, G_H);
+    draw_pair(x + 20u, modal_y + 308u, G_E, G_S);
+}
+
+static void draw_first_boot(uint32_t width, uint32_t height, uint32_t selection, int open) {
+    const uint32_t modal_x = (width - 560u) / 2u;
+    const uint32_t modal_y = (height - 360u) / 2u;
+
+    screen_background(width, height);
+    draw_rect(modal_x, modal_y, 560u, 360u, 0x313B4Au);
+    draw_rect(modal_x + 24u, modal_y + 24u, 512u, 52u, 0x3A485Au);
+    draw_pair(modal_x + 36u, modal_y + 38u, G_J, G_P);
+    draw_select(width, modal_y, selection, open);
+    draw_rect((width - 240u) / 2u, modal_y + 300u, 240u, 44u, 0x536F8Au);
+}
+
+static void draw_desktop(uint32_t width, uint32_t height, sb_gui_window_manager_t *wm) {
+    screen_background(width, height);
+    for (uint32_t i = 0u; i < wm->count; ++i) {
+        sb_gui_window_t *window = &wm->windows[i];
+        if (window->visible == 0u || window->minimized != 0u) continue;
+        draw_rect((uint32_t)window->x, (uint32_t)window->y,
+                  window->width, window->height, 0x313B4Au);
+        draw_rect((uint32_t)window->x, (uint32_t)window->y,
+                  window->width, 36u, 0x3A485Au);
+    }
+    draw_rect(18u, height - 60u, 56u, 48u, 0x536F8Au);
+}
+
+static int point_inside(int32_t x, int32_t y,
+                        int32_t left, int32_t top,
+                        uint32_t width, uint32_t height) {
+    if (x < left || y < top) return 0;
+    if ((uint32_t)(x - left) >= width) return 0;
+    if ((uint32_t)(y - top) >= height) return 0;
+    return 1;
+}
+
+static void decode_mouse(uint64_t packet, int32_t *dx, int32_t *dy, uint8_t *buttons) {
+    *dx = (int32_t)(int8_t)((packet >> 16) & 0xFFu);
+    *dy = (int32_t)(int8_t)((packet >> 24) & 0xFFu);
+    *buttons = (uint8_t)((packet >> 8) & 0x07u);
+}
+
+void sb_desktop_main(void) {
+    uint64_t display = sb_display_info();
+    uint32_t width = (uint32_t)(display >> 32);
+    uint32_t height = (uint32_t)((display >> 16) & 0xFFFFu);
+    uint32_t selection = 1u;
+    int first_boot = 1;
+    int dropdown_open = 0;
+    int32_t cursor_x = (int32_t)(width / 2u);
+    int32_t cursor_y = (int32_t)(height / 2u);
+    uint8_t last_buttons = 0u;
+    int dragging = 0;
+    int32_t drag_dx = 0;
+    int32_t drag_dy = 0;
+    sb_gui_window_manager_t wm;
+
+    if (width == 0u || height == 0u) {
+        for (;;) { }
+    }
+
+    sb_gui_init(&wm);
+    sb_gui_window_t *main_window = sb_gui_create_window(&wm, 252, 150, 520u, 320u);
+    if (main_window != 0) main_window->visible = 0u;
+
+    draw_first_boot(width, height, selection, dropdown_open);
+
+    for (;;) {
+        uint64_t key = sb_input_key();
+        if (key != 0u && (key & 0x80u) == 0u && first_boot) {
+            if (key == 0x39u) {
+                dropdown_open = !dropdown_open;
+                draw_first_boot(width, height, selection, dropdown_open);
+            } else if (dropdown_open && key == 0x48u && selection > 0u) {
+                --selection;
+                draw_first_boot(width, height, selection, dropdown_open);
+            } else if (dropdown_open && key == 0x50u && selection < 3u) {
+                ++selection;
+                draw_first_boot(width, height, selection, dropdown_open);
+            } else if (key == 0x1Cu) {
+                if (dropdown_open) {
+                    dropdown_open = 0;
+                    draw_first_boot(width, height, selection, dropdown_open);
+                } else {
+                    first_boot = 0;
+                    if (main_window != 0) main_window->visible = 1u;
+                    draw_desktop(width, height, &wm);
+                }
+            }
+        }
+
+        uint64_t packet = sb_input_mouse();
+        if (packet == 0u) continue;
+
+        int32_t dx;
+        int32_t dy;
+        uint8_t buttons;
+        decode_mouse(packet, &dx, &dy, &buttons);
+        cursor_x += dx;
+        cursor_y -= dy;
+        if (cursor_x < 0) cursor_x = 0;
+        if (cursor_y < 0) cursor_y = 0;
+        if (cursor_x >= (int32_t)width) cursor_x = (int32_t)width - 1;
+        if (cursor_y >= (int32_t)height) cursor_y = (int32_t)height - 1;
+
+        if ((buttons & 1u) != 0u && (last_buttons & 1u) == 0u) {
+            if (first_boot) {
+                uint32_t modal_y = (height - 360u) / 2u;
+                uint32_t field_x = (width - 420u) / 2u;
+                if (point_inside(cursor_x, cursor_y, (int32_t)field_x,
+                                 (int32_t)(modal_y + 104u), 420u, 52u)) {
+                    dropdown_open = !dropdown_open;
+                    draw_first_boot(width, height, selection, dropdown_open);
+                } else if (dropdown_open && cursor_x >= (int32_t)field_x &&
+                           cursor_x < (int32_t)(field_x + 420u) &&
+                           cursor_y >= (int32_t)(modal_y + 160u) &&
+                           cursor_y < (int32_t)(modal_y + 336u)) {
+                    uint32_t row = (uint32_t)(cursor_y - (int32_t)(modal_y + 160u)) / 44u;
+                    if (row < 4u) selection = row;
+                    dropdown_open = 0;
+                    draw_first_boot(width, height, selection, dropdown_open);
+                } else if (!dropdown_open &&
+                           point_inside(cursor_x, cursor_y,
+                                        (int32_t)((width - 240u) / 2u),
+                                        (int32_t)(modal_y + 300u), 240u, 44u)) {
+                    first_boot = 0;
+                    if (main_window != 0) main_window->visible = 1u;
+                    draw_desktop(width, height, &wm);
+                } else if (dropdown_open) {
+                    dropdown_open = 0;
+                    draw_first_boot(width, height, selection, dropdown_open);
+                }
+            } else {
+                sb_gui_window_t *hit = sb_gui_hit_test(&wm, cursor_x, cursor_y);
+                if (hit != 0) {
+                    (void)sb_gui_focus_window(&wm, hit->id);
+                    dragging = 1;
+                    drag_dx = cursor_x - hit->x;
+                    drag_dy = cursor_y - hit->y;
+                }
+            }
+        }
+
+        if (!first_boot && (buttons & 1u) != 0u && dragging) {
+            sb_gui_window_t *focused = sb_gui_find_window(&wm, wm.focused_id);
+            if (focused != 0) {
+                focused->x = cursor_x - drag_dx;
+                focused->y = cursor_y - drag_dy;
+                if (focused->x < 0) focused->x = 0;
+                if (focused->y < 72) focused->y = 72;
+                draw_desktop(width, height, &wm);
+            }
+        }
+
+        if ((buttons & 1u) == 0u) dragging = 0;
+        last_buttons = buttons;
+    }
+}
