@@ -36,6 +36,42 @@ static uint16_t pdpt_index(uint64_t address) { return (uint16_t)((address >> 30)
 static uint16_t pd_index(uint64_t address) { return (uint16_t)((address >> 21) & 0x1FFu); }
 static uint16_t pt_index(uint64_t address) { return (uint16_t)((address >> 12) & 0x1FFu); }
 
+static void free_user_page_tables(uint64_t *pml4) {
+    const uint16_t user_index = (uint16_t)SB_USER_PML4_INDEX;
+    uint64_t pml4_entry = pml4[user_index];
+    if ((pml4_entry & SB_VMM_PRESENT) == 0u) return;
+    if ((pml4_entry & (1ull << 7)) != 0u) return;
+
+    uint64_t *pdpt = table_from_entry(pml4_entry);
+    for (uint32_t i = 0u; i < PT_ENTRIES; ++i) {
+        uint64_t pdpt_entry = pdpt[i];
+        if ((pdpt_entry & SB_VMM_PRESENT) == 0u) continue;
+        if ((pdpt_entry & (1ull << 7)) != 0u) continue;
+
+        uint64_t *pd = table_from_entry(pdpt_entry);
+        for (uint32_t j = 0u; j < PT_ENTRIES; ++j) {
+            uint64_t pd_entry = pd[j];
+            if ((pd_entry & SB_VMM_PRESENT) == 0u) continue;
+            if ((pd_entry & (1ull << 7)) != 0u) continue;
+
+            uint64_t *pt = table_from_entry(pd_entry);
+            for (uint32_t k = 0u; k < PT_ENTRIES; ++k) {
+                uint64_t pte = pt[k];
+                if ((pte & SB_VMM_PRESENT) != 0u) {
+                    pmm_free_page((void *)(uintptr_t)(pte & ENTRY_ADDR_MASK));
+                    pt[k] = 0u;
+                }
+            }
+            pmm_free_page(pt);
+            pd[j] = 0u;
+        }
+        pmm_free_page(pd);
+        pdpt[i] = 0u;
+    }
+    pmm_free_page(pdpt);
+    pml4[user_index] = 0u;
+}
+
 int address_space_create(sb_address_space_t *space) {
     if (space == 0) return -1;
 
@@ -113,6 +149,8 @@ int address_space_activate(const sb_address_space_t *space) {
 
 void address_space_destroy(sb_address_space_t *space) {
     if (space == 0 || space->pml4_physical == 0) return;
-    pmm_free_page((void *)(uintptr_t)space->pml4_physical);
+    uint64_t *pml4 = (uint64_t *)(uintptr_t)space->pml4_physical;
+    free_user_page_tables(pml4);
+    pmm_free_page(pml4);
     space->pml4_physical = 0;
 }
