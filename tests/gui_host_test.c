@@ -7,6 +7,7 @@ int main(void) {
     sb_gui_window_t *back;
     sb_gui_window_t *front;
     sb_gui_window_t *top;
+    sb_gui_window_t extreme;
     uint32_t back_id;
     uint32_t front_id;
 
@@ -51,6 +52,12 @@ int main(void) {
     assert(front->width == 320u && front->height == 240u);
     assert(sb_gui_hit_control(front, 372, 106) == SB_GUI_CONTROL_MINIMIZE);
     assert(sb_gui_hit_control(front, 396, 106) == SB_GUI_CONTROL_CLOSE);
+
+    extreme = (sb_gui_window_t){
+        99u, INT32_MAX - 8, INT32_MAX - 8, UINT32_MAX, UINT32_MAX, 1u, 1u, 0u, 0u
+    };
+    assert(sb_gui_hit_control(&extreme, INT32_MAX, INT32_MAX) == SB_GUI_CONTROL_CLOSE);
+    assert(sb_gui_hit_control(&extreme, INT32_MIN, INT32_MIN) == SB_GUI_CONTROL_NONE);
 
     assert(sb_gui_set_minimized(&wm, front_id, 1u) == 0);
     assert(wm.focused_id != front_id);
