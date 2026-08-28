@@ -50,6 +50,7 @@ int sb_gui_destroy_window(sb_gui_window_manager_t *wm, uint32_t id);
 int sb_gui_move_window(sb_gui_window_manager_t *wm, uint32_t id, int32_t x, int32_t y);
 int sb_gui_resize_window(sb_gui_window_manager_t *wm, uint32_t id,
                          uint32_t width, uint32_t height);
+int sb_gui_set_minimized(sb_gui_window_manager_t *wm, uint32_t id, uint8_t minimized);
 sb_gui_window_t *sb_gui_find_window(sb_gui_window_manager_t *wm, uint32_t id);
 sb_gui_window_t *sb_gui_hit_test(sb_gui_window_manager_t *wm, int32_t x, int32_t y);
 int sb_gui_focus_window(sb_gui_window_manager_t *wm, uint32_t id);
