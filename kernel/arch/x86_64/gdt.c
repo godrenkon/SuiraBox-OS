@@ -43,9 +43,9 @@ static void gdt_debug(const char *s) {
 }
 
 static uint64_t segment_descriptor(uint8_t access, uint8_t flags) {
-    return ((uint64_t)access << 40) |
-           ((uint64_t)flags << 52) |
-           0x0000FFFFFFFFFFFFull;
+    return ((uint64_t)0xFFFFu) |
+           ((uint64_t)access << 40) |
+           ((uint64_t)(flags & 0x0Fu) << 52);
 }
 
 static void gdt_write_tss_descriptor(uint64_t base, uint32_t limit) {
@@ -65,11 +65,11 @@ void gdt_init(void) {
     gdt_debug("[GDT] begin\r\n");
 
     gdt[0] = 0u;
-    gdt[1] = segment_descriptor(0x9Au, 0xCu);
-    gdt[2] = segment_descriptor(0x92u, 0xCu);
-    gdt[3] = segment_descriptor(0x9Au, 0xAu);
-    gdt[4] = segment_descriptor(0xFAu, 0xAu);
-    gdt[5] = segment_descriptor(0xF2u, 0xCu);
+    gdt[1] = segment_descriptor(0x9Au, 0x0Au);
+    gdt[2] = segment_descriptor(0x92u, 0x0Cu);
+    gdt[3] = segment_descriptor(0x9Au, 0x0Au);
+    gdt[4] = segment_descriptor(0xFAu, 0x0Au);
+    gdt[5] = segment_descriptor(0xF2u, 0x0Cu);
     gdt_debug("[GDT] segment descriptors ready\r\n");
 
     const uint64_t base = (uint64_t)(uintptr_t)&tss;
@@ -89,8 +89,8 @@ void gdt_init(void) {
     __asm__ volatile ("lgdt %0" : : "m"(descriptor) : "memory");
     gdt_debug("[GDT] lgdt returned\r\n");
 
-    /* The boot-time CS/DS caches are already valid. Avoid reloading them here;
-       the new GDT retains compatible kernel selectors. */
+    /* The current CS already names the kernel code selector. The new GDT keeps
+       that selector valid while preserving the boot-time execution context. */
     gdt_debug("[GDT] segment caches retained\r\n");
 
     gdt_debug("[GDT] ltr begin\r\n");
