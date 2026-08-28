@@ -15,13 +15,6 @@ static uint32_t le32(const uint8_t *p) {
            ((uint32_t)p[3] << 24);
 }
 
-static void put_le32(uint8_t *p, uint32_t value) {
-    p[0] = (uint8_t)value;
-    p[1] = (uint8_t)(value >> 8);
-    p[2] = (uint8_t)(value >> 16);
-    p[3] = (uint8_t)(value >> 24);
-}
-
 static int read_sector(sb_fat32_t *fs, uint64_t lba, uint8_t *buffer) {
     return sb_vfs_read_sectors(fs->mount, lba, 1, buffer) == SB_VFS_OK;
 }
@@ -31,8 +24,7 @@ static int write_sector(sb_fat32_t *fs, uint64_t lba, const uint8_t *buffer) {
 }
 
 static uint32_t cluster_to_lba(const sb_fat32_t *fs, uint32_t cluster) {
-    return fs->first_data_sector +
-           (cluster - 2u) * fs->sectors_per_cluster;
+    return fs->first_data_sector + (cluster - 2u) * fs->sectors_per_cluster;
 }
 
 static int fat_next_cluster(sb_fat32_t *fs, uint32_t cluster, uint32_t *next) {
@@ -47,10 +39,7 @@ static int fat_next_cluster(sb_fat32_t *fs, uint32_t cluster, uint32_t *next) {
     fat_sector = fs->reserved_sectors + (fat_offset / fs->bytes_per_sector);
     fat_index = fat_offset % fs->bytes_per_sector;
 
-    if (fat_index + 4u > fs->bytes_per_sector || !read_sector(fs, fat_sector, sector)) {
-        return 0;
-    }
-
+    if (fat_index + 4u > fs->bytes_per_sector || !read_sector(fs, fat_sector, sector)) return 0;
     *next = le32(&sector[fat_index]) & 0x0FFFFFFFu;
     return 1;
 }
@@ -62,14 +51,12 @@ static void format_83_name(const uint8_t *raw, char out[13]) {
     for (i = 0u; i < 8u && raw[i] != ' '; ++i) {
         if (pos < 12u) out[pos++] = (char)raw[i];
     }
-
     if (raw[8] != ' ' && raw[8] != 0u && pos < 12u) {
         out[pos++] = '.';
         for (i = 8u; i < 11u && raw[i] != ' '; ++i) {
             if (pos < 12u) out[pos++] = (char)raw[i];
         }
     }
-
     out[pos] = '\0';
 }
 
@@ -81,10 +68,7 @@ int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs) {
     uint32_t first_data;
 
     if (mount == 0 || fs == 0 || mount->sector_size < SB_FAT32_SECTOR_BYTES ||
-        !read_sector(&(sb_fat32_t){.mount = mount}, 0u, boot)) {
-        return 0;
-    }
-
+        !read_sector(&(sb_fat32_t){.mount = mount}, 0u, boot)) return 0;
     if (le16(&boot[510]) != 0xAA55u || le16(&boot[11]) != SB_FAT32_SECTOR_BYTES) return 0;
 
     fs->mount = mount;
@@ -119,7 +103,6 @@ int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *
 
     if (fs == 0 || entry == 0 || fs->bytes_per_sector != SB_FAT32_SECTOR_BYTES ||
         fs->sectors_per_cluster == 0u) return 0;
-
     entries_per_sector = fs->bytes_per_sector / SB_FAT32_ENTRY_SIZE;
     entries_per_cluster = entries_per_sector * fs->sectors_per_cluster;
     if (entries_per_sector == 0u || entries_per_cluster == 0u) return 0;
