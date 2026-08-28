@@ -61,7 +61,7 @@ static uint32_t scale_component(uint8_t value, uint8_t bits) {
 static int framebuffer_geometry_ok(void) {
     const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
     const uint64_t span = (uint64_t)current.pitch * current.height;
-    if (!available || current.type != SB_FB_DIRECT || bytes_per_pixel == 0u || bytes_per_pixel > 4u ||
+    if (current.type != SB_FB_DIRECT || bytes_per_pixel == 0u || bytes_per_pixel > 4u ||
         current.bits_per_pixel > SB_FB_MAX_BPP || current.address == 0u ||
         span == 0u || span > UINT64_MAX - current.address)
         return 0;
@@ -75,7 +75,7 @@ static int framebuffer_geometry_ok(void) {
 }
 
 static int framebuffer_target(uint64_t *target_address) {
-    if (target_address == 0 || !framebuffer_geometry_ok()) return -1;
+    if (target_address == 0 || !available || !framebuffer_geometry_ok()) return -1;
     if (current.mapped_address != 0u) {
         if (current.mapped_size == 0u) return -2;
         *target_address = current.mapped_address;
@@ -173,7 +173,8 @@ const sb_framebuffer_info_t *sb_framebuffer_info(void) {
 int sb_framebuffer_map(void) {
     uint64_t physical_start, physical_end, page_count, virtual_start;
 
-    if (!framebuffer_geometry_ok() || current.mapped_address != 0u) return current.mapped_address != 0u;
+    if (!available || !framebuffer_geometry_ok() || current.mapped_address != 0u)
+        return available && current.mapped_address != 0u;
 
     physical_start = current.address & SB_PAGE_MASK;
     physical_end = current.address + (uint64_t)current.pitch * current.height;
