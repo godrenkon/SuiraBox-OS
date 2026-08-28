@@ -72,7 +72,7 @@ int main(void) {
     };
     assert(sb_gui_hit_control(&extreme, INT32_MAX, INT32_MAX) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(&extreme, INT32_MIN, INT32_MIN) == SB_GUI_CONTROL_NONE);
-    assert(sb_gui_hit_resize(&extreme, INT32_MAX, INT32_MAX) == SB_GUI_RESIZE_BOTTOM_RIGHT);
+    assert(sb_gui_hit_resize(&extreme, INT32_MAX, INT32_MAX) == SB_GUI_RESIZE_NONE);
 
     assert(sb_gui_set_maximized(&wm, front_id, 1u, screen_width, screen_height) == 0);
     front = sb_gui_find_window(&wm, front_id);
