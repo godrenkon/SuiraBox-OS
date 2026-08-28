@@ -10,12 +10,14 @@ The intended flow is:
 2. Kernel initializes the minimum required services.
 3. Desktop compositor/window system starts.
 4. A compact modal dialog appears above the desktop.
-5. The user selects a language from a dropdown.
+5. The user opens a single language select box and chooses one option from its dropdown list.
 6. The user presses `Continue`.
 7. The choice is validated and atomically persisted.
 8. The dialog closes and the normal desktop becomes interactive.
 
 ## Language selector
+
+The language control is a standard select-box interaction, not a set of independent language buttons.
 
 Initial choices:
 
@@ -23,6 +25,8 @@ Initial choices:
 - English
 - Chinese
 - Spanish
+
+The selector has one closed field showing the current value and one expandable option list. Keyboard navigation uses `Space` to open/close, `Up`/`Down` to change the highlighted option, and `Enter` to accept the highlighted option. The closed selector can then be confirmed to continue.
 
 The pre-selection UI may use English because the user must be able to understand the selector before choosing a language.
 
