@@ -27,5 +27,8 @@ int sb_framebuffer_available(void);
 const sb_framebuffer_info_t *sb_framebuffer_info(void);
 int sb_framebuffer_map(void);
 int sb_framebuffer_clear(uint8_t red, uint8_t green, uint8_t blue);
+int sb_framebuffer_draw_pixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green, uint8_t blue);
+int sb_framebuffer_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                             uint8_t red, uint8_t green, uint8_t blue);
 
 #endif
