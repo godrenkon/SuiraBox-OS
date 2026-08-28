@@ -30,5 +30,7 @@ int sb_framebuffer_clear(uint8_t red, uint8_t green, uint8_t blue);
 int sb_framebuffer_draw_pixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green, uint8_t blue);
 int sb_framebuffer_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                              uint8_t red, uint8_t green, uint8_t blue);
+int sb_framebuffer_draw_glyph8(uint32_t x, uint32_t y, uint64_t bitmap,
+                               uint8_t red, uint8_t green, uint8_t blue);
 
 #endif
