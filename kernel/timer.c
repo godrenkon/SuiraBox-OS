@@ -16,6 +16,8 @@ extern void sb_timer_irq_stub(void);
 struct __attribute__((packed)) debug_desc_ptr { uint16_t limit; uint64_t base; };
 struct __attribute__((packed)) debug_idt_entry { uint16_t offset_low; uint16_t selector; uint8_t ist; uint8_t type_attr; uint16_t offset_mid; uint32_t offset_high; uint32_t zero; };
 
+static volatile uint64_t ticks;
+
 static void outb(uint16_t port, uint8_t value) {
     __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
 }
@@ -80,7 +82,6 @@ void timer_init(uint32_t frequency_hz) {
     if (divisor == 0u) divisor = 1u;
     if (divisor > 0xFFFFu) divisor = 0xFFFFu;
     ticks = 0;
-
     timer_debug("[TIMER] PIC remap begin\r\n"); pic_remap(); timer_debug("[TIMER] PIC remap complete\r\n");
     timer_debug("[TIMER] PIT program begin\r\n");
     outb(PIT_COMMAND, 0x36u); outb(PIT_CHANNEL0, (uint8_t)(divisor & 0xFFu)); outb(PIT_CHANNEL0, (uint8_t)((divisor >> 8) & 0xFFu));
