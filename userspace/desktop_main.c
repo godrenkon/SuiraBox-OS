@@ -235,10 +235,13 @@ void sb_desktop_main(void) {
                             const uint32_t restored_height = taskbar_window->height;
                             mark_taskbar_damage(&surface, width, height);
                             if (sb_gui_restore_window(&wm, taskbar_id) == 0) {
+                                sb_gui_window_t *restored_window = sb_gui_find_window(&wm, taskbar_id);
                                 mark_damage(&surface, restored_x, restored_y,
                                             restored_width, restored_height);
-                                mark_damage(&surface, taskbar_window->x, taskbar_window->y,
-                                            taskbar_window->width, taskbar_window->height);
+                                if (restored_window != 0) {
+                                    mark_damage(&surface, restored_window->x, restored_window->y,
+                                                restored_window->width, restored_window->height);
+                                }
                                 present_damage(&surface, width, height, &wm,
                                                damage, SB_SURFACE_MAX_DAMAGE);
                             }
@@ -311,7 +314,7 @@ void sb_desktop_main(void) {
                         if (resizing == SB_GUI_RESIZE_BOTTOM || resizing == SB_GUI_RESIZE_BOTTOM_RIGHT) {
                             int64_t candidate = (int64_t)g_cursor_y - (int64_t)focused->y;
                             if (candidate < 0) candidate = 0;
-                            if (candidate > (int64_t)UINT32_MAX) candidate = (int64_t)UINT32_MAX;
+                            if (candidate > (int64_t)UINT32_MAX) candidate = (int32_t)candidate;
                             new_height = (uint32_t)candidate;
                         }
                         if (sb_gui_resize_window(&wm, focused->id, new_width, new_height) == 0) {
