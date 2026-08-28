@@ -1,5 +1,6 @@
 #include "scheduler.h"
 #include "timer.h"
+#include "arch/x86_64/interrupts.h"
 
 #define SB_BOOTSTRAP_TASK_ID 1u
 #define SB_BOOTSTRAP_PRIORITY 128u
@@ -12,6 +13,9 @@ static volatile sb_task_t tasks[SB_SCHED_MAX_TASKS];
 static uint32_t task_count;
 static uint32_t current_index;
 static uint64_t scheduler_tick_count;
+
+extern void sb_context_switch(sb_task_context_t *old_context,
+                              const sb_task_context_t *new_context);
 
 static void sched_debug_char(char c) {
     while (1) {
@@ -26,8 +30,20 @@ static void sched_debug(const char *s) {
     while (*s) sched_debug_char(*s++);
 }
 
+static void clear_task(volatile sb_task_t *task) {
+    task->id = 0u;
+    task->runtime_ticks = 0u;
+    task->priority = 0u;
+    task->state = SB_TASK_UNUSED;
+    task->context = (sb_task_context_t){0};
+    task->kernel_stack_base = 0u;
+    task->kernel_stack_top = 0u;
+}
+
 void scheduler_init(void) {
     sched_debug("[SCHED] init begin\r\n");
+    for (uint32_t i = 0u; i < SB_SCHED_MAX_TASKS; ++i) clear_task(&tasks[i]);
+
     tasks[0].id = SB_BOOTSTRAP_TASK_ID;
     tasks[0].runtime_ticks = 0u;
     tasks[0].priority = SB_BOOTSTRAP_PRIORITY;
@@ -55,10 +71,16 @@ sb_task_t *scheduler_current(void) {
 
 int scheduler_add_kernel_task(uint64_t id, uint32_t priority) {
     if (task_count >= SB_SCHED_MAX_TASKS || id == 0u) return -1;
+    for (uint32_t i = 0u; i < task_count; ++i)
+        if (tasks[i].state != SB_TASK_UNUSED && tasks[i].id == id) return -2;
+
     tasks[task_count].id = id;
     tasks[task_count].runtime_ticks = 0u;
     tasks[task_count].priority = priority;
     tasks[task_count].state = SB_TASK_READY;
+    tasks[task_count].context = (sb_task_context_t){0};
+    tasks[task_count].kernel_stack_base = 0u;
+    tasks[task_count].kernel_stack_top = 0u;
     ++task_count;
     return 0;
 }
@@ -75,6 +97,21 @@ sb_task_t *scheduler_pick_next(void) {
         }
     }
     return (sb_task_t *)(uintptr_t)&tasks[current_index];
+}
+
+void scheduler_switch_to(sb_task_t *next) {
+    sb_task_t *current = scheduler_current();
+    if (current == 0 || next == 0 || current == next) return;
+    if (current->context.rsp == 0u || current->context.rip == 0u ||
+        next->context.rsp == 0u || next->context.rip == 0u) return;
+
+    interrupts_disable();
+    current->state = SB_TASK_READY;
+    next->state = SB_TASK_RUNNING;
+    current_index = (uint32_t)(next - (sb_task_t *)(uintptr_t)&tasks[0]);
+    sb_context_switch((sb_task_context_t *)(uintptr_t)&current->context,
+                      (const sb_task_context_t *)(uintptr_t)&next->context);
+    interrupts_enable();
 }
 
 uint32_t scheduler_task_count(void) { return task_count; }
