@@ -74,6 +74,36 @@ static int framebuffer_geometry_ok(void) {
     return 1;
 }
 
+static int framebuffer_target(uint64_t *target_address) {
+    if (target_address == 0 || !framebuffer_geometry_ok()) return -1;
+    if (current.mapped_address != 0u) {
+        if (current.mapped_size == 0u) return -2;
+        *target_address = current.mapped_address;
+        return 0;
+    }
+
+    {
+        const uint64_t span = (uint64_t)current.pitch * current.height;
+        const uint64_t end = current.address + span;
+        if (current.address >= SB_IDENTITY_MAP_LIMIT || end > SB_IDENTITY_MAP_LIMIT)
+            return -3;
+    }
+    *target_address = current.address;
+    return 0;
+}
+
+static uint32_t pack_pixel(uint8_t red, uint8_t green, uint8_t blue) {
+    uint32_t pixel = scale_component(red, current.red_mask_size) << current.red_position;
+    pixel |= scale_component(green, current.green_mask_size) << current.green_position;
+    pixel |= scale_component(blue, current.blue_mask_size) << current.blue_position;
+    return pixel;
+}
+
+static void store_pixel(volatile uint8_t *dst, uint64_t bytes_per_pixel, uint32_t pixel) {
+    for (uint64_t byte = 0u; byte < bytes_per_pixel; ++byte)
+        dst[byte] = (uint8_t)(pixel >> (byte * 8u));
+}
+
 int sb_framebuffer_init(uint64_t multiboot_info_address) {
     available = 0;
     current = (sb_framebuffer_info_t){0};
@@ -175,29 +205,55 @@ int sb_framebuffer_clear(uint8_t red, uint8_t green, uint8_t blue) {
     uint64_t target_address;
     uint32_t pixel;
 
-    if (!framebuffer_geometry_ok()) return -1;
-
-    if (current.mapped_address != 0u) {
-        target_address = current.mapped_address;
-    } else {
-        const uint64_t span = (uint64_t)current.pitch * current.height;
-        const uint64_t end = current.address + span;
-        if (current.address >= SB_IDENTITY_MAP_LIMIT || end > SB_IDENTITY_MAP_LIMIT)
-            return -2;
-        target_address = current.address;
-    }
-
-    pixel = scale_component(red, current.red_mask_size) << current.red_position;
-    pixel |= scale_component(green, current.green_mask_size) << current.green_position;
-    pixel |= scale_component(blue, current.blue_mask_size) << current.blue_position;
+    if (framebuffer_target(&target_address) != 0) return -1;
+    pixel = pack_pixel(red, green, blue);
 
     for (uint32_t y = 0u; y < current.height; ++y) {
         volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(target_address + (uint64_t)y * current.pitch);
-        for (uint32_t x = 0u; x < current.width; ++x) {
-            volatile uint8_t *dst = row + (uint64_t)x * bytes_per_pixel;
-            for (uint64_t byte = 0u; byte < bytes_per_pixel; ++byte)
-                dst[byte] = (uint8_t)(pixel >> (byte * 8u));
-        }
+        for (uint32_t x = 0u; x < current.width; ++x)
+            store_pixel(row + (uint64_t)x * bytes_per_pixel, bytes_per_pixel, pixel);
+    }
+
+    return 0;
+}
+
+int sb_framebuffer_draw_pixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green, uint8_t blue) {
+    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    uint64_t target_address;
+
+    if (x >= current.width || y >= current.height) return -1;
+    if (framebuffer_target(&target_address) != 0) return -2;
+    if ((uint64_t)y * current.pitch > UINT64_MAX - (uint64_t)x * bytes_per_pixel) return -3;
+
+    store_pixel((volatile uint8_t *)(uintptr_t)(target_address + (uint64_t)y * current.pitch +
+                                                   (uint64_t)x * bytes_per_pixel),
+                bytes_per_pixel, pack_pixel(red, green, blue));
+    return 0;
+}
+
+int sb_framebuffer_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                             uint8_t red, uint8_t green, uint8_t blue) {
+    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    uint64_t target_address;
+    uint32_t right, bottom;
+    uint32_t pixel;
+
+    if (width == 0u || height == 0u) return 0;
+    if (x >= current.width || y >= current.height) return -1;
+    if (width > current.width - x) width = current.width - x;
+    if (height > current.height - y) height = current.height - y;
+    right = x + width;
+    bottom = y + height;
+    (void)right; (void)bottom;
+
+    if (framebuffer_target(&target_address) != 0) return -2;
+    pixel = pack_pixel(red, green, blue);
+
+    for (uint32_t row_index = y; row_index < y + height; ++row_index) {
+        const uint64_t row_offset = (uint64_t)row_index * current.pitch + (uint64_t)x * bytes_per_pixel;
+        volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(target_address + row_offset);
+        for (uint32_t column = 0u; column < width; ++column)
+            store_pixel(row + (uint64_t)column * bytes_per_pixel, bytes_per_pixel, pixel);
     }
 
     return 0;
