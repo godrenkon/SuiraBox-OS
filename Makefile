@@ -7,6 +7,7 @@ PMM_HOST_TEST := $(BUILD)/pmm-host-test
 FAT32_HOST_TEST := $(BUILD)/fat32-host-test
 GUI_HOST_TEST := $(BUILD)/gui-host-test
 COMPOSITOR_HOST_TEST := $(BUILD)/compositor-host-test
+CONFIG_HOST_TEST := $(BUILD)/config-host-test
 
 CC ?= gcc
 AS ?= as
@@ -56,8 +57,9 @@ DESKTOP_ENTRY_OBJ := $(BUILD)/sb_desktop_entry.o
 DESKTOP_MAIN_OBJ := $(BUILD)/desktop_main.o
 GUI_OBJ := $(BUILD)/gui.o
 COMPOSITOR_OBJ := $(BUILD)/compositor.o
+CONFIG_OBJ := $(BUILD)/config.o
 
-.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test
+.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test
 
 all: iso userspace
 
@@ -166,7 +168,7 @@ $(USER_OBJ): userspace/hello.S | $(BUILD)
 $(DESKTOP_ENTRY_OBJ): userspace/sb_desktop_entry.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.h | $(BUILD)
+$(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.h userspace/config.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 
 $(GUI_OBJ): userspace/gui.c userspace/gui.h | $(BUILD)
@@ -175,11 +177,14 @@ $(GUI_OBJ): userspace/gui.c userspace/gui.h | $(BUILD)
 $(COMPOSITOR_OBJ): userspace/compositor.c userspace/compositor.h userspace/gui.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 
+$(CONFIG_OBJ): userspace/config.c userspace/config.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
 
-$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ)
+$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ)
 
 userspace: $(USER_ELF) $(DESKTOP_ELF)
 
@@ -218,7 +223,13 @@ $(COMPOSITOR_HOST_TEST): tests/compositor_host_test.c userspace/compositor.c use
 host-compositor-test: $(COMPOSITOR_HOST_TEST)
 	$(COMPOSITOR_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test
+$(CONFIG_HOST_TEST): tests/config_host_test.c userspace/config.c userspace/config.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iuserspace tests/config_host_test.c userspace/config.c -o $@
+
+host-config-test: $(CONFIG_HOST_TEST)
+	$(CONFIG_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
