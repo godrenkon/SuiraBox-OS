@@ -13,11 +13,8 @@ header_start:
 .long 1024
 .long 768
 .long 32
+/* Four-byte padding brings the following end tag to the required 8-byte boundary. */
 .long 0
-/* Pad the 20-byte request tag to the mandatory 8-byte tag boundary. */
-.word 0
-.word 0
-.long 8
 /* End tag. */
 .word 0
 .word 0
