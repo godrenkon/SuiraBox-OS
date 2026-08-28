@@ -12,6 +12,7 @@ extern uint64_t pd[PT_ENTRIES];
 
 static uint64_t bootstrap_pd[PT_ENTRIES] __attribute__((aligned(4096)));
 static uint64_t bootstrap_pt[PT_ENTRIES] __attribute__((aligned(4096)));
+static uint64_t *high_pdpt;
 static int bootstrap_ready;
 
 static void debug_write_char(char c) {
@@ -54,7 +55,6 @@ static uint16_t pd_index(uint64_t address) { return (uint16_t)((address >> 21) &
 static uint16_t pt_index(uint64_t address) { return (uint16_t)((address >> 12) & 0x1FFu); }
 
 int vmm_map_page(uint64_t virtual_address, uint64_t physical_address, uint64_t flags) {
-    debug_write("[VMM] map enter\r\n");
     if ((virtual_address & ~PAGE_MASK) != 0u ||
         (physical_address & ~PAGE_MASK) != 0u) return -1;
 
@@ -72,7 +72,6 @@ int vmm_map_page(uint64_t virtual_address, uint64_t physical_address, uint64_t f
                       SB_VMM_PRESENT |
                       (flags & (SB_VMM_WRITABLE | SB_VMM_USER | SB_VMM_NX));
     __asm__ volatile ("invlpg (%0)" : : "r"((void *)(uintptr_t)virtual_address) : "memory");
-    debug_write("[VMM] map complete\r\n");
     return 0;
 }
 
@@ -125,11 +124,16 @@ void vmm_init(void) {
         bootstrap_pt[i] = 0u;
     }
 
+    high_pdpt = (uint64_t *)pmm_alloc_page();
+    if (high_pdpt == 0) return;
+    for (uint32_t i = 0u; i < PT_ENTRIES; ++i) high_pdpt[i] = 0u;
+
     bootstrap_pd[0] = ((uint64_t)(uintptr_t)bootstrap_pt & ENTRY_ADDR_MASK) |
                       SB_VMM_PRESENT | SB_VMM_WRITABLE;
-    pdpt[pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
-                   SB_VMM_PRESENT | SB_VMM_WRITABLE;
-    pml4[pml4_i] = ((uint64_t)(uintptr_t)pdpt & ENTRY_ADDR_MASK) |
+    high_pdpt[pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
+                        SB_VMM_PRESENT | SB_VMM_WRITABLE;
+    pml4[pml4_i] = ((uint64_t)(uintptr_t)high_pdpt & ENTRY_ADDR_MASK) |
                    SB_VMM_PRESENT | SB_VMM_WRITABLE;
     bootstrap_ready = 1;
+    debug_write("[VMM] high address-space tables ready\r\n");
 }
