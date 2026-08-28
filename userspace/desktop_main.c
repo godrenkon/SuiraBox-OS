@@ -181,7 +181,6 @@ void sb_desktop_main(void) {
         int32_t dy;
         uint8_t buttons;
         decode_mouse(packet, &dx, &dy, &buttons);
-
         sb_gui_event_type_t type = ((buttons ^ last_buttons) & 0x07u) != 0u
                                  ? SB_GUI_EVENT_MOUSE_BUTTON
                                  : SB_GUI_EVENT_MOUSE_MOVE;
