@@ -64,12 +64,6 @@ static void draw_first_boot(uint32_t width, uint32_t height, uint32_t selection,
     draw_rect((width - 240u) / 2u, modal_y + 300u, 240u, 44u, 0x536F8Au);
 }
 
-static void draw_desktop(uint32_t width, uint32_t height, sb_gui_window_manager_t *wm) {
-    sb_compositor_style_t style;
-    sb_compositor_init(&style, width, height);
-    sb_compositor_present(&style, wm);
-}
-
 static void draw_desktop_damage(uint32_t width, uint32_t height,
                                 sb_gui_window_manager_t *wm,
                                 const sb_surface_rect_t *damage,
@@ -120,8 +114,6 @@ void sb_desktop_main(void) {
     sb_gui_event_queue_t event_queue;
     sb_surface_t frame_surface;
     sb_surface_rect_t damage[SB_SURFACE_MAX_DAMAGE];
-    uint32_t damage_count = 0u;
-    uint8_t damage_full = 0u;
     uint32_t zero_count = 0u;
     uint8_t zero_full = 0u;
 
@@ -255,7 +247,4 @@ void sb_desktop_main(void) {
             last_buttons = event.buttons;
         }
     }
-
-    (void)damage_count;
-    (void)damage_full;
 }
