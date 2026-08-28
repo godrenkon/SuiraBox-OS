@@ -8,6 +8,8 @@ FAT32_HOST_TEST := $(BUILD)/fat32-host-test
 GUI_HOST_TEST := $(BUILD)/gui-host-test
 COMPOSITOR_HOST_TEST := $(BUILD)/compositor-host-test
 CONFIG_HOST_TEST := $(BUILD)/config-host-test
+SURFACE_HOST_TEST := $(BUILD)/surface-host-test
+EVENT_QUEUE_HOST_TEST := $(BUILD)/event-queue-host-test
 
 CC ?= gcc
 AS ?= as
@@ -58,8 +60,10 @@ DESKTOP_MAIN_OBJ := $(BUILD)/desktop_main.o
 GUI_OBJ := $(BUILD)/gui.o
 COMPOSITOR_OBJ := $(BUILD)/compositor.o
 CONFIG_OBJ := $(BUILD)/config.o
+SURFACE_OBJ := $(BUILD)/surface.o
+EVENT_QUEUE_OBJ := $(BUILD)/event_queue.o
 
-.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test
+.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test
 
 all: iso userspace
 
@@ -168,7 +172,7 @@ $(USER_OBJ): userspace/hello.S | $(BUILD)
 $(DESKTOP_ENTRY_OBJ): userspace/sb_desktop_entry.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.h userspace/config.h | $(BUILD)
+$(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.h userspace/config.h userspace/compositor.h userspace/surface.h userspace/event_queue.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 
 $(GUI_OBJ): userspace/gui.c userspace/gui.h | $(BUILD)
@@ -180,11 +184,17 @@ $(COMPOSITOR_OBJ): userspace/compositor.c userspace/compositor.h userspace/gui.h
 $(CONFIG_OBJ): userspace/config.c userspace/config.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 
+$(SURFACE_OBJ): userspace/surface.c userspace/surface.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
+$(EVENT_QUEUE_OBJ): userspace/event_queue.c userspace/event_queue.h userspace/gui.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
 
-$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ)
+$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ)
 
 userspace: $(USER_ELF) $(DESKTOP_ELF)
 
@@ -229,7 +239,19 @@ $(CONFIG_HOST_TEST): tests/config_host_test.c userspace/config.c userspace/confi
 host-config-test: $(CONFIG_HOST_TEST)
 	$(CONFIG_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test
+$(SURFACE_HOST_TEST): tests/surface_host_test.c userspace/surface.c userspace/surface.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iuserspace tests/surface_host_test.c userspace/surface.c -o $@
+
+host-surface-test: $(SURFACE_HOST_TEST)
+	$(SURFACE_HOST_TEST)
+
+$(EVENT_QUEUE_HOST_TEST): tests/event_queue_host_test.c userspace/event_queue.c userspace/event_queue.h userspace/gui.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iuserspace tests/event_queue_host_test.c userspace/event_queue.c -o $@
+
+host-event-queue-test: $(EVENT_QUEUE_HOST_TEST)
+	$(EVENT_QUEUE_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
