@@ -86,6 +86,12 @@ static void mark_damage(sb_surface_t *surface, int32_t x, int32_t y,
         (void)sb_surface_damage_rect(surface, x, y, width, height);
 }
 
+static void mark_taskbar_damage(sb_surface_t *surface, uint32_t width, uint32_t height) {
+    if (height >= SB_GUI_TASKBAR_HEIGHT)
+        mark_damage(surface, 0, (int32_t)height - (int32_t)SB_GUI_TASKBAR_HEIGHT,
+                    width, SB_GUI_TASKBAR_HEIGHT);
+}
+
 static void present_damage(sb_surface_t *surface, uint32_t width, uint32_t height,
                            sb_gui_window_manager_t *wm,
                            sb_surface_rect_t *damage, uint32_t capacity) {
@@ -218,46 +224,70 @@ void sb_desktop_main(void) {
                         draw_first_boot(width, height, selection, dropdown_open);
                     }
                 } else {
-                    sb_gui_window_t *hit = sb_gui_hit_test(&wm, g_cursor_x, g_cursor_y);
-                    if (hit != 0) {
-                        const uint32_t id = hit->id;
-                        const int32_t wx = hit->x;
-                        const int32_t wy = hit->y;
-                        const uint32_t ww = hit->width;
-                        const uint32_t wh = hit->height;
-                        const sb_gui_control_t control = sb_gui_hit_control(hit, g_cursor_x, g_cursor_y);
-                        const sb_gui_resize_edge_t edge = sb_gui_hit_resize(hit, g_cursor_x, g_cursor_y);
-                        (void)sb_gui_focus_window(&wm, id);
-                        if (control == SB_GUI_CONTROL_CLOSE) {
-                            mark_damage(&surface, wx, wy, ww, wh);
-                            (void)sb_gui_destroy_window(&wm, id);
-                            dragging = 0u;
-                            resizing = SB_GUI_RESIZE_NONE;
-                        } else if (control == SB_GUI_CONTROL_MINIMIZE) {
-                            mark_damage(&surface, wx, wy, ww, wh);
-                            (void)sb_gui_set_minimized(&wm, id, 1u);
-                            dragging = 0u;
-                            resizing = SB_GUI_RESIZE_NONE;
-                        } else if (control == SB_GUI_CONTROL_MAXIMIZE) {
-                            mark_damage(&surface, wx, wy, ww, wh);
-                            (void)sb_gui_set_maximized(&wm, id, hit->maximized == 0u ? 1u : 0u, width, height);
-                            dragging = 0u;
-                            resizing = SB_GUI_RESIZE_NONE;
-                        } else if (edge != SB_GUI_RESIZE_NONE) {
-                            resizing = edge;
-                            dragging = 0u;
-                            drag_dx = g_cursor_x - wx;
-                            drag_dy = g_cursor_y - wy;
-                        } else if (g_cursor_y < wy + (int32_t)SB_GUI_TITLEBAR_HEIGHT) {
-                            resizing = SB_GUI_RESIZE_NONE;
-                            dragging = 1u;
-                            drag_dx = g_cursor_x - wx;
-                            drag_dy = g_cursor_y - wy;
-                        } else {
+                    const uint32_t taskbar_id = sb_gui_hit_taskbar(&wm, g_cursor_x, g_cursor_y,
+                                                                    width, height);
+                    if (taskbar_id != 0u) {
+                        sb_gui_window_t *taskbar_window = sb_gui_find_window(&wm, taskbar_id);
+                        if (taskbar_window != 0 && taskbar_window->minimized != 0u) {
+                            const int32_t restored_x = taskbar_window->x;
+                            const int32_t restored_y = taskbar_window->y;
+                            const uint32_t restored_width = taskbar_window->width;
+                            const uint32_t restored_height = taskbar_window->height;
+                            mark_taskbar_damage(&surface, width, height);
+                            if (sb_gui_restore_window(&wm, taskbar_id) == 0) {
+                                mark_damage(&surface, restored_x, restored_y,
+                                            restored_width, restored_height);
+                                mark_damage(&surface, taskbar_window->x, taskbar_window->y,
+                                            taskbar_window->width, taskbar_window->height);
+                                present_damage(&surface, width, height, &wm,
+                                               damage, SB_SURFACE_MAX_DAMAGE);
+                            }
                             dragging = 0u;
                             resizing = SB_GUI_RESIZE_NONE;
                         }
-                        present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
+                    } else {
+                        sb_gui_window_t *hit = sb_gui_hit_test(&wm, g_cursor_x, g_cursor_y);
+                        if (hit != 0) {
+                            const uint32_t id = hit->id;
+                            const int32_t wx = hit->x;
+                            const int32_t wy = hit->y;
+                            const uint32_t ww = hit->width;
+                            const uint32_t wh = hit->height;
+                            const sb_gui_control_t control = sb_gui_hit_control(hit, g_cursor_x, g_cursor_y);
+                            const sb_gui_resize_edge_t edge = sb_gui_hit_resize(hit, g_cursor_x, g_cursor_y);
+                            (void)sb_gui_focus_window(&wm, id);
+                            if (control == SB_GUI_CONTROL_CLOSE) {
+                                mark_damage(&surface, wx, wy, ww, wh);
+                                (void)sb_gui_destroy_window(&wm, id);
+                                dragging = 0u;
+                                resizing = SB_GUI_RESIZE_NONE;
+                            } else if (control == SB_GUI_CONTROL_MINIMIZE) {
+                                mark_damage(&surface, wx, wy, ww, wh);
+                                mark_taskbar_damage(&surface, width, height);
+                                (void)sb_gui_set_minimized(&wm, id, 1u);
+                                dragging = 0u;
+                                resizing = SB_GUI_RESIZE_NONE;
+                            } else if (control == SB_GUI_CONTROL_MAXIMIZE) {
+                                mark_damage(&surface, wx, wy, ww, wh);
+                                (void)sb_gui_set_maximized(&wm, id, hit->maximized == 0u ? 1u : 0u, width, height);
+                                dragging = 0u;
+                                resizing = SB_GUI_RESIZE_NONE;
+                            } else if (edge != SB_GUI_RESIZE_NONE) {
+                                resizing = edge;
+                                dragging = 0u;
+                                drag_dx = g_cursor_x - wx;
+                                drag_dy = g_cursor_y - wy;
+                            } else if (g_cursor_y < wy + (int32_t)SB_GUI_TITLEBAR_HEIGHT) {
+                                resizing = SB_GUI_RESIZE_NONE;
+                                dragging = 1u;
+                                drag_dx = g_cursor_x - wx;
+                                drag_dy = g_cursor_y - wy;
+                            } else {
+                                dragging = 0u;
+                                resizing = SB_GUI_RESIZE_NONE;
+                            }
+                            present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
+                        }
                     }
                 }
             }
