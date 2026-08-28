@@ -34,10 +34,11 @@ int sb_desktop_shell_key(sb_desktop_shell_t *shell, uint8_t key) {
 int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
                            const char **activated_id) {
     uint32_t index;
-    const int32_t taskbar_top = (int32_t)shell->screen_height -
-                                (int32_t)SB_GUI_TASKBAR_HEIGHT;
+    int32_t taskbar_top;
     if (activated_id != 0) *activated_id = 0;
     if (shell == 0 || shell->initialized == 0u || activated_id == 0) return -1;
+    if (shell->screen_height < SB_GUI_TASKBAR_HEIGHT || shell->screen_height > INT32_MAX) return -1;
+    taskbar_top = (int32_t)shell->screen_height - (int32_t)SB_GUI_TASKBAR_HEIGHT;
 
     if (x >= (int32_t)SB_SHELL_LAUNCHER_X &&
         x < (int32_t)(SB_SHELL_LAUNCHER_X + SB_SHELL_LAUNCHER_W) &&
