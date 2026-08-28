@@ -3,6 +3,7 @@ ISO := $(BUILD)/suirabox.iso
 KERNEL := $(BUILD)/suirabox.elf
 USER_ELF := $(BUILD)/user-hello.elf
 PMM_HOST_TEST := $(BUILD)/pmm-host-test
+FAT32_HOST_TEST := $(BUILD)/fat32-host-test
 
 CC ?= gcc
 AS ?= as
@@ -46,7 +47,7 @@ USERMODE_OBJ := $(BUILD)/user_mode.o
 MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
 
-.PHONY: all clean iso userspace check host-pmm-test
+.PHONY: all clean iso userspace check host-pmm-test host-fat32-test
 
 all: iso userspace
 
@@ -107,7 +108,7 @@ $(PANIC_OBJ): kernel/panic.c kernel/panic.h | $(BUILD)
 $(TIMER_OBJ): kernel/timer.c kernel/timer.h kernel/arch/x86_64/interrupts.h kernel/scheduler.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/arch/x86_64 -c $< -o $@
 
-$(SCHED_OBJ): kernel/scheduler.c kernel/scheduler.h kernel/timer.h | $(BUILD)
+$(SCHED_OBJ): kernel/scheduler.c kernel/scheduler.h kernel/timer.h kernel/arch/x86_64/interrupts.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(CONTEXT_OBJ): kernel/arch/x86_64/context.S kernel/arch/x86_64/context.h | $(BUILD)
@@ -167,7 +168,13 @@ $(PMM_HOST_TEST): tests/pmm_host_test.c kernel/mm/pmm.c kernel/mm/pmm.h | $(BUIL
 host-pmm-test: $(PMM_HOST_TEST)
 	$(PMM_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) host-pmm-test
+$(FAT32_HOST_TEST): tests/fat32_host_test.c kernel/fs/fat32.c kernel/fs/fat32.h kernel/vfs.c kernel/vfs.h kernel/block.h kernel/pmm.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel -Ikernel/fs -Ikernel/mm tests/fat32_host_test.c kernel/fs/fat32.c kernel/vfs.c -o $@
+
+host-fat32-test: $(FAT32_HOST_TEST)
+	$(FAT32_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) host-pmm-test host-fat32-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
