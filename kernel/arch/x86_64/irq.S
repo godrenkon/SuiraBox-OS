@@ -6,8 +6,9 @@
 .extern sb_timer_tick
 
 .macro serial_mark ch
+    movw $0x3F8, %dx
     movb $\ch, %al
-    outb %al, $0x3f8
+    outb %al, %dx
 .endm
 
 sb_timer_irq_stub:
@@ -21,13 +22,14 @@ sb_timer_irq_stub:
     pushq %r10
     pushq %r11
 
-    serial_mark 0x3E
+    serial_mark 0x45
     call sb_timer_tick
-    serial_mark 0x3F
+    serial_mark 0x54
 
+    movw $0x20, %dx
     movb $0x20, %al
-    outb %al, $0x20
-    serial_mark 0x3D
+    outb %al, %dx
+    serial_mark 0x4F
 
     popq %r11
     popq %r10
@@ -38,7 +40,7 @@ sb_timer_irq_stub:
     popq %rdx
     popq %rcx
     popq %rax
-    serial_mark 0x3C
+    serial_mark 0x52
     iretq
 
 .section .note.GNU-stack,"",@progbits
