@@ -11,9 +11,6 @@ extern uint64_t pml4[PT_ENTRIES];
 extern uint64_t pdpt[PT_ENTRIES];
 extern uint64_t pd[PT_ENTRIES];
 
-/* Early page-table storage must itself be reachable through the identity map
- * established by the boot path. Do not obtain these bootstrap tables from the
- * PMM pool until paging is able to map arbitrary physical pages. */
 static uint64_t bootstrap_pd[PT_ENTRIES] __attribute__((aligned(4096)));
 static uint64_t bootstrap_pt[PT_ENTRIES] __attribute__((aligned(4096)));
 static uint64_t bootstrap_high_pdpt[PT_ENTRIES] __attribute__((aligned(4096)));
@@ -30,6 +27,18 @@ static void debug_write_char(char c) {
 
 static void debug_write(const char *s) { while (*s) debug_write_char(*s++); }
 
+static void debug_write_u64(uint64_t value) {
+    static const char digits[] = "0123456789ABCDEF";
+    char buffer[17];
+    uint32_t pos = 0u;
+    if (value == 0u) { debug_write_char('0'); return; }
+    while (value != 0u && pos < sizeof(buffer)) {
+        buffer[pos++] = digits[value & 0xFu];
+        value >>= 4u;
+    }
+    while (pos > 0u) debug_write_char(buffer[--pos]);
+}
+
 static uint64_t *table_from_entry(uint64_t entry) {
     return (uint64_t *)(uintptr_t)(entry & ENTRY_ADDR_MASK);
 }
@@ -42,9 +51,6 @@ static uint64_t *ensure_table(uint64_t *table, uint16_t index, uint64_t flags) {
         return table_from_entry(table[index]);
     }
 
-    /* Once general paging is live, PMM pages are expected to be reachable by
-     * the kernel's virtual-memory policy. During the bootstrap self-test the
-     * prebuilt tables below avoid this path entirely. */
     void *page = pmm_alloc_page();
     if (page == 0) return 0;
     uint64_t *new_table = (uint64_t *)page;
@@ -65,20 +71,34 @@ int vmm_map_page(uint64_t virtual_address, uint64_t physical_address, uint64_t f
     if ((virtual_address & ~PAGE_MASK) != 0u ||
         (physical_address & ~PAGE_MASK) != 0u) return -1;
 
+    const uint16_t i4 = pml4_index(virtual_address);
+    const uint16_t i3 = pdpt_index(virtual_address);
+    const uint16_t i2 = pd_index(virtual_address);
+    const uint16_t i1 = pt_index(virtual_address);
     uint64_t *root = pml4;
-    uint64_t *pdpt_table = ensure_table(root, pml4_index(virtual_address), flags);
+
+    debug_write("[VMM] map pml4="); debug_write_u64(i4); debug_write("\r\n");
+    uint64_t *pdpt_table = ensure_table(root, i4, flags);
+    debug_write("[VMM] map pdpt=" ); debug_write_u64((uint64_t)(uintptr_t)pdpt_table); debug_write("\r\n");
     if (pdpt_table == 0) return -1;
-    uint64_t *pd_table = ensure_table(pdpt_table, pdpt_index(virtual_address), flags);
+
+    uint64_t *pd_table = ensure_table(pdpt_table, i3, flags);
+    debug_write("[VMM] map pd=" ); debug_write_u64((uint64_t)(uintptr_t)pd_table); debug_write("\r\n");
     if (pd_table == 0) return -1;
-    uint64_t *pt_table = ensure_table(pd_table, pd_index(virtual_address), flags);
+
+    uint64_t *pt_table = ensure_table(pd_table, i2, flags);
+    debug_write("[VMM] map pt=" ); debug_write_u64((uint64_t)(uintptr_t)pt_table); debug_write("\r\n");
     if (pt_table == 0) return -1;
 
-    const uint16_t index = pt_index(virtual_address);
-    if ((pt_table[index] & SB_VMM_PRESENT) != 0u) return -2;
-    pt_table[index] = (physical_address & ENTRY_ADDR_MASK) |
-                      SB_VMM_PRESENT |
-                      (flags & (SB_VMM_WRITABLE | SB_VMM_USER | SB_VMM_NX));
+    debug_write("[VMM] map write pte idx=" ); debug_write_u64(i1); debug_write("\r\n");
+    if ((pt_table[i1] & SB_VMM_PRESENT) != 0u) return -2;
+    pt_table[i1] = (physical_address & ENTRY_ADDR_MASK) |
+                   SB_VMM_PRESENT |
+                   (flags & (SB_VMM_WRITABLE | SB_VMM_USER | SB_VMM_NX));
+
+    debug_write("[VMM] map invlpg\r\n");
     __asm__ volatile ("invlpg (%0)" : : "r"((void *)(uintptr_t)virtual_address) : "memory");
+    debug_write("[VMM] map done\r\n");
     return 0;
 }
 
@@ -132,7 +152,6 @@ void vmm_init(void) {
         bootstrap_high_pdpt[i] = 0u;
     }
 
-    /* High bootstrap test region: PML4[1] -> static PDPT -> static PD -> PT. */
     bootstrap_pd[0] = ((uint64_t)(uintptr_t)bootstrap_pt & ENTRY_ADDR_MASK) |
                       SB_VMM_PRESENT | SB_VMM_WRITABLE;
     bootstrap_high_pdpt[high_pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
@@ -140,10 +159,6 @@ void vmm_init(void) {
     pml4[BOOTSTRAP_TEST_PML4_INDEX] = ((uint64_t)(uintptr_t)bootstrap_high_pdpt & ENTRY_ADDR_MASK) |
                                       SB_VMM_PRESENT | SB_VMM_WRITABLE;
 
-    /* Preserve the bootloader's PML4[0]/PDPT while also reserving a known,
-     * currently-unused PDPT slot for the existing early self-test address.
-     * This lets the test operate without allocating a page-table page from a
-     * physical region that is not yet mapped into the bootstrap address space. */
     const uint16_t legacy_pdpt_i = pdpt_index(0x0000004000000000ull);
     if ((pdpt[legacy_pdpt_i] & SB_VMM_PRESENT) == 0u) {
         pdpt[legacy_pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
