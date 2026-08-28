@@ -14,7 +14,8 @@ static uint64_t syscall_display_info(void) {
     fb = sb_framebuffer_info();
     if (fb == 0 || fb->width > UINT32_MAX || fb->height > UINT16_MAX || fb->bits_per_pixel > UINT8_MAX)
         return 0u;
-    return (fb->width << 32) | (fb->height << 16) | ((uint64_t)fb->bits_per_pixel << 8) | 1u;
+    return ((uint64_t)fb->width << 32) | ((uint64_t)fb->height << 16) |
+           ((uint64_t)fb->bits_per_pixel << 8) | 1u;
 }
 
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
