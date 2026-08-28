@@ -15,6 +15,7 @@ typedef struct {
     uint32_t fat_size_sectors;
     uint32_t root_cluster;
     uint32_t first_data_sector;
+    uint32_t max_cluster;
 } sb_fat32_t;
 
 typedef struct {
