@@ -1,4 +1,5 @@
 #include "desktop_shell.h"
+#include "gui.h"
 
 void sb_desktop_shell_init(sb_desktop_shell_t *shell,
                            uint32_t screen_width, uint32_t screen_height) {
@@ -33,21 +34,22 @@ int sb_desktop_shell_key(sb_desktop_shell_t *shell, uint8_t key) {
 int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
                            const char **activated_id) {
     uint32_t index;
+    const int32_t taskbar_top = (int32_t)shell->screen_height -
+                                (int32_t)SB_GUI_TASKBAR_HEIGHT;
     if (activated_id != 0) *activated_id = 0;
-    if (shell == 0 || shell->initialized == 0u) return -1;
+    if (shell == 0 || shell->initialized == 0u || activated_id == 0) return -1;
 
     if (x >= (int32_t)SB_SHELL_LAUNCHER_X &&
         x < (int32_t)(SB_SHELL_LAUNCHER_X + SB_SHELL_LAUNCHER_W) &&
-        y >= (int32_t)(shell->screen_height - SB_GUI_TASKBAR_HEIGHT) &&
-        y < (int32_t)shell->screen_height) {
+        y >= taskbar_top && y < (int32_t)shell->screen_height) {
         return sb_desktop_shell_toggle_launcher(shell);
     }
 
     if (shell->launcher.open == 0u) return -1;
     if (sb_launcher_hit_test(&shell->launcher, x, y,
                              SB_SHELL_LAUNCHER_X,
-                             shell->screen_height - SB_GUI_TASKBAR_HEIGHT -
-                                 SB_SHELL_MENU_ROW_H * shell->launcher.count,
+                             taskbar_top -
+                                 (int32_t)(SB_SHELL_MENU_ROW_H * shell->launcher.count),
                              SB_SHELL_MENU_W, SB_SHELL_MENU_ROW_H, &index) != 0) return -1;
     shell->launcher.selected = index;
     return sb_launcher_activate(&shell->launcher, activated_id);
