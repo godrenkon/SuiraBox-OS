@@ -67,6 +67,68 @@ static void compositor_rect(const sb_compositor_style_t *style,
     (void)sb_display_rect(out_x, out_y, out_width, out_height, rgb);
 }
 
+static void compositor_damage_rect(const sb_compositor_style_t *style,
+                                   const sb_surface_rect_t *damage,
+                                   int32_t x, int32_t y,
+                                   uint32_t width, uint32_t height,
+                                   uint32_t rgb) {
+    int64_t left = x;
+    int64_t top = y;
+    int64_t right = left + (int64_t)width;
+    int64_t bottom = top + (int64_t)height;
+    int64_t damage_left = damage->x;
+    int64_t damage_top = damage->y;
+    int64_t damage_right = damage_left + (int64_t)damage->width;
+    int64_t damage_bottom = damage_top + (int64_t)damage->height;
+    int64_t clip_left = left > damage_left ? left : damage_left;
+    int64_t clip_top = top > damage_top ? top : damage_top;
+    int64_t clip_right = right < damage_right ? right : damage_right;
+    int64_t clip_bottom = bottom < damage_bottom ? bottom : damage_bottom;
+
+    if (style == 0 || damage == 0 || clip_left >= clip_right || clip_top >= clip_bottom) return;
+    compositor_rect(style, (int32_t)clip_left, (int32_t)clip_top,
+                    (uint32_t)(clip_right - clip_left),
+                    (uint32_t)(clip_bottom - clip_top), rgb);
+}
+
+void sb_compositor_present_damage(const sb_compositor_style_t *style,
+                                  const sb_gui_window_manager_t *wm,
+                                  const sb_surface_rect_t *damage,
+                                  uint32_t damage_count,
+                                  uint8_t full_damage) {
+    uint32_t d;
+    uint32_t i;
+    if (style == 0 || wm == 0) return;
+    if (full_damage != 0u || damage == 0 || damage_count == 0u) {
+        if (full_damage == 0u && damage_count == 0u) return;
+        sb_compositor_present(style, wm);
+        return;
+    }
+
+    for (d = 0u; d < damage_count; ++d) {
+        const sb_surface_rect_t *region = &damage[d];
+        compositor_damage_rect(style, region, region->x, region->y,
+                               region->width, region->height,
+                               style->background_rgb);
+        compositor_damage_rect(style, region, 0, 0, style->width, 72u,
+                               style->chrome_rgb);
+        compositor_damage_rect(style, region, 0, (int32_t)style->height - 72,
+                               style->width, 72u, style->chrome_rgb);
+
+        for (i = 0u; i < wm->count; ++i) {
+            const sb_gui_window_t *window = &wm->windows[i];
+            if (window->visible == 0u || window->minimized != 0u) continue;
+            compositor_damage_rect(style, region, window->x, window->y,
+                                   window->width, window->height,
+                                   style->titlebar_rgb);
+            compositor_damage_rect(style, region, window->x, window->y,
+                                   window->width, 36u, style->accent_rgb);
+        }
+        compositor_damage_rect(style, region, 18, (int32_t)style->height - 60,
+                               56u, 48u, style->accent_rgb);
+    }
+}
+
 void sb_compositor_present(const sb_compositor_style_t *style,
                            const sb_gui_window_manager_t *wm) {
     uint32_t i;
@@ -76,7 +138,6 @@ void sb_compositor_present(const sb_compositor_style_t *style,
     compositor_rect(style, 0, 0, style->width, 72u, style->chrome_rgb);
     compositor_rect(style, 0, (int32_t)style->height - 72, style->width, 72u, style->chrome_rgb);
 
-    /* Windows are submitted in manager order: later entries are visually above earlier ones. */
     for (i = 0u; i < wm->count; ++i) {
         const sb_gui_window_t *window = &wm->windows[i];
         if (window->visible == 0u || window->minimized != 0u) continue;
