@@ -6,6 +6,7 @@ DESKTOP_ELF := $(BUILD)/sb-desktop.elf
 PMM_HOST_TEST := $(BUILD)/pmm-host-test
 FAT32_HOST_TEST := $(BUILD)/fat32-host-test
 GUI_HOST_TEST := $(BUILD)/gui-host-test
+COMPOSITOR_HOST_TEST := $(BUILD)/compositor-host-test
 
 CC ?= gcc
 AS ?= as
@@ -54,8 +55,9 @@ USER_OBJ := $(BUILD)/user-hello.o
 DESKTOP_ENTRY_OBJ := $(BUILD)/sb_desktop_entry.o
 DESKTOP_MAIN_OBJ := $(BUILD)/desktop_main.o
 GUI_OBJ := $(BUILD)/gui.o
+COMPOSITOR_OBJ := $(BUILD)/compositor.o
 
-.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test
+.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test
 
 all: iso userspace
 
@@ -170,11 +172,14 @@ $(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.
 $(GUI_OBJ): userspace/gui.c userspace/gui.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 
+$(COMPOSITOR_OBJ): userspace/compositor.c userspace/compositor.h userspace/gui.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
 
-$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ)
+$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ)
 
 userspace: $(USER_ELF) $(DESKTOP_ELF)
 
@@ -207,7 +212,13 @@ $(GUI_HOST_TEST): tests/gui_host_test.c userspace/gui.c userspace/gui.h | $(BUIL
 host-gui-test: $(GUI_HOST_TEST)
 	$(GUI_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test
+$(COMPOSITOR_HOST_TEST): tests/compositor_host_test.c userspace/compositor.c userspace/compositor.h userspace/gui.c userspace/gui.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iuserspace tests/compositor_host_test.c userspace/compositor.c userspace/gui.c -o $@
+
+host-compositor-test: $(COMPOSITOR_HOST_TEST)
+	$(COMPOSITOR_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
