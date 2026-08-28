@@ -28,6 +28,11 @@ uint64_t sb_shell_command_count(void) {
     return sizeof(commands) / sizeof(commands[0]);
 }
 
+const char *sb_shell_command_name(uint64_t index) {
+    if (index >= sb_shell_command_count()) return (const char *)0;
+    return commands[index].name;
+}
+
 uint64_t sb_shell_run_command(uint64_t index) {
     if (index >= sb_shell_command_count()) return UINT64_MAX;
     return commands[index].run();
