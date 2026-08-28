@@ -8,9 +8,6 @@
 #define PIT_BASE_HZ 1193182u
 #define SB_SCHED_QUANTUM_TICKS 10u
 
-extern int scheduler_task_count(void);
-extern void scheduler_tick(void);
-extern sb_task_t *scheduler_pick_next(void);
 extern void sb_timer_irq_stub(void);
 
 struct __attribute__((packed)) debug_desc_ptr { uint16_t limit; uint64_t base; };
@@ -69,7 +66,7 @@ static void pic_remap(void) {
     outb(0x21u, 0x04u);
     outb(0xA1u, 0x02u);
     outb(0x21u, 0x01u);
-    outb(0xA1u, 0x01u);
+    outb(0xA0u, 0x01u);
     outb(0x21u, 0xFEu);
     outb(0xA1u, 0xFFu);
 }
@@ -97,4 +94,9 @@ void timer_init(uint32_t frequency_hz) {
 }
 
 uint64_t timer_ticks(void) { return ticks; }
-void sb_timer_tick(void) { ++ticks; scheduler_tick(); if ((ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1) (void)scheduler_pick_next(); }
+void sb_timer_tick(void) {
+    ++ticks;
+    scheduler_tick();
+    if ((ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1u)
+        (void)scheduler_pick_next();
+}
