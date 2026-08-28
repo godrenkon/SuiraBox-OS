@@ -77,7 +77,9 @@ int sb_gui_move_window(sb_gui_window_manager_t *wm, uint32_t id, int32_t x, int3
 int sb_gui_resize_window(sb_gui_window_manager_t *wm, uint32_t id,
                          uint32_t width, uint32_t height) {
     sb_gui_window_t *window = find_slot(wm, id);
-    if (window == 0 || width == 0u || height == 0u || window->resizable == 0u || window->maximized != 0u) return -1;
+    if (window == 0 || width < SB_GUI_MIN_WINDOW_WIDTH ||
+        height < SB_GUI_MIN_WINDOW_HEIGHT || window->resizable == 0u ||
+        window->maximized != 0u) return -1;
     window->width = width;
     window->height = height;
     window->restore_width = width;
@@ -159,6 +161,27 @@ sb_gui_control_t sb_gui_hit_control(const sb_gui_window_t *window, int32_t x, in
     if ((int64_t)x >= max_left && (int64_t)x < close_left) return SB_GUI_CONTROL_MAXIMIZE;
     if ((int64_t)x >= min_left && (int64_t)x < max_left) return SB_GUI_CONTROL_MINIMIZE;
     return SB_GUI_CONTROL_NONE;
+}
+
+sb_gui_resize_edge_t sb_gui_hit_resize(const sb_gui_window_t *window, int32_t x, int32_t y) {
+    const int64_t left = window != 0 ? (int64_t)window->x : 0;
+    const int64_t top = window != 0 ? (int64_t)window->y : 0;
+    const int64_t right = left + (window != 0 ? (int64_t)window->width : 0);
+    const int64_t bottom = top + (window != 0 ? (int64_t)window->height : 0);
+    const int64_t grip = (int64_t)SB_GUI_RESIZE_GRIP_SIZE;
+
+    if (window == 0 || window->visible == 0u || window->minimized != 0u ||
+        window->maximized != 0u || window->resizable == 0u) return SB_GUI_RESIZE_NONE;
+    if ((int64_t)x >= right - grip && (int64_t)x < right &&
+        (int64_t)y >= bottom - grip && (int64_t)y < bottom)
+        return SB_GUI_RESIZE_BOTTOM_RIGHT;
+    if ((int64_t)x >= right - grip && (int64_t)x < right &&
+        (int64_t)y >= top + (int64_t)SB_GUI_TITLEBAR_HEIGHT && (int64_t)y < bottom)
+        return SB_GUI_RESIZE_RIGHT;
+    if ((int64_t)y >= bottom - grip && (int64_t)y < bottom &&
+        (int64_t)x >= left && (int64_t)x < right)
+        return SB_GUI_RESIZE_BOTTOM;
+    return SB_GUI_RESIZE_NONE;
 }
 
 int sb_gui_focus_window(sb_gui_window_manager_t *wm, uint32_t id) {
