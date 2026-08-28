@@ -55,9 +55,8 @@ int sb_compositor_clip_rect(int32_t x, int32_t y, uint32_t width, uint32_t heigh
 
 uint32_t sb_compositor_visible_count(const sb_gui_window_manager_t *wm) {
     uint32_t count = 0u;
-    uint32_t i;
     if (wm == 0) return 0u;
-    for (i = 0u; i < wm->count; ++i) {
+    for (uint32_t i = 0u; i < wm->count; ++i) {
         const sb_gui_window_t *window = &wm->windows[i];
         if (window->visible != 0u && window->minimized == 0u) ++count;
     }
@@ -98,6 +97,27 @@ static void render_window(const sb_compositor_style_t *style,
                         (int32_t)SB_GUI_CONTROL_SIZE, window->y + 6,
                         SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
                         style->close_rgb);
+    }
+}
+
+static void render_taskbar(const sb_compositor_style_t *style,
+                           const sb_gui_window_manager_t *wm) {
+    uint32_t count;
+    if (style == 0 || wm == 0 || style->height < SB_GUI_TASKBAR_HEIGHT) return;
+    count = sb_gui_minimized_count(wm);
+    for (uint32_t i = 0u; i < count; ++i) {
+        const uint64_t left64 = (uint64_t)SB_GUI_TASKBAR_GAP +
+                                (uint64_t)i * ((uint64_t)SB_GUI_TASKBAR_BUTTON_WIDTH +
+                                               (uint64_t)SB_GUI_TASKBAR_GAP);
+        if (left64 >= (uint64_t)style->width) break;
+        uint32_t button_width = SB_GUI_TASKBAR_BUTTON_WIDTH;
+        if (left64 + (uint64_t)button_width > (uint64_t)style->width)
+            button_width = style->width - (uint32_t)left64;
+        if (button_width == 0u) break;
+        compositor_rect(style, (int32_t)left64,
+                        (int32_t)style->height - (int32_t)SB_GUI_TASKBAR_HEIGHT + 12,
+                        button_width, SB_GUI_TASKBAR_HEIGHT - 24u,
+                        style->accent_rgb);
     }
 }
 
@@ -153,13 +173,31 @@ static void render_window_damage(const sb_compositor_style_t *style,
     }
 }
 
+static void render_taskbar_damage(const sb_compositor_style_t *style,
+                                  const sb_surface_rect_t *damage,
+                                  const sb_gui_window_manager_t *wm) {
+    if (style == 0 || damage == 0 || wm == 0) return;
+    for (uint32_t i = 0u; i < sb_gui_minimized_count(wm); ++i) {
+        const uint64_t left64 = (uint64_t)SB_GUI_TASKBAR_GAP +
+                                (uint64_t)i * ((uint64_t)SB_GUI_TASKBAR_BUTTON_WIDTH +
+                                               (uint64_t)SB_GUI_TASKBAR_GAP);
+        if (left64 >= (uint64_t)style->width) break;
+        uint32_t button_width = SB_GUI_TASKBAR_BUTTON_WIDTH;
+        if (left64 + (uint64_t)button_width > (uint64_t)style->width)
+            button_width = style->width - (uint32_t)left64;
+        if (button_width == 0u) break;
+        compositor_damage_rect(style, damage, (int32_t)left64,
+                               (int32_t)style->height - (int32_t)SB_GUI_TASKBAR_HEIGHT + 12,
+                               button_width, SB_GUI_TASKBAR_HEIGHT - 24u,
+                               style->accent_rgb);
+    }
+}
+
 void sb_compositor_present_damage(const sb_compositor_style_t *style,
                                   const sb_gui_window_manager_t *wm,
                                   const sb_surface_rect_t *damage,
                                   uint32_t damage_count,
                                   uint8_t full_damage) {
-    uint32_t d;
-    uint32_t i;
     if (style == 0 || wm == 0) return;
     if (full_damage != 0u || damage == 0 || damage_count == 0u) {
         if (full_damage == 0u && damage_count == 0u) return;
@@ -167,7 +205,7 @@ void sb_compositor_present_damage(const sb_compositor_style_t *style,
         return;
     }
 
-    for (d = 0u; d < damage_count; ++d) {
+    for (uint32_t d = 0u; d < damage_count; ++d) {
         const sb_surface_rect_t *region = &damage[d];
         compositor_damage_rect(style, region, region->x, region->y,
                                region->width, region->height,
@@ -176,23 +214,23 @@ void sb_compositor_present_damage(const sb_compositor_style_t *style,
                                style->chrome_rgb);
         compositor_damage_rect(style, region, 0, (int32_t)style->height - 72,
                                style->width, 72u, style->chrome_rgb);
-        for (i = 0u; i < wm->count; ++i)
+        for (uint32_t i = 0u; i < wm->count; ++i)
             render_window_damage(style, region, &wm->windows[i]);
         compositor_damage_rect(style, region, 18, (int32_t)style->height - 60,
                                56u, 48u, style->accent_rgb);
+        render_taskbar_damage(style, region, wm);
     }
 }
 
 void sb_compositor_present(const sb_compositor_style_t *style,
                            const sb_gui_window_manager_t *wm) {
-    uint32_t i;
     if (style == 0 || wm == 0) return;
 
     compositor_rect(style, 0, 0, style->width, style->height, style->background_rgb);
     compositor_rect(style, 0, 0, style->width, 72u, style->chrome_rgb);
     compositor_rect(style, 0, (int32_t)style->height - 72, style->width, 72u, style->chrome_rgb);
-    for (i = 0u; i < wm->count; ++i) render_window(style, &wm->windows[i]);
-    compositor_rect(style, 18, (int32_t)style->height - 60, 56u, 48u, style->accent_rgb);
+    for (uint32_t i = 0u; i < wm->count; ++i) render_window(style, &wm->windows[i]);
+    render_taskbar(style, wm);
 }
 
 void sb_compositor_present_cursor(const sb_compositor_style_t *style,
