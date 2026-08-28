@@ -162,6 +162,8 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("SB Kernel v0.1\r\nArchitecture: x86_64\r\n");
     serial_write((uint32_t)multiboot_magic == 0x36D76289u ? "Boot protocol: Multiboot2 OK\r\n" : "Boot protocol: unexpected magic\r\n");
     serial_write("Kernel initialized.\r\n");
+    interrupts_init();
+    serial_write("CPU: early exception IDT ready\r\n");
     pci_enumerate();
     serial_write("Storage: probing drivers later; bootstrap continues.\r\n");
     serial_write("Memory: PMM init begin\r\n"); pmm_init(0x01000000ull, 0x04000000ull); serial_write("Memory: PMM init returned\r\n");
@@ -172,7 +174,7 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Memory: initializing VMM...\r\n"); vmm_init(); serial_write(vmm_selftest() ? "Memory: VMM map/translate/unmap OK\r\n" : "Memory: VMM map/translate/unmap FAILED\r\n");
     serial_write("Memory: initializing kernel heap...\r\n"); serial_write(heap_selftest() ? "Memory: kernel heap alloc/free OK\r\n" : "Memory: kernel heap alloc/free FAILED\r\n");
     serial_write("CPU: initializing GDT/TSS...\r\n"); gdt_init(); serial_write("CPU: GDT/TSS ready\r\n");
-    serial_write("Scheduler: initializing...\r\n"); scheduler_init(); interrupts_init(); serial_write(scheduler_selftest() ? "Scheduler: task table/round-robin selection OK\r\n" : "Scheduler: task table/round-robin selection FAILED\r\n");
+    serial_write("Scheduler: initializing...\r\n"); scheduler_init(); serial_write(scheduler_selftest() ? "Scheduler: task table/round-robin selection OK\r\n" : "Scheduler: task table/round-robin selection FAILED\r\n");
     serial_write("Process: initializing...\r\n"); serial_write(process_syscall_selftest() ? "Process/Syscall: model and dispatch OK\r\n" : "Process/Syscall: model and dispatch FAILED\r\n");
     syscall_init(); interrupts_set_user_handler(0x80u, (uintptr_t)sb_syscall_int80_stub); serial_write("Syscall: int 0x80 user gate ready\r\n");
     serial_write("Userspace: loading user-hello module...\r\n"); serial_write(userspace_prepare_selftest(multiboot_info) ? "Userspace: ELF + address-space + stack preparation OK\r\n" : "Userspace: ELF + address-space + stack preparation FAILED\r\n");
