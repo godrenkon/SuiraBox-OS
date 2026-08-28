@@ -51,7 +51,8 @@ GDT_OBJ := $(BUILD)/gdt.o
 USERMODE_OBJ := $(BUILD)/user_mode.o
 MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
-DESKTOP_USER_OBJ := $(BUILD)/sb_desktop.o
+DESKTOP_ENTRY_OBJ := $(BUILD)/sb_desktop_entry.o
+DESKTOP_MAIN_OBJ := $(BUILD)/desktop_main.o
 GUI_OBJ := $(BUILD)/gui.o
 
 .PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test
@@ -160,8 +161,11 @@ $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h |
 $(USER_OBJ): userspace/hello.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(DESKTOP_USER_OBJ): userspace/sb_desktop.S | $(BUILD)
+$(DESKTOP_ENTRY_OBJ): userspace/sb_desktop_entry.S | $(BUILD)
 	$(AS) --64 $< -o $@
+
+$(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 
 $(GUI_OBJ): userspace/gui.c userspace/gui.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
@@ -169,8 +173,8 @@ $(GUI_OBJ): userspace/gui.c userspace/gui.h | $(BUILD)
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
 
-$(DESKTOP_ELF): $(DESKTOP_USER_OBJ) $(GUI_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_USER_OBJ) $(GUI_OBJ)
+$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ)
 
 userspace: $(USER_ELF) $(DESKTOP_ELF)
 
