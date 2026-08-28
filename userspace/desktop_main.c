@@ -200,7 +200,7 @@ void sb_desktop_main(void) {
                         }
                     }
                 }
-                if (first_boot == 0u && sb_gui_event_queue_count(&events) == 0u) {
+                if (first_boot == 0u && sb_gui_event_queue_pop(&events, &event) == 0) {
                     if (event.key == 0x48u || event.key == 0x50u) {
                         (void)sb_desktop_shell_key(&shell, event.key);
                         sb_surface_damage_all(&surface);
