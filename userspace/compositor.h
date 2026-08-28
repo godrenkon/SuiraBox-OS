@@ -12,6 +12,7 @@ typedef struct {
     uint32_t chrome_rgb;
     uint32_t titlebar_rgb;
     uint32_t accent_rgb;
+    uint32_t cursor_rgb;
 } sb_compositor_style_t;
 
 void sb_compositor_init(sb_compositor_style_t *style,
@@ -28,5 +29,7 @@ void sb_compositor_present_damage(const sb_compositor_style_t *style,
                                   const sb_surface_rect_t *damage,
                                   uint32_t damage_count,
                                   uint8_t full_damage);
+void sb_compositor_present_cursor(const sb_compositor_style_t *style,
+                                  int32_t x, int32_t y);
 
 #endif
