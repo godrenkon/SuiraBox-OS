@@ -15,6 +15,7 @@
 #include "arch/x86_64/interrupts.h"
 #include "arch/x86_64/gdt.h"
 #include "arch/x86_64/user_mode.h"
+#include "framebuffer.h"
 
 extern int scheduler_add_kernel_task(uint64_t id, uint32_t priority);
 extern sb_task_t *scheduler_pick_next(void);
@@ -181,6 +182,16 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("CPU: early exception IDT ready\r\n");
     pci_enumerate();
 
+    serial_write("Display: probing Multiboot framebuffer...\r\n");
+    if (sb_framebuffer_init(multiboot_info)) {
+        const sb_framebuffer_info_t *fb = sb_framebuffer_info();
+        serial_write("Display: framebuffer ready "); serial_write_u64(fb->width);
+        serial_write("x"); serial_write_u64(fb->height);
+        serial_write(" "); serial_write_u64(fb->bits_per_pixel); serial_write("bpp\r\n");
+    } else {
+        serial_write("Display: framebuffer unavailable; using fallback console\r\n");
+    }
+
     serial_write("Storage: initializing block/VFS self-test...\r\n");
     serial_write(sb_storage_selftest() ? "Storage: block/VFS self-test OK\r\n" : "Storage: block/VFS self-test FAILED\r\n");
     serial_write("Storage: probing legacy ATA primary master...\r\n");
@@ -231,13 +242,10 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     if (init_process != 0) {
         serial_write("Userspace: activating init address space\r\n");
         init_process->state = SB_PROCESS_RUNNING;
-        if (process_activate(init_process) == 0) {
-            serial_write("Userspace: entering ring3\r\n");
-            arch_enter_user(init_image.entry_point, init_image.user_stack_top);
-            serial_write("Userspace: returned unexpectedly; staying in kernel halt loop\r\n");
-        } else {
-            serial_write("Userspace: address-space activation FAILED\r\n");
-        }
+        interrupts_enable();
+        arch_enter_user(init_image.entry_point, init_image.user_stack_top);
+        interrupts_disable();
+        serial_write("Userspace: ring3 entry returned unexpectedly\r\n");
     }
 
     for (;;) __asm__ volatile ("hlt");
