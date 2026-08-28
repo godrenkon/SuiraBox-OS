@@ -3,13 +3,15 @@
 #include "gui.h"
 #include "syscall.h"
 #include "compositor.h"
+#include "surface.h"
+#include "event_queue.h"
 
 static const uint64_t G_J = 0x003844040404043eULL;
 static const uint64_t G_P = 0x004040407c44447cULL;
 static const uint64_t G_E = 0x007c40407840407cULL;
 static const uint64_t G_N = 0x004242464a526242ULL;
 static const uint64_t G_Z = 0x007e20100804027eULL;
-static const uint64_t G_H = 0x004242427e424242ULL;
+static const uint64_t G_H = 0x007e404040407e40ULL;
 static const uint64_t G_S = 0x007c02023c40403eULL;
 
 static void draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rgb) {
@@ -95,99 +97,130 @@ void sb_desktop_main(void) {
     int32_t drag_dx = 0;
     int32_t drag_dy = 0;
     sb_gui_window_manager_t wm;
+    sb_gui_event_queue_t event_queue;
+    sb_surface_t frame_surface;
+    sb_surface_rect_t damage[SB_SURFACE_MAX_DAMAGE];
 
     if (width == 0u || height == 0u) for (;;) { }
-
+    if (sb_surface_init(&frame_surface, width, height, width * 4u,
+                        SB_SURFACE_FORMAT_XRGB8888, 0) != 0) for (;;) { }
+    sb_gui_event_queue_init(&event_queue);
     sb_gui_init(&wm);
     sb_gui_window_t *main_window = sb_gui_create_window(&wm, 252, 150, 520u, 320u);
     if (main_window != 0) main_window->visible = 0u;
+    sb_surface_damage_all(&frame_surface);
     draw_first_boot(width, height, selection, dropdown_open);
+    (void)sb_surface_take_damage(&frame_surface, damage, SB_SURFACE_MAX_DAMAGE,
+                                  &(uint32_t){0}, &(uint8_t){0});
 
     for (;;) {
         uint64_t key = sb_input_key();
-        if (key != 0u && (key & 0x80u) == 0u && first_boot) {
-            if (key == 0x39u) {
-                dropdown_open = !dropdown_open;
-                draw_first_boot(width, height, selection, dropdown_open);
-            } else if (dropdown_open && key == 0x48u && selection > 0u) {
-                --selection;
-                draw_first_boot(width, height, selection, dropdown_open);
-            } else if (dropdown_open && key == 0x50u && selection < 3u) {
-                ++selection;
-                draw_first_boot(width, height, selection, dropdown_open);
-            } else if (key == 0x1Cu) {
-                if (dropdown_open) {
-                    dropdown_open = 0;
-                    draw_first_boot(width, height, selection, dropdown_open);
-                } else {
-                    first_boot = 0;
-                    if (main_window != 0) main_window->visible = 1u;
-                    draw_desktop(width, height, &wm);
+        if (key != 0u && (key & 0x80u) == 0u) {
+            sb_gui_event_t event = {SB_GUI_EVENT_KEY, cursor_x, cursor_y, 0, 0, 0,
+                                    (uint8_t)key};
+            if (sb_gui_event_queue_push(&event_queue, &event) == 0) {
+                while (sb_gui_event_queue_pop(&event_queue, &event) == 0) {
+                    key = event.key;
+                    if (!first_boot) break;
+                    if (key == 0x39u) {
+                        dropdown_open = !dropdown_open;
+                        draw_first_boot(width, height, selection, dropdown_open);
+                    } else if (dropdown_open && key == 0x48u && selection > 0u) {
+                        --selection;
+                        draw_first_boot(width, height, selection, dropdown_open);
+                    } else if (dropdown_open && key == 0x50u && selection < 3u) {
+                        ++selection;
+                        draw_first_boot(width, height, selection, dropdown_open);
+                    } else if (key == 0x1Cu) {
+                        if (dropdown_open) {
+                            dropdown_open = 0;
+                            draw_first_boot(width, height, selection, dropdown_open);
+                        } else {
+                            first_boot = 0;
+                            if (main_window != 0) main_window->visible = 1u;
+                            draw_desktop(width, height, &wm);
+                        }
+                    }
                 }
             }
         }
 
         uint64_t packet = sb_input_mouse();
         if (packet == 0u) continue;
-        int32_t dx, dy;
+        int32_t dx;
+        int32_t dy;
         uint8_t buttons;
         decode_mouse(packet, &dx, &dy, &buttons);
-        cursor_x += dx;
-        cursor_y -= dy;
-        if (cursor_x < 0) cursor_x = 0;
-        if (cursor_y < 0) cursor_y = 0;
-        if (cursor_x >= (int32_t)width) cursor_x = (int32_t)width - 1;
-        if (cursor_y >= (int32_t)height) cursor_y = (int32_t)height - 1;
+        sb_gui_event_t event = {SB_GUI_EVENT_MOUSE_MOVE, cursor_x, cursor_y,
+                                (int16_t)dx, (int16_t)dy, buttons, 0};
+        if (sb_gui_event_queue_push(&event_queue, &event) != 0) continue;
+        while (sb_gui_event_queue_pop(&event_queue, &event) == 0) {
+            cursor_x += event.dx;
+            cursor_y -= event.dy;
+            if (cursor_x < 0) cursor_x = 0;
+            if (cursor_y < 0) cursor_y = 0;
+            if (cursor_x >= (int32_t)width) cursor_x = (int32_t)width - 1;
+            if (cursor_y >= (int32_t)height) cursor_y = (int32_t)height - 1;
 
-        if ((buttons & 1u) != 0u && (last_buttons & 1u) == 0u) {
-            if (first_boot) {
-                uint32_t modal_y = (height - 360u) / 2u;
-                uint32_t field_x = (width - 420u) / 2u;
-                if (point_inside(cursor_x, cursor_y, (int32_t)field_x,
-                                 (int32_t)(modal_y + 104u), 420u, 52u)) {
-                    dropdown_open = !dropdown_open;
-                    draw_first_boot(width, height, selection, dropdown_open);
-                } else if (dropdown_open && cursor_x >= (int32_t)field_x &&
-                           cursor_x < (int32_t)(field_x + 420u) &&
-                           cursor_y >= (int32_t)(modal_y + 160u) &&
-                           cursor_y < (int32_t)(modal_y + 336u)) {
-                    uint32_t row = (uint32_t)(cursor_y - (int32_t)(modal_y + 160u)) / 44u;
-                    if (row < 4u) selection = row;
-                    dropdown_open = 0;
-                    draw_first_boot(width, height, selection, dropdown_open);
-                } else if (!dropdown_open && point_inside(cursor_x, cursor_y,
-                           (int32_t)((width - 240u) / 2u),
-                           (int32_t)(modal_y + 300u), 240u, 44u)) {
-                    first_boot = 0;
-                    if (main_window != 0) main_window->visible = 1u;
+            if ((event.buttons & 1u) != 0u && (last_buttons & 1u) == 0u) {
+                if (first_boot) {
+                    uint32_t modal_y = (height - 360u) / 2u;
+                    uint32_t field_x = (width - 420u) / 2u;
+                    if (point_inside(cursor_x, cursor_y, (int32_t)field_x,
+                                     (int32_t)(modal_y + 104u), 420u, 52u)) {
+                        dropdown_open = !dropdown_open;
+                        draw_first_boot(width, height, selection, dropdown_open);
+                    } else if (dropdown_open && cursor_x >= (int32_t)field_x &&
+                               cursor_x < (int32_t)(field_x + 420u) &&
+                               cursor_y >= (int32_t)(modal_y + 160u) &&
+                               cursor_y < (int32_t)(modal_y + 336u)) {
+                        uint32_t row = (uint32_t)(cursor_y - (int32_t)(modal_y + 160u)) / 44u;
+                        if (row < 4u) selection = row;
+                        dropdown_open = 0;
+                        draw_first_boot(width, height, selection, dropdown_open);
+                    } else if (!dropdown_open && point_inside(cursor_x, cursor_y,
+                               (int32_t)((width - 240u) / 2u),
+                               (int32_t)(modal_y + 300u), 240u, 44u)) {
+                        first_boot = 0;
+                        if (main_window != 0) main_window->visible = 1u;
+                        draw_desktop(width, height, &wm);
+                    } else if (dropdown_open) {
+                        dropdown_open = 0;
+                        draw_first_boot(width, height, selection, dropdown_open);
+                    }
+                } else {
+                    sb_gui_window_t *hit = sb_gui_hit_test(&wm, cursor_x, cursor_y);
+                    if (hit != 0) {
+                        (void)sb_gui_focus_window(&wm, hit->id);
+                        dragging = 1;
+                        drag_dx = cursor_x - hit->x;
+                        drag_dy = cursor_y - hit->y;
+                    }
+                }
+            }
+
+            if (!first_boot && (event.buttons & 1u) != 0u && dragging) {
+                sb_gui_window_t *focused = sb_gui_find_window(&wm, wm.focused_id);
+                if (focused != 0) {
+                    int32_t old_x = focused->x;
+                    int32_t old_y = focused->y;
+                    focused->x = cursor_x - drag_dx;
+                    focused->y = cursor_y - drag_dy;
+                    if (focused->x < 0) focused->x = 0;
+                    if (focused->y < 72) focused->y = 72;
+                    (void)sb_surface_damage_rect(&frame_surface, old_x, old_y,
+                                                  focused->width, focused->height);
+                    (void)sb_surface_damage_rect(&frame_surface, focused->x, focused->y,
+                                                  focused->width, focused->height);
                     draw_desktop(width, height, &wm);
-                } else if (dropdown_open) {
-                    dropdown_open = 0;
-                    draw_first_boot(width, height, selection, dropdown_open);
-                }
-            } else {
-                sb_gui_window_t *hit = sb_gui_hit_test(&wm, cursor_x, cursor_y);
-                if (hit != 0) {
-                    (void)sb_gui_focus_window(&wm, hit->id);
-                    dragging = 1;
-                    drag_dx = cursor_x - hit->x;
-                    drag_dy = cursor_y - hit->y;
+                    (void)sb_surface_take_damage(&frame_surface, damage,
+                                                  SB_SURFACE_MAX_DAMAGE,
+                                                  &(uint32_t){0}, &(uint8_t){0});
                 }
             }
-        }
 
-        if (!first_boot && (buttons & 1u) != 0u && dragging) {
-            sb_gui_window_t *focused = sb_gui_find_window(&wm, wm.focused_id);
-            if (focused != 0) {
-                focused->x = cursor_x - drag_dx;
-                focused->y = cursor_y - drag_dy;
-                if (focused->x < 0) focused->x = 0;
-                if (focused->y < 72) focused->y = 72;
-                draw_desktop(width, height, &wm);
-            }
+            if ((event.buttons & 1u) == 0u) dragging = 0;
+            last_buttons = event.buttons;
         }
-
-        if ((buttons & 1u) == 0) dragging = 0;
-        last_buttons = buttons;
     }
 }
