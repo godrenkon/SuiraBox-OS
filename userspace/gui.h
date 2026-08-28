@@ -18,7 +18,8 @@ typedef enum {
 typedef enum {
     SB_GUI_CONTROL_NONE = 0,
     SB_GUI_CONTROL_MINIMIZE = 1,
-    SB_GUI_CONTROL_CLOSE = 2,
+    SB_GUI_CONTROL_MAXIMIZE = 2,
+    SB_GUI_CONTROL_CLOSE = 3,
 } sb_gui_control_t;
 
 typedef struct {
@@ -37,10 +38,14 @@ typedef struct {
     int32_t y;
     uint32_t width;
     uint32_t height;
+    int32_t restore_x;
+    int32_t restore_y;
+    uint32_t restore_width;
+    uint32_t restore_height;
     uint8_t visible;
     uint8_t resizable;
     uint8_t minimized;
-    uint8_t reserved;
+    uint8_t maximized;
 } sb_gui_window_t;
 
 typedef struct {
@@ -59,6 +64,8 @@ int sb_gui_move_window(sb_gui_window_manager_t *wm, uint32_t id, int32_t x, int3
 int sb_gui_resize_window(sb_gui_window_manager_t *wm, uint32_t id,
                          uint32_t width, uint32_t height);
 int sb_gui_set_minimized(sb_gui_window_manager_t *wm, uint32_t id, uint8_t minimized);
+int sb_gui_set_maximized(sb_gui_window_manager_t *wm, uint32_t id,
+                         uint8_t maximized, uint32_t screen_width, uint32_t screen_height);
 sb_gui_window_t *sb_gui_find_window(sb_gui_window_manager_t *wm, uint32_t id);
 sb_gui_window_t *sb_gui_hit_test(sb_gui_window_manager_t *wm, int32_t x, int32_t y);
 sb_gui_control_t sb_gui_hit_control(const sb_gui_window_t *window, int32_t x, int32_t y);
