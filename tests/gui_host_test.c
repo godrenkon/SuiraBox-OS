@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdint.h>
+#include <limits.h>
 #include "../userspace/gui.h"
 
 int main(void) {
@@ -10,6 +11,8 @@ int main(void) {
     sb_gui_window_t extreme;
     uint32_t back_id;
     uint32_t front_id;
+    const uint32_t screen_width = 1024u;
+    const uint32_t screen_height = 768u;
 
     sb_gui_init(&wm);
     assert(wm.count == 0u);
@@ -27,8 +30,9 @@ int main(void) {
     assert(sb_gui_hit_test(&wm, 15, 25)->id == back_id);
     assert(sb_gui_hit_test(&wm, 1000, 1000) == 0);
 
-    assert(sb_gui_hit_control(front, 152, 60) == SB_GUI_CONTROL_MINIMIZE);
-    assert(sb_gui_hit_control(front, 176, 60) == SB_GUI_CONTROL_CLOSE);
+    assert(sb_gui_hit_control(front, 64, 60) == SB_GUI_CONTROL_MINIMIZE);
+    assert(sb_gui_hit_control(front, 88, 60) == SB_GUI_CONTROL_MAXIMIZE);
+    assert(sb_gui_hit_control(front, 112, 60) == SB_GUI_CONTROL_CLOSE);
     assert(sb_gui_hit_control(front, 100, 60) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(front, 191, 90) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(0, 191, 60) == SB_GUI_CONTROL_NONE);
@@ -50,14 +54,34 @@ int main(void) {
     front = sb_gui_find_window(&wm, front_id);
     assert(front != 0);
     assert(front->width == 320u && front->height == 240u);
-    assert(sb_gui_hit_control(front, 372, 106) == SB_GUI_CONTROL_MINIMIZE);
+    assert(sb_gui_hit_control(front, 348, 106) == SB_GUI_CONTROL_MINIMIZE);
+    assert(sb_gui_hit_control(front, 372, 106) == SB_GUI_CONTROL_MAXIMIZE);
     assert(sb_gui_hit_control(front, 396, 106) == SB_GUI_CONTROL_CLOSE);
 
     extreme = (sb_gui_window_t){
-        99u, INT32_MAX - 8, INT32_MAX - 8, UINT32_MAX, UINT32_MAX, 1u, 1u, 0u, 0u
+        99u, INT32_MAX - 8, INT32_MAX - 8, UINT32_MAX, UINT32_MAX,
+        INT32_MAX - 8, INT32_MAX - 8, UINT32_MAX, UINT32_MAX,
+        1u, 1u, 0u, 0u
     };
     assert(sb_gui_hit_control(&extreme, INT32_MAX, INT32_MAX) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(&extreme, INT32_MIN, INT32_MIN) == SB_GUI_CONTROL_NONE);
+
+    assert(sb_gui_set_maximized(&wm, front_id, 1u, screen_width, screen_height) == 0);
+    front = sb_gui_find_window(&wm, front_id);
+    assert(front != 0);
+    assert(front->maximized == 1u);
+    assert(front->x == 0 && front->y == SB_GUI_TITLEBAR_HEIGHT);
+    assert(front->width == screen_width);
+    assert(front->height == screen_height - SB_GUI_TITLEBAR_HEIGHT);
+    assert(sb_gui_move_window(&wm, front_id, 10, 10) != 0);
+    assert(sb_gui_resize_window(&wm, front_id, 200u, 100u) != 0);
+    assert(sb_gui_hit_control(front, 100, 80) == SB_GUI_CONTROL_NONE);
+    assert(sb_gui_set_maximized(&wm, front_id, 0u, screen_width, screen_height) == 0);
+    front = sb_gui_find_window(&wm, front_id);
+    assert(front != 0);
+    assert(front->maximized == 0u);
+    assert(front->x == 100 && front->y == 100);
+    assert(front->width == 320u && front->height == 240u);
 
     assert(sb_gui_set_minimized(&wm, front_id, 1u) == 0);
     assert(wm.focused_id != front_id);
