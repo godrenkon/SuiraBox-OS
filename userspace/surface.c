@@ -6,8 +6,8 @@ static int rect_valid(uint32_t width, uint32_t height) {
 
 int sb_surface_init(sb_surface_t *surface, uint32_t width, uint32_t height,
                     uint32_t stride, uint32_t format, uint8_t *pixels) {
-    if (surface == 0 || !rect_valid(width, height) || stride < width * 4u ||
-        format != SB_SURFACE_FORMAT_XRGB8888) return -1;
+    if (surface == 0 || !rect_valid(width, height) ||
+        width > stride / 4u || format != SB_SURFACE_FORMAT_XRGB8888) return -1;
     surface->width = width;
     surface->height = height;
     surface->stride = stride;
@@ -26,14 +26,33 @@ void sb_surface_damage_all(sb_surface_t *surface) {
 
 int sb_surface_damage_rect(sb_surface_t *surface, int32_t x, int32_t y,
                            uint32_t width, uint32_t height) {
+    int64_t right;
+    int64_t bottom;
+    int64_t clipped_x;
+    int64_t clipped_y;
+    int64_t clipped_right;
+    int64_t clipped_bottom;
     if (surface == 0 || !rect_valid(width, height)) return -1;
     if (surface->full_damage != 0u) return 0;
+
+    right = (int64_t)x + (int64_t)width;
+    bottom = (int64_t)y + (int64_t)height;
+    clipped_x = x < 0 ? 0 : x;
+    clipped_y = y < 0 ? 0 : y;
+    clipped_right = right > (int64_t)surface->width ? (int64_t)surface->width : right;
+    clipped_bottom = bottom > (int64_t)surface->height ? (int64_t)surface->height : bottom;
+    if (clipped_x >= clipped_right || clipped_y >= clipped_bottom) return 0;
+
     if (surface->damage_count >= SB_SURFACE_MAX_DAMAGE) {
         surface->damage_count = 0u;
         surface->full_damage = 1u;
         return 0;
     }
-    surface->damage[surface->damage_count++] = (sb_surface_rect_t){x, y, width, height};
+    surface->damage[surface->damage_count++] = (sb_surface_rect_t){
+        clipped_x, clipped_y,
+        (uint32_t)(clipped_right - clipped_x),
+        (uint32_t)(clipped_bottom - clipped_y)
+    };
     return 0;
 }
 
