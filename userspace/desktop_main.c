@@ -2,6 +2,7 @@
 
 #include "gui.h"
 #include "syscall.h"
+#include "compositor.h"
 
 static const uint64_t G_J = 0x003844040404043eULL;
 static const uint64_t G_P = 0x004040407c44447cULL;
@@ -34,20 +35,15 @@ static void draw_select(uint32_t width, uint32_t modal_y, uint32_t selection, in
     uint32_t x = (width - 420u) / 2u;
     draw_rect(x, modal_y + 104u, 420u, 52u, 0x202A38u);
     draw_rect(x + 356u, modal_y + 112u, 52u, 36u, 0x3A485Au);
-
     if (selection == 0u) draw_pair(x + 20u, modal_y + 124u, G_J, G_P);
     else if (selection == 1u) draw_pair(x + 20u, modal_y + 124u, G_E, G_N);
     else if (selection == 2u) draw_pair(x + 20u, modal_y + 124u, G_Z, G_H);
     else draw_pair(x + 20u, modal_y + 124u, G_E, G_S);
-
     if (!open) return;
-
     draw_rect(x, modal_y + 158u, 420u, 176u, 0x171D27u);
-    for (uint32_t i = 0u; i < 4u; ++i) {
+    for (uint32_t i = 0u; i < 4u; ++i)
         draw_rect(x + 2u, modal_y + 160u + i * 44u, 416u, 40u, 0x27313Eu);
-    }
     draw_rect(x + 2u, modal_y + 160u + selection * 44u, 416u, 40u, 0x536F8Au);
-
     draw_pair(x + 20u, modal_y + 176u, G_J, G_P);
     draw_pair(x + 20u, modal_y + 220u, G_E, G_N);
     draw_pair(x + 20u, modal_y + 264u, G_Z, G_H);
@@ -57,7 +53,6 @@ static void draw_select(uint32_t width, uint32_t modal_y, uint32_t selection, in
 static void draw_first_boot(uint32_t width, uint32_t height, uint32_t selection, int open) {
     const uint32_t modal_x = (width - 560u) / 2u;
     const uint32_t modal_y = (height - 360u) / 2u;
-
     screen_background(width, height);
     draw_rect(modal_x, modal_y, 560u, 360u, 0x313B4Au);
     draw_rect(modal_x + 24u, modal_y + 24u, 512u, 52u, 0x3A485Au);
@@ -67,20 +62,12 @@ static void draw_first_boot(uint32_t width, uint32_t height, uint32_t selection,
 }
 
 static void draw_desktop(uint32_t width, uint32_t height, sb_gui_window_manager_t *wm) {
-    screen_background(width, height);
-    for (uint32_t i = 0u; i < wm->count; ++i) {
-        sb_gui_window_t *window = &wm->windows[i];
-        if (window->visible == 0u || window->minimized != 0u) continue;
-        draw_rect((uint32_t)window->x, (uint32_t)window->y,
-                  window->width, window->height, 0x313B4Au);
-        draw_rect((uint32_t)window->x, (uint32_t)window->y,
-                  window->width, 36u, 0x3A485Au);
-    }
-    draw_rect(18u, height - 60u, 56u, 48u, 0x536F8Au);
+    sb_compositor_style_t style;
+    sb_compositor_init(&style, width, height);
+    sb_compositor_present(&style, wm);
 }
 
-static int point_inside(int32_t x, int32_t y,
-                        int32_t left, int32_t top,
+static int point_inside(int32_t x, int32_t y, int32_t left, int32_t top,
                         uint32_t width, uint32_t height) {
     if (x < left || y < top) return 0;
     if ((uint32_t)(x - left) >= width) return 0;
@@ -109,14 +96,11 @@ void sb_desktop_main(void) {
     int32_t drag_dy = 0;
     sb_gui_window_manager_t wm;
 
-    if (width == 0u || height == 0u) {
-        for (;;) { }
-    }
+    if (width == 0u || height == 0u) for (;;) { }
 
     sb_gui_init(&wm);
     sb_gui_window_t *main_window = sb_gui_create_window(&wm, 252, 150, 520u, 320u);
     if (main_window != 0) main_window->visible = 0u;
-
     draw_first_boot(width, height, selection, dropdown_open);
 
     for (;;) {
@@ -145,9 +129,7 @@ void sb_desktop_main(void) {
 
         uint64_t packet = sb_input_mouse();
         if (packet == 0u) continue;
-
-        int32_t dx;
-        int32_t dy;
+        int32_t dx, dy;
         uint8_t buttons;
         decode_mouse(packet, &dx, &dy, &buttons);
         cursor_x += dx;
@@ -173,10 +155,9 @@ void sb_desktop_main(void) {
                     if (row < 4u) selection = row;
                     dropdown_open = 0;
                     draw_first_boot(width, height, selection, dropdown_open);
-                } else if (!dropdown_open &&
-                           point_inside(cursor_x, cursor_y,
-                                        (int32_t)((width - 240u) / 2u),
-                                        (int32_t)(modal_y + 300u), 240u, 44u)) {
+                } else if (!dropdown_open && point_inside(cursor_x, cursor_y,
+                           (int32_t)((width - 240u) / 2u),
+                           (int32_t)(modal_y + 300u), 240u, 44u)) {
                     first_boot = 0;
                     if (main_window != 0) main_window->visible = 1u;
                     draw_desktop(width, height, &wm);
@@ -206,7 +187,7 @@ void sb_desktop_main(void) {
             }
         }
 
-        if ((buttons & 1u) == 0u) dragging = 0;
+        if ((buttons & 1u) == 0) dragging = 0;
         last_buttons = buttons;
     }
 }
