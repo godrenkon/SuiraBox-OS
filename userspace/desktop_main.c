@@ -6,6 +6,7 @@
 #include "compositor.h"
 #include "surface.h"
 #include "event_queue.h"
+#include "config.h"
 
 static const uint64_t G_J = 0x003844040404043eULL;
 static const uint64_t G_P = 0x004040407c44447cULL;
@@ -87,6 +88,12 @@ static void decode_mouse(uint64_t packet, int32_t *dx, int32_t *dy, uint8_t *but
     *buttons = (uint8_t)((packet >> 8) & 0x07u);
 }
 
+static int commit_language(sb_config_record_t *config, uint32_t selection) {
+    if (config == 0 || selection > (uint32_t)SB_LANGUAGE_SPANISH) return -1;
+    if (sb_config_make(config, (sb_language_t)selection, 1u) != 0) return -1;
+    return sb_config_validate(config);
+}
+
 static void present_damage(sb_surface_t *surface, uint32_t width, uint32_t height,
                            sb_gui_window_manager_t *wm,
                            sb_surface_rect_t *damage, uint32_t capacity) {
@@ -114,6 +121,7 @@ void sb_desktop_main(void) {
     sb_gui_event_queue_t event_queue;
     sb_surface_t frame_surface;
     sb_surface_rect_t damage[SB_SURFACE_MAX_DAMAGE];
+    sb_config_record_t config;
     uint32_t zero_count = 0u;
     uint8_t zero_full = 0u;
 
@@ -124,6 +132,7 @@ void sb_desktop_main(void) {
     sb_gui_init(&wm);
     sb_gui_window_t *main_window = sb_gui_create_window(&wm, 252, 150, 520u, 320u);
     if (main_window != 0) main_window->visible = 0u;
+    if (commit_language(&config, selection) != 0) for (;;) { }
 
     sb_surface_damage_all(&frame_surface);
     draw_first_boot(width, height, selection, dropdown_open);
@@ -144,15 +153,17 @@ void sb_desktop_main(void) {
                         draw_first_boot(width, height, selection, dropdown_open);
                     } else if (dropdown_open && key == 0x48u && selection > 0u) {
                         --selection;
+                        (void)commit_language(&config, selection);
                         draw_first_boot(width, height, selection, dropdown_open);
                     } else if (dropdown_open && key == 0x50u && selection < 3u) {
                         ++selection;
+                        (void)commit_language(&config, selection);
                         draw_first_boot(width, height, selection, dropdown_open);
                     } else if (key == 0x1Cu) {
                         if (dropdown_open) {
                             dropdown_open = 0;
                             draw_first_boot(width, height, selection, dropdown_open);
-                        } else {
+                        } else if (commit_language(&config, selection) == 0) {
                             first_boot = 0;
                             if (main_window != 0) main_window->visible = 1u;
                             sb_surface_damage_all(&frame_surface);
@@ -170,7 +181,11 @@ void sb_desktop_main(void) {
         int32_t dy;
         uint8_t buttons;
         decode_mouse(packet, &dx, &dy, &buttons);
-        sb_gui_event_t event = {SB_GUI_EVENT_MOUSE_MOVE, cursor_x, cursor_y,
+
+        sb_gui_event_type_t type = ((buttons ^ last_buttons) & 0x07u) != 0u
+                                 ? SB_GUI_EVENT_MOUSE_BUTTON
+                                 : SB_GUI_EVENT_MOUSE_MOVE;
+        sb_gui_event_t event = {type, cursor_x, cursor_y,
                                 (int16_t)dx, (int16_t)dy, buttons, 0};
         if (sb_gui_event_queue_push(&event_queue, &event) != 0) continue;
         while (sb_gui_event_queue_pop(&event_queue, &event) == 0) {
@@ -181,7 +196,8 @@ void sb_desktop_main(void) {
             if (cursor_x >= (int32_t)width) cursor_x = (int32_t)width - 1;
             if (cursor_y >= (int32_t)height) cursor_y = (int32_t)height - 1;
 
-            if ((event.buttons & 1u) != 0u && (last_buttons & 1u) == 0u) {
+            if (event.type == SB_GUI_EVENT_MOUSE_BUTTON &&
+                (event.buttons & 1u) != 0u && (last_buttons & 1u) == 0u) {
                 if (first_boot) {
                     uint32_t modal_y = (height - 360u) / 2u;
                     uint32_t field_x = (width - 420u) / 2u;
@@ -194,12 +210,13 @@ void sb_desktop_main(void) {
                                cursor_y >= (int32_t)(modal_y + 160u) &&
                                cursor_y < (int32_t)(modal_y + 336u)) {
                         uint32_t row = (uint32_t)(cursor_y - (int32_t)(modal_y + 160u)) / 44u;
-                        if (row < 4u) selection = row;
+                        if (row < 4u && commit_language(&config, row) == 0) selection = row;
                         dropdown_open = 0;
                         draw_first_boot(width, height, selection, dropdown_open);
                     } else if (!dropdown_open && point_inside(cursor_x, cursor_y,
                                (int32_t)((width - 240u) / 2u),
-                               (int32_t)(modal_y + 300u), 240u, 44u)) {
+                               (int32_t)(modal_y + 300u), 240u, 44u) &&
+                               commit_language(&config, selection) == 0) {
                         first_boot = 0;
                         if (main_window != 0) main_window->visible = 1u;
                         sb_surface_damage_all(&frame_surface);
