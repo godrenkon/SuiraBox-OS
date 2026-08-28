@@ -39,8 +39,8 @@ static void timer_debug(const char *s) {
 }
 
 static void pic_remap(void) {
-    const uint8_t master_mask = inb(0x21u);
-    const uint8_t slave_mask = inb(0xA1u);
+    outb(0x21u, 0xFFu);
+    outb(0xA1u, 0xFFu);
     outb(0x20u, 0x11u);
     outb(0xA0u, 0x11u);
     outb(0x21u, 0x20u);
@@ -49,12 +49,13 @@ static void pic_remap(void) {
     outb(0xA1u, 0x02u);
     outb(0x21u, 0x01u);
     outb(0xA1u, 0x01u);
-    outb(0x21u, (uint8_t)(master_mask & 0xFEu));
-    outb(0xA1u, slave_mask);
+    outb(0x21u, 0xFEu);
+    outb(0xA1u, 0xFFu);
 }
 
 void timer_init(uint32_t frequency_hz) {
     timer_debug("[TIMER] init begin\r\n");
+    interrupts_disable();
     if (frequency_hz == 0u) frequency_hz = 100u;
     uint32_t divisor = PIT_BASE_HZ / frequency_hz;
     if (divisor == 0u) divisor = 1u;
