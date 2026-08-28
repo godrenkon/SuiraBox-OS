@@ -2,6 +2,7 @@
 #include "pci.h"
 #include "block.h"
 #include "vfs.h"
+#include "ata_pio.h"
 #include "mm/pmm.h"
 #include "mm/vmm.h"
 #include "mm/heap.h"
@@ -20,6 +21,7 @@ extern sb_task_t *scheduler_pick_next(void);
 extern uint32_t scheduler_task_count(void);
 extern void sb_syscall_int80_stub(void);
 extern void arch_enter_user(uint64_t entry_point, uint64_t user_stack);
+extern int sb_storage_selftest(void);
 extern char __kernel_start;
 extern char __kernel_end;
 
@@ -178,7 +180,15 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     interrupts_init();
     serial_write("CPU: early exception IDT ready\r\n");
     pci_enumerate();
-    serial_write("Storage: probing drivers later; bootstrap continues.\r\n");
+
+    serial_write("Storage: initializing block/VFS self-test...\r\n");
+    serial_write(sb_storage_selftest() ? "Storage: block/VFS self-test OK\r\n" : "Storage: block/VFS self-test FAILED\r\n");
+    serial_write("Storage: probing legacy ATA primary master...\r\n");
+    if (sb_ata_pio_init() == SB_BLOCK_OK) {
+        serial_write("Storage: ATA primary master registered\r\n");
+    } else {
+        serial_write("Storage: ATA primary master unavailable; continuing without it\r\n");
+    }
 
     serial_write("Memory: PMM init begin\r\n");
     pmm_init_from_multiboot(multiboot_info);
