@@ -71,7 +71,17 @@ int main(void) {
 
     sb_gui_init(&wm);
     a = sb_gui_create_window(&wm, 100, 100, 300u, 200u);
-    assert(a != 0);
+    b = sb_gui_create_window(&wm, 400, 180, 240u, 160u);
+    assert(a != 0 && b != 0);
+    assert(sb_gui_set_minimized(&wm, b->id, 1u) == 0);
+    assert(sb_gui_minimized_count(&wm) == 1u);
+    display_rect_calls = 0u;
+    display_rect_pixels = 0u;
+    sb_compositor_present(&style, &wm);
+    assert(display_rect_calls > 0u);
+    assert(display_rect_pixels > 0u);
+    assert(sb_gui_hit_taskbar(&wm, 16, 730, 1024u, 768u) == b->id);
+
     damage[0] = (sb_surface_rect_t){110, 120, 40u, 30u};
     damage[1] = (sb_surface_rect_t){900, 700, 20u, 20u};
     display_rect_calls = 0u;
@@ -82,6 +92,7 @@ int main(void) {
     assert(display_rect_pixels < 1024u * 768u);
 
     display_rect_calls = 0u;
+    display_rect_pixels = 0u;
     sb_compositor_present_damage(&style, &wm, damage, 2u, 1u);
     assert(display_rect_calls > 0u);
     assert(display_rect_pixels > 1024u * 768u);
