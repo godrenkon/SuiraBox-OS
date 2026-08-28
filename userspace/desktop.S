@@ -24,6 +24,7 @@
  * SB Desktop bootstrap userspace surface.
  * Display hardware remains behind stable display syscalls. Keyboard input is
  * polled through the kernel input service until the event subsystem exists.
+ * r13d/r14d/r15d hold width/height/selection; rbp/rbx hold modal geometry.
  */
 _start:
     /* Query display geometry: width[63:32], height[31:16]. */
@@ -37,7 +38,7 @@ _start:
     mov %eax, %r13d          /* width */
     mov %r12, %rax
     shr $16, %rax
-    movzwl %ax, %r14d         /* height */
+    movzwl %ax, %r14d        /* height */
 
     /* Initial desktop background. */
     mov $4, %rax
@@ -78,34 +79,31 @@ _start:
     mov $5, %rax
     int $0x80
 
-    /* First-boot modal geometry. */
+    /* First-boot modal geometry; keep across int 0x80 calls. */
     mov %r13d, %eax
     sub $560, %eax
     shr $1, %eax
-    mov %eax, %r10d          /* modal x */
+    mov %eax, %ebp           /* modal x; callee-saved */
     mov %r14d, %eax
     sub $360, %eax
     shr $1, %eax
-    mov %eax, %r11d          /* modal y */
-    mov $0, %r15d             /* selected language: 0=JP,1=EN,2=ZH,3=ES */
+    mov %eax, %ebx           /* modal y; callee-saved */
+    xor %r15d, %r15d         /* selected language: 0=JP,1=EN,2=ZH,3=ES */
 
     /* Modal. */
     mov $5, %rax
-    mov %r10d, %edi
-    mov %r11d, %esi
+    mov %ebp, %edi
+    mov %ebx, %esi
     mov $560, %edx
-    mov $360, %r8d
-    mov $0x313B4A, %r9d
-    /* syscall ABI arg3 is r10, arg4 is r8; restore explicit values below. */
     mov $360, %r10d
     mov $0x313B4A, %r8d
     int $0x80
 
     /* Header strip. */
     mov $5, %rax
-    mov %r10d, %edi
+    mov %ebp, %edi
     add $24, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $24, %esi
     mov $512, %edx
     mov $52, %r10d
@@ -113,20 +111,15 @@ _start:
     int $0x80
 
     /* "LANG" label. */
-    mov %r13d, %eax
-    sub $256, %eax
-    shr $1, %eax
-    mov %r10d, %edi
+    mov %ebp, %edi
     add $36, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $38, %esi
     mov $GLYPH_L, %rdx
     mov $0xE9F2FF, %r10d
     mov $7, %rax
     int $0x80
-    mov %edi, %eax
-    add $10, %eax
-    mov %eax, %edi
+    add $10, %edi
     mov $GLYPH_A, %rdx
     int $0x80
     add $10, %edi
@@ -143,12 +136,11 @@ _start:
 /* Draw four language buttons, current selection highlighted, plus labels. */
 .draw_selector:
     /* JP */
-    mov $5, %rax
     mov %r13d, %eax
     sub $224, %eax
     shr $1, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $92, %esi
     mov $112, %edx
     mov $48, %r10d
@@ -161,7 +153,7 @@ _start:
     shr $1, %eax
     add $116, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $92, %esi
     mov $112, %edx
     mov $48, %r10d
@@ -173,7 +165,7 @@ _start:
     sub $224, %eax
     shr $1, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $152, %esi
     mov $112, %edx
     mov $48, %r10d
@@ -186,7 +178,7 @@ _start:
     shr $1, %eax
     add $116, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $152, %esi
     mov $112, %edx
     mov $48, %r10d
@@ -201,7 +193,7 @@ _start:
     sub $224, %eax
     shr $1, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $92, %esi
     jmp .selector_accent
 .selector_not_jp:
@@ -212,7 +204,7 @@ _start:
     shr $1, %eax
     add $116, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $92, %esi
     jmp .selector_accent
 .selector_not_zh:
@@ -222,7 +214,7 @@ _start:
     sub $224, %eax
     shr $1, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $152, %esi
     jmp .selector_accent
 .selector_es:
@@ -231,7 +223,7 @@ _start:
     shr $1, %eax
     add $116, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $152, %esi
 .selector_accent:
     mov $112, %edx
@@ -246,7 +238,7 @@ _start:
     shr $1, %eax
     add $48, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $112, %esi
     mov $GLYPH_J, %rdx
     mov $0xE9F2FF, %r10d
@@ -262,7 +254,7 @@ _start:
     shr $1, %eax
     add $164, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $112, %esi
     mov $GLYPH_E, %rdx
     mov $0xE9F2FF, %r10d
@@ -278,7 +270,7 @@ _start:
     shr $1, %eax
     add $48, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $172, %esi
     mov $GLYPH_Z, %rdx
     mov $0xE9F2FF, %r10d
@@ -294,7 +286,7 @@ _start:
     shr $1, %eax
     add $164, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $172, %esi
     mov $GLYPH_E, %rdx
     mov $0xE9F2FF, %r10d
@@ -309,7 +301,7 @@ _start:
     sub $240, %eax
     shr $1, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $232, %esi
     mov $240, %edx
     mov $44, %r10d
@@ -322,12 +314,12 @@ _start:
     sub $78, %eax
     shr $1, %eax
     mov %eax, %edi
-    mov %r11d, %esi
+    mov %ebx, %esi
     add $250, %esi
-    mov $0x3e40404040403e, %rdx
+    mov $GLYPH_C, %rdx
     mov $0xE9F2FF, %r10d
     mov $7, %rax
-    int $0x80                         /* C */
+    int $0x80
     add $10, %edi
     mov $GLYPH_O, %rdx
     int $0x80
