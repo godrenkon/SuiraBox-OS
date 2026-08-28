@@ -6,6 +6,7 @@
 #define PIT_COMMAND 0x43u
 #define PIT_CHANNEL0 0x40u
 #define PIT_BASE_HZ 1193182u
+#define SB_TIMER_DEFAULT_HZ 100u
 #define SB_SCHED_QUANTUM_TICKS 10u
 
 extern void sb_timer_irq_stub(void);
@@ -71,10 +72,10 @@ static void pic_remap(void) {
     outb(0xA1u, 0xFFu);
 }
 
-void timer_init(uint32_t frequency_hz) {
+void timer_init_frequency(uint32_t frequency_hz) {
     timer_debug("[TIMER] init begin\r\n");
     interrupts_disable();
-    if (frequency_hz == 0u) frequency_hz = 100u;
+    if (frequency_hz == 0u) frequency_hz = SB_TIMER_DEFAULT_HZ;
     uint32_t divisor = PIT_BASE_HZ / frequency_hz;
     if (divisor == 0u) divisor = 1u;
     if (divisor > 0xFFFFu) divisor = 0xFFFFu;
@@ -91,6 +92,10 @@ void timer_init(uint32_t frequency_hz) {
     __asm__ volatile ("int $0x20" ::: "memory");
     timer_debug("[TIMER] software int 0x20 returned\r\n");
     timer_debug("[TIMER] STI begin\r\n"); interrupts_enable(); timer_debug("[TIMER] STI returned\r\n");
+}
+
+void timer_init(void) {
+    timer_init_frequency(SB_TIMER_DEFAULT_HZ);
 }
 
 uint64_t timer_ticks(void) { return ticks; }
