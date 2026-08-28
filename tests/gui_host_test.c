@@ -26,6 +26,12 @@ int main(void) {
     assert(sb_gui_hit_test(&wm, 15, 25)->id == back_id);
     assert(sb_gui_hit_test(&wm, 1000, 1000) == 0);
 
+    assert(sb_gui_hit_control(front, 176, 60) == SB_GUI_CONTROL_MINIMIZE);
+    assert(sb_gui_hit_control(front, 191, 60) == SB_GUI_CONTROL_CLOSE);
+    assert(sb_gui_hit_control(front, 100, 60) == SB_GUI_CONTROL_NONE);
+    assert(sb_gui_hit_control(front, 191, 90) == SB_GUI_CONTROL_NONE);
+    assert(sb_gui_hit_control(0, 191, 60) == SB_GUI_CONTROL_NONE);
+
     top = sb_gui_create_window(&wm, 30, 40, 180u, 110u);
     assert(top != 0);
     assert(sb_gui_hit_test(&wm, 50, 60)->id == top->id);
@@ -47,6 +53,7 @@ int main(void) {
     assert(sb_gui_set_minimized(&wm, front_id, 1u) == 0);
     assert(wm.focused_id != front_id);
     assert(sb_gui_hit_test(&wm, 105, 105)->id != front_id);
+    assert(sb_gui_hit_control(front, 395, 106) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_set_minimized(&wm, front_id, 0u) == 0);
     assert(wm.focused_id == front_id);
     assert(sb_gui_hit_test(&wm, 105, 105)->id == front_id);
@@ -55,6 +62,7 @@ int main(void) {
     assert(front != 0);
     front->visible = 0u;
     assert(sb_gui_hit_test(&wm, 105, 105)->id != front_id);
+    assert(sb_gui_hit_control(front, 395, 106) == SB_GUI_CONTROL_NONE);
     front->visible = 1u;
     assert(sb_gui_focus_window(&wm, front_id) == 0);
     assert(wm.focused_id == front_id);
