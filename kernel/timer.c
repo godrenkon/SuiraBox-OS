@@ -69,6 +69,11 @@ void timer_init(uint32_t frequency_hz) {
     timer_debug("[TIMER] IRQ0 handler install begin\r\n");
     interrupts_set_handler(32u, (uintptr_t)sb_timer_irq_stub);
     timer_debug("[TIMER] IRQ0 handler install complete\r\n");
+
+    timer_debug("[TIMER] software int 0x20 begin\r\n");
+    __asm__ volatile ("int $0x20" ::: "memory");
+    timer_debug("[TIMER] software int 0x20 returned\r\n");
+
     timer_debug("[TIMER] STI begin\r\n");
     interrupts_enable();
     timer_debug("[TIMER] STI returned\r\n");
