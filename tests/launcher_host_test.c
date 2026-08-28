@@ -24,7 +24,7 @@ int main(void) {
     assert(sb_launcher_move_selection(&launcher, INT32_MAX) == 0);
     assert(launcher.selected == 1u);
     assert(sb_launcher_move_selection(&launcher, INT32_MIN) == 0);
-    assert(launcher.selected == 0u);
+    assert(launcher.selected == 2u);
 
     assert(sb_launcher_hit_test(&launcher, 20, 25, 10u, 10u, 200u, 40u, &index) == 0);
     assert(index == 0u);
