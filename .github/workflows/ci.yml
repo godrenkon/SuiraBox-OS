@@ -42,6 +42,8 @@ jobs:
             -display none \
             -no-reboot \
             -no-shutdown \
+            -d int,cpu_reset \
+            -D qemu-debug.log \
             2>&1 | tee qemu.log || test ${PIPESTATUS[0]} -eq 124
           grep -F "Kernel initialized." qemu.log
           grep -F "PCI: scanning bus/device/function space..." qemu.log
@@ -65,3 +67,4 @@ jobs:
             build/suirabox.iso
             build/suirabox.elf
             qemu.log
+            qemu-debug.log
