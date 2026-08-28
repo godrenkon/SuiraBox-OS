@@ -9,6 +9,7 @@ extern char __kernel_end;
 #define SB_MB2_MAX_MMAP_ENTRIES 128u
 #define SB_MB2_MAX_MODULES 32u
 #define SB_PMM_BOOTSTRAP_LIMIT (256ull * 1024ull * 1024ull)
+#define SB_NULL_PAGE_END SB_PAGE_SIZE
 
 static uint64_t align_up(uint64_t value) {
     if (value > UINT64_MAX - (SB_PAGE_SIZE - 1u)) return UINT64_MAX;
@@ -32,6 +33,7 @@ static void fallback_to_bootstrap(void) {
     pmm_init(0x01000000ull, 0x04000000ull);
     pmm_reserve_range((uint64_t)(uintptr_t)&__kernel_start,
                       (uint64_t)(uintptr_t)&__kernel_end);
+    pmm_reserve_range(0u, SB_NULL_PAGE_END);
 }
 
 void pmm_init_from_multiboot(uint64_t multiboot_info_address) {
@@ -46,6 +48,7 @@ void pmm_init_from_multiboot(uint64_t multiboot_info_address) {
     int seen_mmap = 0;
 
     pmm_reset();
+    pmm_reserve_range(0u, SB_NULL_PAGE_END);
 
     if (multiboot_info_address == 0u || multiboot_info_address >= 0x40000000ull) {
         fallback_to_bootstrap();
@@ -137,5 +140,9 @@ void pmm_init_from_multiboot(uint64_t multiboot_info_address) {
     }
 
     reserve_range(kernel_start, kernel_end);
-    reserve_range(multiboot_info_address, multiboot_info_address + total_size);
+    if (multiboot_info_address <= UINT64_MAX - total_size)
+        reserve_range(multiboot_info_address, multiboot_info_address + total_size);
+    else
+        fallback_to_bootstrap();
+    pmm_reserve_range(0u, SB_NULL_PAGE_END);
 }
