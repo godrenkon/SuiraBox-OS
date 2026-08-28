@@ -272,7 +272,8 @@ void sb_desktop_main(void) {
                                 resizing = SB_GUI_RESIZE_NONE;
                             } else if (control == SB_GUI_CONTROL_MAXIMIZE) {
                                 mark_damage(&surface, wx, wy, ww, wh);
-                                (void)sb_gui_set_maximized(&wm, id, hit->maximized == 0u ? 1u : 0u, width, height);
+                                (void)sb_gui_set_maximized(&wm, id, hit->maximized == 0u ? 1u : 0u,
+                                                          width, height);
                                 dragging = 0u;
                                 resizing = SB_GUI_RESIZE_NONE;
                             } else if (edge != SB_GUI_RESIZE_NONE) {
@@ -314,12 +315,13 @@ void sb_desktop_main(void) {
                         if (resizing == SB_GUI_RESIZE_BOTTOM || resizing == SB_GUI_RESIZE_BOTTOM_RIGHT) {
                             int64_t candidate = (int64_t)g_cursor_y - (int64_t)focused->y;
                             if (candidate < 0) candidate = 0;
-                            if (candidate > (int64_t)UINT32_MAX) candidate = (int32_t)candidate;
+                            if (candidate > (int64_t)UINT32_MAX) candidate = (int64_t)UINT32_MAX;
                             new_height = (uint32_t)candidate;
                         }
                         if (sb_gui_resize_window(&wm, focused->id, new_width, new_height) == 0) {
                             mark_damage(&surface, old_x, old_y, old_width, old_height);
-                            mark_damage(&surface, focused->x, focused->y, focused->width, focused->height);
+                            mark_damage(&surface, focused->x, focused->y,
+                                        focused->width, focused->height);
                             present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
                         }
                     } else if (dragging && focused->maximized == 0u) {
