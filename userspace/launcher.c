@@ -61,6 +61,7 @@ int sb_launcher_move_selection(sb_launcher_t *launcher, int32_t delta) {
     uint32_t enabled;
     uint32_t steps;
     uint32_t index;
+    int32_t normalized;
     if (launcher == 0 || launcher->count == 0u || first_enabled(launcher, &index) != 0 ||
         enabled_count(launcher, &enabled) != 0) return -1;
     if (launcher->selected >= launcher->count || launcher->items[launcher->selected].enabled == 0u)
@@ -68,9 +69,10 @@ int sb_launcher_move_selection(sb_launcher_t *launcher, int32_t delta) {
     current = launcher->selected;
     if (delta == 0 || enabled == 1u) return 0;
 
-    steps = (uint32_t)(delta < 0 ? -(int64_t)delta : (int64_t)delta) % enabled;
+    normalized = delta % (int32_t)enabled;
+    steps = (uint32_t)(normalized < 0 ? -(int64_t)normalized : (int64_t)normalized);
     for (uint32_t step = 0u; step < steps; ++step) {
-        if (delta > 0) {
+        if (normalized > 0) {
             index = (current + 1u) % launcher->count;
             while (launcher->items[index].enabled == 0u) index = (index + 1u) % launcher->count;
         } else {
