@@ -69,29 +69,29 @@ static void build_image(void) {
     memcpy(&boot[3], "SBOSF32 ", 8u);
     put_le16(&boot[11], SECTOR_SIZE);
     boot[13] = 1u;
-    put_le16(&boot[14], 1u); /* reserved sectors */
-    boot[16] = 2u;           /* FAT count */
-    put_le16(&boot[17], 0u); /* FAT32 root entry count */
-    put_le16(&boot[19], 0u); /* FAT32 uses 32-bit total sectors */
+    put_le16(&boot[14], 1u);
+    boot[16] = 2u;
+    put_le16(&boot[17], 0u);
+    put_le16(&boot[19], 0u);
     boot[21] = 0xF8u;
-    put_le16(&boot[22], 0u); /* FAT12/16 size */
+    put_le16(&boot[22], 0u);
     put_le32(&boot[32], TEST_SECTORS);
-    put_le32(&boot[36], 1u); /* sectors per FAT */
-    put_le32(&boot[44], 2u); /* root cluster */
+    put_le32(&boot[36], 1u);
+    put_le32(&boot[44], 2u);
     put_le16(&boot[510], 0xAA55u);
 
     put_le32(&fat[0], 0x0FFFFFF8u);
     put_le32(&fat[4], 0x0FFFFFFFu);
-    put_le32(&fat[8], 0x0FFFFFFFu); /* cluster 2: root */
-    put_le32(&fat[12], 0x0FFFFFFFu); /* cluster 3: file */
-    memcpy(&disk[2u * SECTOR_SIZE], fat, SECTOR_SIZE); /* second FAT */
+    put_le32(&fat[8], 0x0FFFFFFFu);
+    put_le32(&fat[12], 0x0FFFFFFFu);
+    memcpy(&disk[2u * SECTOR_SIZE], fat, SECTOR_SIZE);
 
     memcpy(&root[0], name, sizeof(name));
     root[11] = 0x20u;
     put_le16(&root[20], 0u);
     put_le16(&root[26], 3u);
     put_le32(&root[28], (uint32_t)(sizeof(contents) - 1u));
-    root[32] = 0u; /* next entry marks end of directory */
+    root[32] = 0u;
 
     memcpy(file, contents, sizeof(contents) - 1u);
 }
@@ -101,6 +101,7 @@ int main(void) {
     sb_fat32_t fs;
     sb_fat32_dirent_t entry;
     char buffer[64];
+    static const char patch[] = "SBOS";
 
     build_image();
     if (!expect(sb_vfs_mount(&device, &mount) == SB_VFS_OK, "VFS mount failed")) return 1;
@@ -116,6 +117,27 @@ int main(void) {
     if (!expect(strcmp(buffer, "Hello from SuiraBox FAT32!\n") == 0,
                 "file contents are wrong")) return 1;
 
+    if (!expect(sb_fat32_write_file(&fs, &entry, 0u, sizeof(patch) - 1u, patch) != 0,
+                "in-place file write failed")) return 1;
+    if (!expect(memcmp(&disk[4u * SECTOR_SIZE], patch, sizeof(patch) - 1u) == 0,
+                "written bytes were not persisted to the sector")) return 1;
+    if (!expect(disk[4u * SECTOR_SIZE + sizeof(patch) - 1u] == 'l',
+                "write unexpectedly modified adjacent byte")) return 1;
+
+    memset(buffer, 0, sizeof(buffer));
+    if (!expect(sb_fat32_read_file(&fs, &entry, 0u, entry.file_size, buffer) != 0,
+                "post-write file read failed")) return 1;
+    if (!expect(memcmp(buffer, patch, sizeof(patch) - 1u) == 0,
+                "post-write contents are wrong")) return 1;
+    if (!expect(buffer[sizeof(patch) - 1u] == 'l',
+                "post-write adjacent byte changed")) return 1;
+
+    if (!expect(sb_fat32_write_file(&fs, &entry, entry.file_size, 1u, patch) == 0,
+                "out-of-range write was accepted")) return 1;
+    if (!expect(sb_fat32_write_file(&fs, &entry, entry.file_size - 1u, 2u, patch) == 0,
+                "write extending beyond file was accepted")) return 1;
+    if (!expect(sb_fat32_write_file(&fs, &entry, 0u, 0u, patch) != 0,
+                "zero-length write should be a successful no-op")) return 1;
     if (!expect(sb_fat32_read_file(&fs, &entry, entry.file_size, 1u, buffer) == 0,
                 "out-of-range read was accepted")) return 1;
     return 0;
