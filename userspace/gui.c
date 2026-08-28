@@ -39,9 +39,14 @@ sb_gui_window_t *sb_gui_create_window(sb_gui_window_manager_t *wm,
     window->y = y;
     window->width = width;
     window->height = height;
+    window->restore_x = x;
+    window->restore_y = y;
+    window->restore_width = width;
+    window->restore_height = height;
     window->visible = 1u;
     window->resizable = 1u;
     window->minimized = 0u;
+    window->maximized = 0u;
     wm->focused_id = window->id;
     return window;
 }
@@ -61,18 +66,22 @@ int sb_gui_destroy_window(sb_gui_window_manager_t *wm, uint32_t id) {
 
 int sb_gui_move_window(sb_gui_window_manager_t *wm, uint32_t id, int32_t x, int32_t y) {
     sb_gui_window_t *window = find_slot(wm, id);
-    if (window == 0) return -1;
+    if (window == 0 || window->maximized != 0u) return -1;
     window->x = x;
     window->y = y;
+    window->restore_x = x;
+    window->restore_y = y;
     return 0;
 }
 
 int sb_gui_resize_window(sb_gui_window_manager_t *wm, uint32_t id,
                          uint32_t width, uint32_t height) {
     sb_gui_window_t *window = find_slot(wm, id);
-    if (window == 0 || width == 0u || height == 0u || window->resizable == 0u) return -1;
+    if (window == 0 || width == 0u || height == 0u || window->resizable == 0u || window->maximized != 0u) return -1;
     window->width = width;
     window->height = height;
+    window->restore_width = width;
+    window->restore_height = height;
     return 0;
 }
 
@@ -85,6 +94,35 @@ int sb_gui_set_minimized(sb_gui_window_manager_t *wm, uint32_t id, uint8_t minim
     } else if (window->minimized == 0u) {
         wm->focused_id = id;
     }
+    return 0;
+}
+
+int sb_gui_set_maximized(sb_gui_window_manager_t *wm, uint32_t id,
+                         uint8_t maximized, uint32_t screen_width, uint32_t screen_height) {
+    sb_gui_window_t *window = find_slot(wm, id);
+    if (window == 0 || window->resizable == 0u || window->minimized != 0u ||
+        screen_width == 0u || screen_height <= SB_GUI_TITLEBAR_HEIGHT) return -1;
+
+    if (maximized != 0u) {
+        if (window->maximized == 0u) {
+            window->restore_x = window->x;
+            window->restore_y = window->y;
+            window->restore_width = window->width;
+            window->restore_height = window->height;
+        }
+        window->x = 0;
+        window->y = SB_GUI_TITLEBAR_HEIGHT;
+        window->width = screen_width;
+        window->height = screen_height - SB_GUI_TITLEBAR_HEIGHT;
+        window->maximized = 1u;
+    } else {
+        window->x = window->restore_x;
+        window->y = window->restore_y;
+        window->width = window->restore_width;
+        window->height = window->restore_height;
+        window->maximized = 0u;
+    }
+    wm->focused_id = id;
     return 0;
 }
 
@@ -110,16 +148,16 @@ sb_gui_control_t sb_gui_hit_control(const sb_gui_window_t *window, int32_t x, in
     const int64_t window_top = window != 0 ? (int64_t)window->y : 0;
     const int64_t window_right = window_left + (window != 0 ? (int64_t)window->width : 0);
     const int64_t titlebar_bottom = window_top + (int64_t)SB_GUI_TITLEBAR_HEIGHT;
-    const int64_t minimize_left = window_right - (int64_t)(SB_GUI_CONTROL_SIZE * 2u);
-    const int64_t minimize_right = window_right - (int64_t)SB_GUI_CONTROL_SIZE;
+    const int64_t min_left = window_right - (int64_t)(SB_GUI_CONTROL_SIZE * 3u);
+    const int64_t max_left = window_right - (int64_t)(SB_GUI_CONTROL_SIZE * 2u);
     const int64_t close_left = window_right - (int64_t)SB_GUI_CONTROL_SIZE;
-    const int64_t close_right = window_right;
 
     if (window == 0 || window->visible == 0u || window->minimized != 0u) return SB_GUI_CONTROL_NONE;
-    if (window->width < SB_GUI_CONTROL_SIZE * 2u) return SB_GUI_CONTROL_NONE;
+    if (window->width < SB_GUI_CONTROL_SIZE * 3u) return SB_GUI_CONTROL_NONE;
     if ((int64_t)y < window_top || (int64_t)y >= titlebar_bottom) return SB_GUI_CONTROL_NONE;
-    if ((int64_t)x >= close_left && (int64_t)x < close_right) return SB_GUI_CONTROL_CLOSE;
-    if ((int64_t)x >= minimize_left && (int64_t)x < minimize_right) return SB_GUI_CONTROL_MINIMIZE;
+    if ((int64_t)x >= close_left && (int64_t)x < window_right) return SB_GUI_CONTROL_CLOSE;
+    if ((int64_t)x >= max_left && (int64_t)x < close_left) return SB_GUI_CONTROL_MAXIMIZE;
+    if ((int64_t)x >= min_left && (int64_t)x < max_left) return SB_GUI_CONTROL_MINIMIZE;
     return SB_GUI_CONTROL_NONE;
 }
 
