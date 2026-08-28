@@ -9,6 +9,15 @@ static sb_gui_window_t *find_slot(sb_gui_window_manager_t *wm, uint32_t id) {
     return 0;
 }
 
+static uint32_t choose_fallback_focus(const sb_gui_window_manager_t *wm) {
+    if (wm == 0) return 0u;
+    for (uint32_t i = wm->count; i != 0u; --i) {
+        const sb_gui_window_t *candidate = &wm->windows[i - 1u];
+        if (candidate->visible != 0u && candidate->minimized == 0u) return candidate->id;
+    }
+    return 0u;
+}
+
 void sb_gui_init(sb_gui_window_manager_t *wm) {
     uint32_t i;
     if (wm == 0) return;
@@ -44,8 +53,7 @@ int sb_gui_destroy_window(sb_gui_window_manager_t *wm, uint32_t id) {
         if (wm->windows[i].id != id) continue;
         if (i + 1u < wm->count) wm->windows[i] = wm->windows[wm->count - 1u];
         --wm->count;
-        if (wm->focused_id == id)
-            wm->focused_id = wm->count != 0u ? wm->windows[wm->count - 1u].id : 0u;
+        if (wm->focused_id == id) wm->focused_id = choose_fallback_focus(wm);
         return 0;
     }
     return -1;
@@ -73,14 +81,7 @@ int sb_gui_set_minimized(sb_gui_window_manager_t *wm, uint32_t id, uint8_t minim
     if (window == 0) return -1;
     window->minimized = minimized != 0u ? 1u : 0u;
     if (window->minimized != 0u && wm->focused_id == id) {
-        wm->focused_id = 0u;
-        for (uint32_t i = wm->count; i != 0u; --i) {
-            sb_gui_window_t *candidate = &wm->windows[i - 1u];
-            if (candidate->visible != 0u && candidate->minimized == 0u) {
-                wm->focused_id = candidate->id;
-                break;
-            }
-        }
+        wm->focused_id = choose_fallback_focus(wm);
     } else if (window->minimized == 0u) {
         wm->focused_id = id;
     }
