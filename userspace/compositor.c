@@ -1,5 +1,12 @@
 #include "compositor.h"
+#if __STDC_HOSTED__ == 1
+extern int sb_display_rect(uint32_t x, uint32_t y, uint32_t width,
+                           uint32_t height, uint32_t rgb);
+extern int sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
+                            uint32_t rgb);
+#else
 #include "syscall.h"
+#endif
 
 void sb_compositor_init(sb_compositor_style_t *style,
                         uint32_t width, uint32_t height) {
