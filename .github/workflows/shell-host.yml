@@ -17,3 +17,7 @@ jobs:
         run: gcc -std=c11 -Wall -Wextra -Werror -DSB_HOST_TEST -Iuserspace tests/shell_host_test.c userspace/shell.c -o /tmp/shell-host-test
       - name: Run shell host test
         run: /tmp/shell-host-test
+      - name: Compile launcher host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Iuserspace tests/launcher_host_test.c userspace/launcher.c -o /tmp/launcher-host-test
+      - name: Run launcher host test
+        run: /tmp/launcher-host-test
