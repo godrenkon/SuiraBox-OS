@@ -242,10 +242,13 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     if (init_process != 0) {
         serial_write("Userspace: activating init address space\r\n");
         init_process->state = SB_PROCESS_RUNNING;
-        interrupts_enable();
-        arch_enter_user(init_image.entry_point, init_image.user_stack_top);
-        interrupts_disable();
-        serial_write("Userspace: ring3 entry returned unexpectedly\r\n");
+        if (process_activate(init_process) == 0) {
+            serial_write("Userspace: entering ring3\r\n");
+            arch_enter_user(init_image.entry_point, init_image.user_stack_top);
+            serial_write("Userspace: returned unexpectedly; staying in kernel halt loop\r\n");
+        } else {
+            serial_write("Userspace: address-space activation FAILED\r\n");
+        }
     }
 
     for (;;) __asm__ volatile ("hlt");
