@@ -14,6 +14,10 @@ header_start:
 .long 768
 .long 32
 .long 0
+/* Pad the 20-byte request tag to the mandatory 8-byte tag boundary. */
+.word 0
+.word 0
+.long 8
 /* End tag. */
 .word 0
 .word 0
