@@ -10,6 +10,7 @@ void sb_compositor_init(sb_compositor_style_t *style,
     style->chrome_rgb = 0x16202Cu;
     style->titlebar_rgb = 0x3A485Au;
     style->accent_rgb = 0x536F8Au;
+    style->cursor_rgb = 0xE9F2FFu;
 }
 
 int sb_compositor_clip_rect(int32_t x, int32_t y, uint32_t width, uint32_t height,
@@ -148,4 +149,13 @@ void sb_compositor_present(const sb_compositor_style_t *style,
     }
 
     compositor_rect(style, 18, (int32_t)style->height - 60, 56u, 48u, style->accent_rgb);
+}
+
+void sb_compositor_present_cursor(const sb_compositor_style_t *style,
+                                  int32_t x, int32_t y) {
+    static const uint64_t cursor_bitmap = 0xE0C0808080C0E0F0ULL;
+    if (style == 0) return;
+    (void)sb_display_glyph((uint32_t)(x < 0 ? 0 : x),
+                            (uint32_t)(y < 0 ? 0 : y),
+                            cursor_bitmap, style->cursor_rgb);
 }
