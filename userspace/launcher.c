@@ -27,6 +27,15 @@ static int first_enabled(const sb_launcher_t *launcher, uint32_t *index) {
     return -1;
 }
 
+static int enabled_count(const sb_launcher_t *launcher, uint32_t *count) {
+    uint32_t total = 0u;
+    if (launcher == 0 || count == 0) return -1;
+    for (uint32_t i = 0u; i < launcher->count; ++i)
+        if (launcher->items[i].enabled != 0u) ++total;
+    *count = total;
+    return total != 0u ? 0 : -1;
+}
+
 void sb_launcher_init(sb_launcher_t *launcher) {
     if (launcher == 0) return;
     *launcher = (sb_launcher_t){0};
@@ -49,34 +58,29 @@ int sb_launcher_set_open(sb_launcher_t *launcher, uint8_t open) {
 
 int sb_launcher_move_selection(sb_launcher_t *launcher, int32_t delta) {
     uint32_t current;
-    int64_t next;
+    uint32_t enabled;
+    uint32_t steps;
     uint32_t index;
-    if (launcher == 0 || launcher->count == 0u || first_enabled(launcher, &index) != 0) return -1;
+    if (launcher == 0 || launcher->count == 0u || first_enabled(launcher, &index) != 0 ||
+        enabled_count(launcher, &enabled) != 0) return -1;
     if (launcher->selected >= launcher->count || launcher->items[launcher->selected].enabled == 0u)
         launcher->selected = index;
     current = launcher->selected;
-    if (delta == 0) return 0;
-    next = (int64_t)current;
-    if (delta > 0) {
-        for (int32_t step = 0; step < delta; ++step) {
-            uint32_t candidate = (uint32_t)((next + 1) % (int64_t)launcher->count);
-            while (launcher->items[candidate].enabled == 0u) {
-                candidate = (candidate + 1u) % launcher->count;
-                if (candidate == current) break;
-            }
-            next = candidate;
+    if (delta == 0 || enabled == 1u) return 0;
+
+    steps = (uint32_t)(delta < 0 ? -(int64_t)delta : (int64_t)delta) % enabled;
+    for (uint32_t step = 0u; step < steps; ++step) {
+        if (delta > 0) {
+            index = (current + 1u) % launcher->count;
+            while (launcher->items[index].enabled == 0u) index = (index + 1u) % launcher->count;
+        } else {
+            index = current == 0u ? launcher->count - 1u : current - 1u;
+            while (launcher->items[index].enabled == 0u)
+                index = index == 0u ? launcher->count - 1u : index - 1u;
         }
-    } else {
-        for (int32_t step = delta; step < 0; ++step) {
-            uint32_t candidate = (uint32_t)((next == 0 ? launcher->count : next) - 1);
-            while (launcher->items[candidate].enabled == 0u) {
-                candidate = candidate == 0u ? launcher->count - 1u : candidate - 1u;
-                if (candidate == current) break;
-            }
-            next = candidate;
-        }
+        current = index;
     }
-    launcher->selected = (uint32_t)next;
+    launcher->selected = current;
     return 0;
 }
 
