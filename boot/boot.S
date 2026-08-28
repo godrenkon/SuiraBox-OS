@@ -5,6 +5,16 @@ header_start:
 .long 0
 .long header_end - header_start
 .long -(0xE85250D6 + 0 + (header_end - header_start))
+/* Multiboot2 framebuffer request: 1024x768x32. The bootloader may choose
+ * another suitable mode; the kernel consumes the actual framebuffer tag. */
+.word 5
+.word 0
+.long 20
+.long 1024
+.long 768
+.long 32
+.long 0
+/* End tag. */
 .word 0
 .word 0
 .long 8
