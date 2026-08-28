@@ -10,6 +10,7 @@
 #define SB_TSS_SELECTOR         0x30u
 
 void gdt_init(void);
+void arch_gdt_init(void);
 void gdt_set_kernel_stack(uint64_t stack_pointer);
 
 #endif
