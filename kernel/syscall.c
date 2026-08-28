@@ -28,10 +28,12 @@ static int ps2_wait_output_ready(void) {
 static uint8_t mouse_packet[3];
 static uint8_t mouse_packet_index;
 static uint8_t mouse_initialized;
+static uint8_t mouse_init_attempted;
 
 static void mouse_init(void) {
     uint8_t response;
-    if (mouse_initialized) return;
+    if (mouse_initialized || mouse_init_attempted) return;
+    mouse_init_attempted = 1u;
     if (!ps2_wait_input_clear()) return;
     io_out8(0x64u, 0xA8u); /* Enable auxiliary PS/2 device. */
     if (!ps2_wait_input_clear()) return;
@@ -69,6 +71,7 @@ static uint64_t syscall_input_mouse(void) {
     uint32_t packet;
 
     if (!mouse_initialized) mouse_init();
+    if (!mouse_initialized) return 0u;
     status = io_in8(0x64u);
     if ((status & 0x01u) == 0u || (status & 0x20u) == 0u) return 0u;
     byte = io_in8(0x60u);
