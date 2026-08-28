@@ -104,6 +104,20 @@ sb_gui_window_t *sb_gui_hit_test(sb_gui_window_manager_t *wm, int32_t x, int32_t
     return 0;
 }
 
+sb_gui_control_t sb_gui_hit_control(const sb_gui_window_t *window, int32_t x, int32_t y) {
+    int32_t close_x;
+    int32_t minimize_x;
+    if (window == 0 || window->visible == 0u || window->minimized != 0u) return SB_GUI_CONTROL_NONE;
+    if (window->width < SB_GUI_CONTROL_SIZE * 2u) return SB_GUI_CONTROL_NONE;
+    if (y < window->y || y >= window->y + (int32_t)SB_GUI_TITLEBAR_HEIGHT) return SB_GUI_CONTROL_NONE;
+
+    minimize_x = window->x + (int32_t)window->width - (int32_t)(SB_GUI_CONTROL_SIZE * 2u);
+    close_x = window->x + (int32_t)window->width - (int32_t)SB_GUI_CONTROL_SIZE;
+    if (x >= close_x && x < close_x + (int32_t)SB_GUI_CONTROL_SIZE) return SB_GUI_CONTROL_CLOSE;
+    if (x >= minimize_x && x < minimize_x + (int32_t)SB_GUI_CONTROL_SIZE) return SB_GUI_CONTROL_MINIMIZE;
+    return SB_GUI_CONTROL_NONE;
+}
+
 int sb_gui_focus_window(sb_gui_window_manager_t *wm, uint32_t id) {
     uint32_t i;
     sb_gui_window_t focused;
