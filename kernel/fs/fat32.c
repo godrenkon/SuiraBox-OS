@@ -49,7 +49,7 @@ static int fat_next_cluster(sb_fat32_t *fs, uint32_t cluster, uint32_t *next) {
     uint32_t fat_index;
 
     if (fs == 0 || next == 0 || !valid_cluster(fs, cluster)) return 0;
-    if (cluster > (UINT32_MAX / 4u)) return 0;
+    if (cluster > UINT32_MAX / 4u) return 0;
     fat_offset = cluster * 4u;
     fat_sector = fs->reserved_sectors + (fat_offset / fs->bytes_per_sector);
     fat_index = fat_offset % fs->bytes_per_sector;
@@ -57,13 +57,8 @@ static int fat_next_cluster(sb_fat32_t *fs, uint32_t cluster, uint32_t *next) {
         fat_index + 4u > fs->bytes_per_sector || !read_sector(fs, fat_sector, sector)) return 0;
 
     *next = le32(&sector[fat_index]) & 0x0FFFFFFFu;
-    if (*next < 2u || (*next >= SB_FAT32_EOC_MIN && *next != 0x0FFFFFFFu)) {
-        /* Bad/free/reserved FAT values are not valid chain links. EOC remains
-           accepted by the caller, and 0x0FFFFFFF is a normal EOC marker. */
-        if (*next < 2u) return 1;
-        return *next >= SB_FAT32_EOC_MIN;
-    }
-    return *next <= fs->max_cluster;
+    if (*next >= SB_FAT32_EOC_MIN) return 1;
+    return valid_cluster(fs, *next);
 }
 
 static void format_83_name(const uint8_t *raw, char out[13]) {
