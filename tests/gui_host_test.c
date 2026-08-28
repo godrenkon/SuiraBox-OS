@@ -86,6 +86,24 @@ int main(void) {
     assert(sb_gui_hit_control(front, 988, 50) == SB_GUI_CONTROL_MAXIMIZE);
     assert(sb_gui_hit_control(front, 100, 80) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_resize(front, 1020, 760) == SB_GUI_RESIZE_NONE);
+
+    assert(sb_gui_set_minimized(&wm, front_id, 1u) == 0);
+    assert(front->minimized == 1u && front->maximized == 1u);
+    assert(wm.focused_id != front_id);
+    assert(sb_gui_minimized_count(&wm) == 1u);
+    assert(sb_gui_minimized_at(&wm, 0u) != 0);
+    assert(sb_gui_minimized_at(&wm, 0u)->id == front_id);
+    assert(sb_gui_hit_taskbar(&wm, 16, 730, screen_width, screen_height) == front_id);
+    assert(sb_gui_hit_taskbar(&wm, 400, 730, screen_width, screen_height) == 0u);
+    assert(sb_gui_restore_window(&wm, front_id) == 0);
+    front = sb_gui_find_window(&wm, front_id);
+    assert(front != 0);
+    assert(front->minimized == 0u);
+    assert(front->maximized == 1u);
+    assert(front->x == 0 && front->y == SB_GUI_TITLEBAR_HEIGHT);
+    assert(front->width == screen_width && front->height == screen_height - SB_GUI_TITLEBAR_HEIGHT);
+    assert(wm.focused_id == front_id);
+
     assert(sb_gui_set_maximized(&wm, front_id, 0u, screen_width, screen_height) == 0);
     front = sb_gui_find_window(&wm, front_id);
     assert(front != 0);
@@ -96,10 +114,6 @@ int main(void) {
     assert(sb_gui_set_minimized(&wm, front_id, 1u) == 0);
     assert(wm.focused_id != front_id);
     assert(sb_gui_minimized_count(&wm) == 1u);
-    assert(sb_gui_minimized_at(&wm, 0u) != 0);
-    assert(sb_gui_minimized_at(&wm, 0u)->id == front_id);
-    assert(sb_gui_hit_taskbar(&wm, 16, 730, screen_width, screen_height) == front_id);
-    assert(sb_gui_hit_taskbar(&wm, 400, 730, screen_width, screen_height) == 0u);
     assert(sb_gui_restore_window(&wm, front_id) == 0);
     assert(front->minimized == 0u);
     assert(wm.focused_id == front_id);
