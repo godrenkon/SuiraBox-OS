@@ -16,6 +16,17 @@ static int duplicate_id(const sb_launcher_t *launcher, const char *id) {
     return 0;
 }
 
+static int first_enabled(const sb_launcher_t *launcher, uint32_t *index) {
+    if (launcher == 0 || index == 0) return -1;
+    for (uint32_t i = 0u; i < launcher->count; ++i) {
+        if (launcher->items[i].enabled != 0u) {
+            *index = i;
+            return 0;
+        }
+    }
+    return -1;
+}
+
 void sb_launcher_init(sb_launcher_t *launcher) {
     if (launcher == 0) return;
     *launcher = (sb_launcher_t){0};
@@ -25,6 +36,7 @@ int sb_launcher_add(sb_launcher_t *launcher, const char *id, const char *label) 
     if (launcher == 0 || !valid_string(id) || !valid_string(label) ||
         launcher->count >= SB_LAUNCHER_MAX_ITEMS || duplicate_id(launcher, id)) return -1;
     launcher->items[launcher->count] = (sb_launcher_item_t){id, label, 1u};
+    if (launcher->count == 0u) launcher->selected = 0u;
     ++launcher->count;
     return 0;
 }
@@ -36,11 +48,34 @@ int sb_launcher_set_open(sb_launcher_t *launcher, uint8_t open) {
 }
 
 int sb_launcher_move_selection(sb_launcher_t *launcher, int32_t delta) {
+    uint32_t current;
     int64_t next;
-    if (launcher == 0 || launcher->count == 0u) return -1;
-    next = (int64_t)launcher->selected + (int64_t)delta;
-    while (next < 0) next += (int64_t)launcher->count;
-    while (next >= (int64_t)launcher->count) next -= (int64_t)launcher->count;
+    uint32_t index;
+    if (launcher == 0 || launcher->count == 0u || first_enabled(launcher, &index) != 0) return -1;
+    if (launcher->selected >= launcher->count || launcher->items[launcher->selected].enabled == 0u)
+        launcher->selected = index;
+    current = launcher->selected;
+    if (delta == 0) return 0;
+    next = (int64_t)current;
+    if (delta > 0) {
+        for (int32_t step = 0; step < delta; ++step) {
+            uint32_t candidate = (uint32_t)((next + 1) % (int64_t)launcher->count);
+            while (launcher->items[candidate].enabled == 0u) {
+                candidate = (candidate + 1u) % launcher->count;
+                if (candidate == current) break;
+            }
+            next = candidate;
+        }
+    } else {
+        for (int32_t step = delta; step < 0; ++step) {
+            uint32_t candidate = (uint32_t)((next == 0 ? launcher->count : next) - 1);
+            while (launcher->items[candidate].enabled == 0u) {
+                candidate = candidate == 0u ? launcher->count - 1u : candidate - 1u;
+                if (candidate == current) break;
+            }
+            next = candidate;
+        }
+    }
     launcher->selected = (uint32_t)next;
     return 0;
 }
