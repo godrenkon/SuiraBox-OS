@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <limits.h>
 
 #include "gui.h"
 #include "syscall.h"
@@ -69,6 +70,15 @@ static void draw_desktop(uint32_t width, uint32_t height, sb_gui_window_manager_
     sb_compositor_present(&style, wm);
 }
 
+static void draw_desktop_damage(uint32_t width, uint32_t height,
+                                sb_gui_window_manager_t *wm,
+                                const sb_surface_rect_t *damage,
+                                uint32_t damage_count, uint8_t full_damage) {
+    sb_compositor_style_t style;
+    sb_compositor_init(&style, width, height);
+    sb_compositor_present_damage(&style, wm, damage, damage_count, full_damage);
+}
+
 static int point_inside(int32_t x, int32_t y, int32_t left, int32_t top,
                         uint32_t width, uint32_t height) {
     if (x < left || y < top) return 0;
@@ -81,6 +91,16 @@ static void decode_mouse(uint64_t packet, int32_t *dx, int32_t *dy, uint8_t *but
     *dx = (int32_t)(int8_t)((packet >> 16) & 0xFFu);
     *dy = (int32_t)(int8_t)((packet >> 24) & 0xFFu);
     *buttons = (uint8_t)((packet >> 8) & 0x07u);
+}
+
+static void present_damage(sb_surface_t *surface, uint32_t width, uint32_t height,
+                           sb_gui_window_manager_t *wm,
+                           sb_surface_rect_t *damage, uint32_t capacity) {
+    uint32_t count = 0u;
+    uint8_t full = 0u;
+    if (sb_surface_take_damage(surface, damage, capacity, &count, &full) != 0) return;
+    if (full == 0u && count == 0u) return;
+    draw_desktop_damage(width, height, wm, damage, count, full);
 }
 
 void sb_desktop_main(void) {
@@ -100,18 +120,23 @@ void sb_desktop_main(void) {
     sb_gui_event_queue_t event_queue;
     sb_surface_t frame_surface;
     sb_surface_rect_t damage[SB_SURFACE_MAX_DAMAGE];
+    uint32_t damage_count = 0u;
+    uint8_t damage_full = 0u;
+    uint32_t zero_count = 0u;
+    uint8_t zero_full = 0u;
 
-    if (width == 0u || height == 0u) for (;;) { }
+    if (width == 0u || height == 0u || width > UINT32_MAX / 4u) for (;;) { }
     if (sb_surface_init(&frame_surface, width, height, width * 4u,
                         SB_SURFACE_FORMAT_XRGB8888, 0) != 0) for (;;) { }
     sb_gui_event_queue_init(&event_queue);
     sb_gui_init(&wm);
     sb_gui_window_t *main_window = sb_gui_create_window(&wm, 252, 150, 520u, 320u);
     if (main_window != 0) main_window->visible = 0u;
+
     sb_surface_damage_all(&frame_surface);
     draw_first_boot(width, height, selection, dropdown_open);
     (void)sb_surface_take_damage(&frame_surface, damage, SB_SURFACE_MAX_DAMAGE,
-                                  &(uint32_t){0}, &(uint8_t){0});
+                                  &zero_count, &zero_full);
 
     for (;;) {
         uint64_t key = sb_input_key();
@@ -138,7 +163,9 @@ void sb_desktop_main(void) {
                         } else {
                             first_boot = 0;
                             if (main_window != 0) main_window->visible = 1u;
-                            draw_desktop(width, height, &wm);
+                            sb_surface_damage_all(&frame_surface);
+                            present_damage(&frame_surface, width, height, &wm,
+                                           damage, SB_SURFACE_MAX_DAMAGE);
                         }
                     }
                 }
@@ -183,7 +210,9 @@ void sb_desktop_main(void) {
                                (int32_t)(modal_y + 300u), 240u, 44u)) {
                         first_boot = 0;
                         if (main_window != 0) main_window->visible = 1u;
-                        draw_desktop(width, height, &wm);
+                        sb_surface_damage_all(&frame_surface);
+                        present_damage(&frame_surface, width, height, &wm,
+                                       damage, SB_SURFACE_MAX_DAMAGE);
                     } else if (dropdown_open) {
                         dropdown_open = 0;
                         draw_first_boot(width, height, selection, dropdown_open);
@@ -191,10 +220,13 @@ void sb_desktop_main(void) {
                 } else {
                     sb_gui_window_t *hit = sb_gui_hit_test(&wm, cursor_x, cursor_y);
                     if (hit != 0) {
-                        (void)sb_gui_focus_window(&wm, hit->id);
+                        const uint32_t hit_id = hit->id;
+                        const int32_t hit_x = hit->x;
+                        const int32_t hit_y = hit->y;
+                        (void)sb_gui_focus_window(&wm, hit_id);
                         dragging = 1;
-                        drag_dx = cursor_x - hit->x;
-                        drag_dy = cursor_y - hit->y;
+                        drag_dx = cursor_x - hit_x;
+                        drag_dy = cursor_y - hit_y;
                     }
                 }
             }
@@ -204,18 +236,18 @@ void sb_desktop_main(void) {
                 if (focused != 0) {
                     int32_t old_x = focused->x;
                     int32_t old_y = focused->y;
+                    uint32_t old_width = focused->width;
+                    uint32_t old_height = focused->height;
                     focused->x = cursor_x - drag_dx;
                     focused->y = cursor_y - drag_dy;
                     if (focused->x < 0) focused->x = 0;
                     if (focused->y < 72) focused->y = 72;
                     (void)sb_surface_damage_rect(&frame_surface, old_x, old_y,
-                                                  focused->width, focused->height);
+                                                  old_width, old_height);
                     (void)sb_surface_damage_rect(&frame_surface, focused->x, focused->y,
                                                   focused->width, focused->height);
-                    draw_desktop(width, height, &wm);
-                    (void)sb_surface_take_damage(&frame_surface, damage,
-                                                  SB_SURFACE_MAX_DAMAGE,
-                                                  &(uint32_t){0}, &(uint8_t){0});
+                    present_damage(&frame_surface, width, height, &wm,
+                                   damage, SB_SURFACE_MAX_DAMAGE);
                 }
             }
 
@@ -223,4 +255,7 @@ void sb_desktop_main(void) {
             last_buttons = event.buttons;
         }
     }
+
+    (void)damage_count;
+    (void)damage_full;
 }
