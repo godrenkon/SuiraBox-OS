@@ -9,6 +9,41 @@ static uint8_t io_in8(uint16_t port) {
     return value;
 }
 
+static void io_out8(uint16_t port, uint8_t value) {
+    __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
+}
+
+static int ps2_wait_input_clear(void) {
+    uint32_t timeout = 100000u;
+    while ((io_in8(0x64u) & 0x02u) != 0u && timeout-- != 0u) { }
+    return timeout != 0u;
+}
+
+static int ps2_wait_output_ready(void) {
+    uint32_t timeout = 100000u;
+    while ((io_in8(0x64u) & 0x01u) == 0u && timeout-- != 0u) { }
+    return timeout != 0u;
+}
+
+static uint8_t mouse_packet[3];
+static uint8_t mouse_packet_index;
+static uint8_t mouse_initialized;
+
+static void mouse_init(void) {
+    uint8_t response;
+    if (mouse_initialized) return;
+    if (!ps2_wait_input_clear()) return;
+    io_out8(0x64u, 0xA8u); /* Enable auxiliary PS/2 device. */
+    if (!ps2_wait_input_clear()) return;
+    io_out8(0x64u, 0xD4u); /* Next byte is addressed to mouse. */
+    if (!ps2_wait_input_clear()) return;
+    io_out8(0x60u, 0xF4u); /* Enable data reporting. */
+    if (ps2_wait_output_ready()) {
+        response = io_in8(0x60u);
+        if (response == 0xFAu) mouse_initialized = 1u;
+    }
+}
+
 static uint64_t syscall_process_id(void) {
     sb_task_t *task = scheduler_current();
     return task != 0 ? task->id : 0u;
@@ -24,8 +59,29 @@ static uint64_t syscall_display_info(void) {
 }
 
 static uint64_t syscall_input_key(void) {
-    if ((io_in8(0x64u) & 0x01u) == 0u) return 0u;
+    if ((io_in8(0x64u) & 0x01u) == 0u || (io_in8(0x64u) & 0x20u) != 0u) return 0u;
     return (uint64_t)io_in8(0x60u);
+}
+
+static uint64_t syscall_input_mouse(void) {
+    uint8_t status;
+    uint8_t byte;
+    uint32_t packet;
+
+    if (!mouse_initialized) mouse_init();
+    status = io_in8(0x64u);
+    if ((status & 0x01u) == 0u || (status & 0x20u) == 0u) return 0u;
+    byte = io_in8(0x60u);
+
+    if (mouse_packet_index == 0u && (byte & 0x08u) == 0u) return 0u;
+    mouse_packet[mouse_packet_index++] = byte;
+    if (mouse_packet_index < 3u) return 0u;
+
+    mouse_packet_index = 0u;
+    packet = 1u | ((uint32_t)(mouse_packet[0] & 0x07u) << 8) |
+             ((uint32_t)mouse_packet[1] << 16) |
+             ((uint32_t)mouse_packet[2] << 24);
+    return packet;
 }
 
 static uint64_t syscall_display_glyph(uint64_t x, uint64_t y, uint64_t bitmap, uint64_t color) {
@@ -76,6 +132,8 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             return syscall_input_key();
         case SB_SYS_DISPLAY_GLYPH:
             return syscall_display_glyph(arg0, arg1, arg2, arg3);
+        case SB_SYS_INPUT_MOUSE:
+            return syscall_input_mouse();
         default:
             return UINT64_MAX;
     }
@@ -87,5 +145,5 @@ uint64_t sb_syscall_dispatch_entry(uint64_t number, uint64_t arg0, uint64_t arg1
 }
 
 void syscall_init(void) {
-    /* Architecture-specific entry is installed during kernel initialization. */
+    mouse_init();
 }
