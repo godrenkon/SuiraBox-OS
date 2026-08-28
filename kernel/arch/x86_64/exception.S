@@ -3,6 +3,12 @@
 
 .extern sb_panic_from_exception
 
+.macro serial_mark ch
+    movw $0x3F8, %dx
+    movb $\ch, %al
+    outb %al, %dx
+.endm
+
 .macro EXC_NOERR n
 .global sb_exception_\n
 .type sb_exception_\n, @function
@@ -54,6 +60,7 @@ EXC_ERR   30
 EXC_NOERR 31
 
 sb_exception_common:
+    serial_mark 0x58
     cli
     movq (%rsp), %rdi
     movq 8(%rsp), %rsi
