@@ -1,0 +1,160 @@
+#include "framebuffer.h"
+#include <stdint.h>
+
+#define SB_MB2_MAX_INFO_SIZE (64u * 1024u)
+#define SB_MB2_MAX_TAGS 128u
+#define SB_IDENTITY_MAP_LIMIT (1ull << 30)
+#define SB_MB2_TAG_END 0u
+#define SB_MB2_TAG_FRAMEBUFFER 8u
+#define SB_FB_DIRECT 1u
+#define SB_FB_MAX_BPP 32u
+
+typedef struct __attribute__((packed)) {
+    uint32_t type;
+    uint32_t size;
+} sb_mb2_tag_t;
+
+typedef struct __attribute__((packed)) {
+    uint32_t type;
+    uint32_t size;
+    uint64_t address;
+    uint32_t pitch;
+    uint32_t width;
+    uint32_t height;
+    uint8_t bpp;
+    uint8_t framebuffer_type;
+    uint16_t reserved;
+} sb_mb2_fb_tag_prefix_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t red_position;
+    uint8_t red_mask_size;
+    uint8_t green_position;
+    uint8_t green_mask_size;
+    uint8_t blue_position;
+    uint8_t blue_mask_size;
+} sb_mb2_fb_direct_info_t;
+
+static sb_framebuffer_info_t current;
+static int available;
+
+static uint64_t align8(uint64_t value) {
+    if (value > UINT64_MAX - 7u) return UINT64_MAX;
+    return (value + 7u) & ~7ull;
+}
+
+static uint32_t component_mask(uint8_t bits) {
+    if (bits == 0u) return 0u;
+    if (bits >= 32u) return UINT32_MAX;
+    return (1u << bits) - 1u;
+}
+
+static uint32_t scale_component(uint8_t value, uint8_t bits) {
+    const uint32_t max_value = component_mask(bits);
+    if (max_value == 0u) return 0u;
+    return ((uint32_t)value * max_value + 127u) / 255u;
+}
+
+int sb_framebuffer_init(uint64_t multiboot_info_address) {
+    available = 0;
+    current = (sb_framebuffer_info_t){0};
+
+    if (multiboot_info_address == 0u || multiboot_info_address >= 0x40000000ull)
+        return 0;
+
+    {
+        const uint32_t total_size = *(const uint32_t *)(uintptr_t)multiboot_info_address;
+        if (total_size < 16u || total_size > SB_MB2_MAX_INFO_SIZE ||
+            (total_size & 7u) != 0u || total_size > UINT64_MAX - multiboot_info_address)
+            return 0;
+
+        uint32_t offset = 8u;
+        uint32_t tags_seen = 0u;
+        while (offset <= total_size - 8u && tags_seen++ < SB_MB2_MAX_TAGS) {
+            const sb_mb2_tag_t *tag = (const sb_mb2_tag_t *)(uintptr_t)(multiboot_info_address + offset);
+            if (tag->size < 8u || tag->size > total_size - offset) return 0;
+            if (tag->type == SB_MB2_TAG_END) return available;
+
+            if (tag->type == SB_MB2_TAG_FRAMEBUFFER &&
+                tag->size >= sizeof(sb_mb2_fb_tag_prefix_t)) {
+                const sb_mb2_fb_tag_prefix_t *fb = (const sb_mb2_fb_tag_prefix_t *)tag;
+                const uint64_t bytes_per_pixel = ((uint64_t)fb->bpp + 7u) / 8u;
+                const uint64_t total_bytes = (uint64_t)fb->pitch * fb->height;
+                if (fb->address != 0u && fb->pitch != 0u && fb->width != 0u &&
+                    fb->height != 0u && fb->bpp != 0u && fb->bpp <= SB_FB_MAX_BPP &&
+                    bytes_per_pixel <= 4u && total_bytes <= UINT64_MAX - fb->address) {
+                    current.address = fb->address;
+                    current.pitch = fb->pitch;
+                    current.width = fb->width;
+                    current.height = fb->height;
+                    current.bits_per_pixel = fb->bpp;
+                    current.type = fb->framebuffer_type;
+                    if (fb->framebuffer_type == SB_FB_DIRECT &&
+                        tag->size >= sizeof(sb_mb2_fb_tag_prefix_t) + sizeof(sb_mb2_fb_direct_info_t)) {
+                        const sb_mb2_fb_direct_info_t *direct =
+                            (const sb_mb2_fb_direct_info_t *)((const uint8_t *)tag + sizeof(sb_mb2_fb_tag_prefix_t));
+                        current.red_position = direct->red_position;
+                        current.red_mask_size = direct->red_mask_size;
+                        current.green_position = direct->green_position;
+                        current.green_mask_size = direct->green_mask_size;
+                        current.blue_position = direct->blue_position;
+                        current.blue_mask_size = direct->blue_mask_size;
+                        available = 1;
+                    }
+                }
+            }
+
+            {
+                const uint64_t next = align8(tag->size);
+                if (next > UINT32_MAX || next > (uint64_t)(total_size - offset)) return 0;
+                offset += (uint32_t)next;
+            }
+        }
+    }
+
+    return available;
+}
+
+int sb_framebuffer_available(void) { return available; }
+
+const sb_framebuffer_info_t *sb_framebuffer_info(void) {
+    return available ? &current : (const sb_framebuffer_info_t *)0;
+}
+
+int sb_framebuffer_clear(uint8_t red, uint8_t green, uint8_t blue) {
+    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    const uint64_t span = (uint64_t)current.pitch * current.height;
+    uint64_t end;
+    uint32_t pixel;
+
+    if (!available || current.type != SB_FB_DIRECT || bytes_per_pixel == 0u ||
+        bytes_per_pixel > 4u || current.bits_per_pixel > SB_FB_MAX_BPP ||
+        span > UINT64_MAX - current.address)
+        return -1;
+
+    end = current.address + span;
+    if (current.address >= SB_IDENTITY_MAP_LIMIT || end > SB_IDENTITY_MAP_LIMIT)
+        return -2;
+
+    if (current.red_position >= 32u || current.green_position >= 32u || current.blue_position >= 32u ||
+        current.red_mask_size > 32u || current.green_mask_size > 32u || current.blue_mask_size > 32u ||
+        (uint16_t)current.red_position + current.red_mask_size > current.bits_per_pixel ||
+        (uint16_t)current.green_position + current.green_mask_size > current.bits_per_pixel ||
+        (uint16_t)current.blue_position + current.blue_mask_size > current.bits_per_pixel)
+        return -3;
+
+    pixel = scale_component(red, current.red_mask_size) << current.red_position;
+    pixel |= scale_component(green, current.green_mask_size) << current.green_position;
+    pixel |= scale_component(blue, current.blue_mask_size) << current.blue_position;
+
+    for (uint32_t y = 0u; y < current.height; ++y) {
+        volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(current.address + (uint64_t)y * current.pitch);
+        for (uint32_t x = 0u; x < current.width; ++x) {
+            volatile uint8_t *dst = row + (uint64_t)x * bytes_per_pixel;
+            for (uint64_t byte = 0u; byte < bytes_per_pixel; ++byte)
+                dst[byte] = (uint8_t)(pixel >> (byte * 8u));
+        }
+    }
+
+    return 0;
+}
