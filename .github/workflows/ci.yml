@@ -44,7 +44,11 @@ jobs:
             -no-shutdown \
             -d int,cpu_reset \
             -D qemu-debug.log \
-            2>&1 | tee qemu.log || test ${PIPESTATUS[0]} -eq 124
+            2>&1 | tee qemu.log || true
+          echo '===== QEMU CPU/exception trace ====='
+          cat qemu-debug.log || true
+          echo '===== QEMU serial trace ====='
+          cat qemu.log
           grep -F "Kernel initialized." qemu.log
           grep -F "PCI: scanning bus/device/function space..." qemu.log
           grep -F "PCI: scan complete." qemu.log
@@ -60,6 +64,7 @@ jobs:
           grep -F "Phase 1 bootstrap complete." qemu.log
 
       - name: Upload kernel artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: suirabox-kernel
