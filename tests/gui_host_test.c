@@ -30,9 +30,9 @@ int main(void) {
     assert(sb_gui_hit_test(&wm, 15, 25)->id == back_id);
     assert(sb_gui_hit_test(&wm, 1000, 1000) == 0);
 
-    assert(sb_gui_hit_control(front, 64, 60) == SB_GUI_CONTROL_MINIMIZE);
-    assert(sb_gui_hit_control(front, 88, 60) == SB_GUI_CONTROL_MAXIMIZE);
-    assert(sb_gui_hit_control(front, 112, 60) == SB_GUI_CONTROL_CLOSE);
+    assert(sb_gui_hit_control(front, 136, 60) == SB_GUI_CONTROL_MINIMIZE);
+    assert(sb_gui_hit_control(front, 160, 60) == SB_GUI_CONTROL_MAXIMIZE);
+    assert(sb_gui_hit_control(front, 184, 60) == SB_GUI_CONTROL_CLOSE);
     assert(sb_gui_hit_control(front, 100, 60) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(front, 191, 90) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(0, 191, 60) == SB_GUI_CONTROL_NONE);
