@@ -115,7 +115,11 @@ uint64_t vmm_translate(uint64_t virtual_address) {
 void vmm_init(void) {
     if (bootstrap_ready) return;
 
-    const uint64_t test_virtual = 0x0000004000000000ull;
+    /* PML4[0] owns the bootloader's 0..512 GiB address-space slot and must
+     * remain intact while the kernel is executing from low identity-mapped
+     * addresses. Use the next canonical positive PML4 slot for bootstrap VMM
+     * self-tests instead of replacing PML4[0]. */
+    const uint64_t test_virtual = 0x0000008000000000ull;
     const uint16_t pml4_i = pml4_index(test_virtual);
     const uint16_t pdpt_i = pdpt_index(test_virtual);
 
