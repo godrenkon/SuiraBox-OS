@@ -100,6 +100,10 @@ void gdt_init(void) {
     gdt_debug("[GDT] ltr returned\r\n");
 }
 
+void arch_gdt_init(void) {
+    gdt_init();
+}
+
 void gdt_set_kernel_stack(uint64_t stack_pointer) {
     tss.rsp0 = stack_pointer;
 }
