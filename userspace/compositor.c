@@ -20,6 +20,7 @@ void sb_compositor_init(sb_compositor_style_t *style,
     style->cursor_rgb = 0xE9F2FFu;
     style->close_rgb = 0xD85B68u;
     style->minimize_rgb = 0xD3A746u;
+    style->maximize_rgb = 0x5EB88Cu;
 }
 
 int sb_compositor_clip_rect(int32_t x, int32_t y, uint32_t width, uint32_t height,
@@ -84,11 +85,15 @@ static void render_window(const sb_compositor_style_t *style,
                     style->titlebar_rgb);
     compositor_rect(style, window->x, window->y, window->width,
                     SB_GUI_TITLEBAR_HEIGHT, style->accent_rgb);
-    if (window->width >= SB_GUI_CONTROL_SIZE * 2u) {
+    if (window->width >= SB_GUI_CONTROL_SIZE * 3u) {
+        compositor_rect(style, window->x + (int32_t)window->width -
+                        (int32_t)(SB_GUI_CONTROL_SIZE * 3u), window->y + 6,
+                        SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
+                        style->minimize_rgb);
         compositor_rect(style, window->x + (int32_t)window->width -
                         (int32_t)(SB_GUI_CONTROL_SIZE * 2u), window->y + 6,
                         SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
-                        style->minimize_rgb);
+                        style->maximize_rgb);
         compositor_rect(style, window->x + (int32_t)window->width -
                         (int32_t)SB_GUI_CONTROL_SIZE, window->y + 6,
                         SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
@@ -129,12 +134,17 @@ static void render_window_damage(const sb_compositor_style_t *style,
                            window->width, window->height, style->titlebar_rgb);
     compositor_damage_rect(style, damage, window->x, window->y,
                            window->width, SB_GUI_TITLEBAR_HEIGHT, style->accent_rgb);
-    if (window->width >= SB_GUI_CONTROL_SIZE * 2u) {
+    if (window->width >= SB_GUI_CONTROL_SIZE * 3u) {
+        compositor_damage_rect(style, damage,
+                               window->x + (int32_t)window->width -
+                                   (int32_t)(SB_GUI_CONTROL_SIZE * 3u), window->y + 6,
+                               SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
+                               style->minimize_rgb);
         compositor_damage_rect(style, damage,
                                window->x + (int32_t)window->width -
                                    (int32_t)(SB_GUI_CONTROL_SIZE * 2u), window->y + 6,
                                SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
-                               style->minimize_rgb);
+                               style->maximize_rgb);
         compositor_damage_rect(style, damage,
                                window->x + (int32_t)window->width -
                                    (int32_t)SB_GUI_CONTROL_SIZE, window->y + 6,
