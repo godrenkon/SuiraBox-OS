@@ -159,7 +159,7 @@ static sb_process_t *prepare_init_process(uint64_t multiboot_info, sb_process_im
     if (image == 0) return 0;
     process = process_create(1u);
     if (process == 0) return 0;
-    if (process_prepare_boot_module(process, multiboot_info, "user-hello", image) != 0) {
+    if (process_prepare_boot_module(process, multiboot_info, "sb-desktop", image) != 0) {
         process_destroy(process);
         return 0;
     }
@@ -225,9 +225,9 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
             if (sb_framebuffer_clear(12u, 16u, 24u) == 0) {
                 serial_write("Display: framebuffer clear OK\r\n");
                 if (sb_desktop_bootstrap_render() == 0)
-                    serial_write("Desktop: bootstrap surface rendered\r\n");
+                    serial_write("Desktop: kernel fallback surface rendered\r\n");
                 else
-                    serial_write("Desktop: bootstrap surface unavailable\r\n");
+                    serial_write("Desktop: kernel fallback surface unavailable\r\n");
             } else {
                 serial_write("Display: framebuffer clear deferred\r\n");
             }
@@ -249,25 +249,25 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     interrupts_set_user_handler(0x80u, (uintptr_t)sb_syscall_int80_stub);
     serial_write("Syscall: int 0x80 user gate ready\r\n");
 
-    serial_write("Userspace: loading user-hello module...\r\n");
+    serial_write("Userspace: loading sb-desktop module...\r\n");
     init_process = prepare_init_process(multiboot_info, &init_image);
-    serial_write(init_process != 0 ? "Userspace: ELF + address-space + stack preparation OK\r\n" : "Userspace: ELF + address-space + stack preparation FAILED\r\n");
+    serial_write(init_process != 0 ? "Userspace: SB Desktop ELF + address-space + stack preparation OK\r\n" : "Userspace: SB Desktop preparation FAILED\r\n");
 
     serial_write("Timer: initializing PIT at 100 Hz...\r\n");
     timer_init(100u);
     serial_write("Timer: IRQ0 enabled\r\n");
-    serial_write("Userspace: ring3 execution path prepared\r\n");
+    serial_write("Userspace: SB Desktop ring3 execution path prepared\r\n");
     serial_write("Phase 1 bootstrap complete.\r\n");
 
     if (init_process != 0) {
-        serial_write("Userspace: activating init address space\r\n");
+        serial_write("Userspace: activating SB Desktop address space\r\n");
         init_process->state = SB_PROCESS_RUNNING;
         if (process_activate(init_process) == 0) {
-            serial_write("Userspace: entering ring3\r\n");
+            serial_write("Userspace: entering SB Desktop ring3\r\n");
             arch_enter_user(init_image.entry_point, init_image.user_stack_top);
             serial_write("Userspace: returned unexpectedly; staying in kernel halt loop\r\n");
         } else {
-            serial_write("Userspace: address-space activation FAILED\r\n");
+            serial_write("Userspace: SB Desktop address-space activation FAILED\r\n");
         }
     }
 
