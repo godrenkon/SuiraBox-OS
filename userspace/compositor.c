@@ -11,6 +11,8 @@ void sb_compositor_init(sb_compositor_style_t *style,
     style->titlebar_rgb = 0x3A485Au;
     style->accent_rgb = 0x536F8Au;
     style->cursor_rgb = 0xE9F2FFu;
+    style->close_rgb = 0xD85B68u;
+    style->minimize_rgb = 0xD3A746u;
 }
 
 int sb_compositor_clip_rect(int32_t x, int32_t y, uint32_t width, uint32_t height,
@@ -68,6 +70,25 @@ static void compositor_rect(const sb_compositor_style_t *style,
     (void)sb_display_rect(out_x, out_y, out_width, out_height, rgb);
 }
 
+static void render_window(const sb_compositor_style_t *style,
+                          const sb_gui_window_t *window) {
+    if (style == 0 || window == 0 || window->visible == 0u || window->minimized != 0u) return;
+    compositor_rect(style, window->x, window->y, window->width, window->height,
+                    style->titlebar_rgb);
+    compositor_rect(style, window->x, window->y, window->width,
+                    SB_GUI_TITLEBAR_HEIGHT, style->accent_rgb);
+    if (window->width >= SB_GUI_CONTROL_SIZE * 2u) {
+        compositor_rect(style, window->x + (int32_t)window->width -
+                        (int32_t)(SB_GUI_CONTROL_SIZE * 2u), window->y + 6,
+                        SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
+                        style->minimize_rgb);
+        compositor_rect(style, window->x + (int32_t)window->width -
+                        (int32_t)SB_GUI_CONTROL_SIZE, window->y + 6,
+                        SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
+                        style->close_rgb);
+    }
+}
+
 static void compositor_damage_rect(const sb_compositor_style_t *style,
                                    const sb_surface_rect_t *damage,
                                    int32_t x, int32_t y,
@@ -90,6 +111,29 @@ static void compositor_damage_rect(const sb_compositor_style_t *style,
     compositor_rect(style, (int32_t)clip_left, (int32_t)clip_top,
                     (uint32_t)(clip_right - clip_left),
                     (uint32_t)(clip_bottom - clip_top), rgb);
+}
+
+static void render_window_damage(const sb_compositor_style_t *style,
+                                 const sb_surface_rect_t *damage,
+                                 const sb_gui_window_t *window) {
+    if (style == 0 || damage == 0 || window == 0 ||
+        window->visible == 0u || window->minimized != 0u) return;
+    compositor_damage_rect(style, damage, window->x, window->y,
+                           window->width, window->height, style->titlebar_rgb);
+    compositor_damage_rect(style, damage, window->x, window->y,
+                           window->width, SB_GUI_TITLEBAR_HEIGHT, style->accent_rgb);
+    if (window->width >= SB_GUI_CONTROL_SIZE * 2u) {
+        compositor_damage_rect(style, damage,
+                               window->x + (int32_t)window->width -
+                                   (int32_t)(SB_GUI_CONTROL_SIZE * 2u), window->y + 6,
+                               SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
+                               style->minimize_rgb);
+        compositor_damage_rect(style, damage,
+                               window->x + (int32_t)window->width -
+                                   (int32_t)SB_GUI_CONTROL_SIZE, window->y + 6,
+                               SB_GUI_CONTROL_SIZE, SB_GUI_CONTROL_SIZE - 8u,
+                               style->close_rgb);
+    }
 }
 
 void sb_compositor_present_damage(const sb_compositor_style_t *style,
@@ -115,16 +159,8 @@ void sb_compositor_present_damage(const sb_compositor_style_t *style,
                                style->chrome_rgb);
         compositor_damage_rect(style, region, 0, (int32_t)style->height - 72,
                                style->width, 72u, style->chrome_rgb);
-
-        for (i = 0u; i < wm->count; ++i) {
-            const sb_gui_window_t *window = &wm->windows[i];
-            if (window->visible == 0u || window->minimized != 0u) continue;
-            compositor_damage_rect(style, region, window->x, window->y,
-                                   window->width, window->height,
-                                   style->titlebar_rgb);
-            compositor_damage_rect(style, region, window->x, window->y,
-                                   window->width, 36u, style->accent_rgb);
-        }
+        for (i = 0u; i < wm->count; ++i)
+            render_window_damage(style, region, &wm->windows[i]);
         compositor_damage_rect(style, region, 18, (int32_t)style->height - 60,
                                56u, 48u, style->accent_rgb);
     }
@@ -138,16 +174,7 @@ void sb_compositor_present(const sb_compositor_style_t *style,
     compositor_rect(style, 0, 0, style->width, style->height, style->background_rgb);
     compositor_rect(style, 0, 0, style->width, 72u, style->chrome_rgb);
     compositor_rect(style, 0, (int32_t)style->height - 72, style->width, 72u, style->chrome_rgb);
-
-    for (i = 0u; i < wm->count; ++i) {
-        const sb_gui_window_t *window = &wm->windows[i];
-        if (window->visible == 0u || window->minimized != 0u) continue;
-        compositor_rect(style, window->x, window->y,
-                        window->width, window->height, style->titlebar_rgb);
-        compositor_rect(style, window->x, window->y,
-                        window->width, 36u, style->accent_rgb);
-    }
-
+    for (i = 0u; i < wm->count; ++i) render_window(style, &wm->windows[i]);
     compositor_rect(style, 18, (int32_t)style->height - 60, 56u, 48u, style->accent_rgb);
 }
 
