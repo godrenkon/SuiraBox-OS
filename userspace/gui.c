@@ -92,8 +92,21 @@ sb_gui_window_t *sb_gui_hit_test(sb_gui_window_manager_t *wm, int32_t x, int32_t
 }
 
 int sb_gui_focus_window(sb_gui_window_manager_t *wm, uint32_t id) {
-    sb_gui_window_t *window = find_slot(wm, id);
-    if (window == 0 || window->visible == 0u || window->minimized != 0u) return -1;
-    wm->focused_id = id;
-    return 0;
+    uint32_t i;
+    sb_gui_window_t focused;
+    if (wm == 0 || id == 0u) return -1;
+    for (i = 0u; i < wm->count; ++i) {
+        if (wm->windows[i].id != id) continue;
+        if (wm->windows[i].visible == 0u || wm->windows[i].minimized != 0u) return -1;
+        if (i + 1u == wm->count) {
+            wm->focused_id = id;
+            return 0;
+        }
+        focused = wm->windows[i];
+        for (; i + 1u < wm->count; ++i) wm->windows[i] = wm->windows[i + 1u];
+        wm->windows[wm->count - 1u] = focused;
+        wm->focused_id = id;
+        return 0;
+    }
+    return -1;
 }
