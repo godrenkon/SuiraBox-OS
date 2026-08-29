@@ -27,6 +27,7 @@ static int validate(const sb_config_store_record_t *record) {
     if (record == 0 || record->magic != SB_CONFIG_STORE_MAGIC ||
         record->version != SB_CONFIG_STORE_VERSION || record->language > 3u ||
         record->completed != SB_CONFIG_STORE_COMPLETED ||
+        (record->optional_enabled_mask & ~SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED) != 0u ||
         record->checksum != checksum(record)) return 0;
     return 1;
 }
@@ -65,7 +66,7 @@ static int ensure_slot(sb_fat32_t *fs, const char *name,
     return sb_fat32_create_root_file(fs, name, SB_CONFIG_STORE_RECORD_SIZE, entry) ? 1 : -1;
 }
 
-int sb_config_store_set(uint8_t language) {
+int sb_config_store_set(uint8_t language, uint32_t optional_enabled_mask) {
     sb_fat32_t *fs = sb_storage_fat32();
     sb_config_store_record_t current_a = {0};
     sb_config_store_record_t current_b = {0};
@@ -78,7 +79,9 @@ int sb_config_store_set(uint8_t language) {
     sb_config_store_record_t next = {0};
     int ensure_result;
 
-    if (language > 3u || fs == 0) return -1;
+    if (language > 3u ||
+        (optional_enabled_mask & ~SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED) != 0u ||
+        fs == 0) return -1;
     valid_a = load_slot(fs, SB_CONFIG_FILE_A, &current_a, &entry_a);
     valid_b = load_slot(fs, SB_CONFIG_FILE_B, &current_b, &entry_b);
 
@@ -110,6 +113,7 @@ int sb_config_store_set(uint8_t language) {
     next.language = language;
     next.completed = SB_CONFIG_STORE_COMPLETED;
     next.generation = generation;
+    next.optional_enabled_mask = optional_enabled_mask;
     next.checksum = checksum(&next);
     return sb_fat32_write_file(fs, target_entry, 0u,
                                SB_CONFIG_STORE_RECORD_SIZE, &next) ? 0 : -1;
