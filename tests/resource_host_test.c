@@ -7,6 +7,7 @@ int main(void) {
     static const char path[] = "locales/ja-jp/locale.pack.zst";
     static const char hash[] = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     static const char dependency[] = "core/ui";
+    static char id_limit[SB_RESOURCE_ID_MAX + 1u];
     sb_resource_ref_t ref = {
         .id = id,
         .path = path,
@@ -21,12 +22,28 @@ int main(void) {
         .dependencies = {dependency}
     };
 
+    for (uint32_t i = 0u; i < SB_RESOURCE_ID_MAX - 1u; ++i) id_limit[i] = 'a';
+    id_limit[SB_RESOURCE_ID_MAX - 1u] = '\0';
+
     assert(sb_resource_schema_version() == SB_RESOURCE_SCHEMA_VERSION);
     assert(sb_resource_repository_url()[0] == 'h');
     assert(sb_resource_id_valid("locale/ja-jp") == 1);
     assert(sb_resource_id_valid("../locale/ja-jp") == 0);
+    assert(sb_resource_id_valid("./locale/ja-jp") == 0);
+    assert(sb_resource_id_valid("locale/./ja-jp") == 0);
+    assert(sb_resource_id_valid("locale/../ja-jp") == 0);
+    assert(sb_resource_id_valid("locale/ja-jp/.") == 0);
+    assert(sb_resource_id_valid("locale/ja-jp/..") == 0);
+    assert(sb_resource_id_valid(id_limit) == 1);
+    id_limit[SB_RESOURCE_ID_MAX - 1u] = 'a';
+    id_limit[SB_RESOURCE_ID_MAX] = '\0';
+    assert(sb_resource_id_valid(id_limit) == 0);
+
     assert(sb_resource_path_valid(path) == 1);
     assert(sb_resource_path_valid("../locale.pack.zst") == 0);
+    assert(sb_resource_path_valid("./locale.pack.zst") == 0);
+    assert(sb_resource_path_valid("locales/./ja-jp.pack") == 0);
+    assert(sb_resource_path_valid("locales/ja-jp/../bad") == 0);
     assert(sb_resource_reference_valid(&ref) == 1);
     assert(sb_resource_can_activate(&ref, 1u) == 1);
     assert(sb_resource_can_activate(&ref, 0u) == 0);
@@ -42,6 +59,9 @@ int main(void) {
     ref.expanded_size = 512u;
     ref.sha256 = "bad";
     assert(sb_resource_reference_valid(&ref) == 0);
+    ref.sha256 = hash;
+    ref.sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789ABCDEFFF";
+    assert(sb_resource_reference_valid(&ref) == 1);
     ref.sha256 = hash;
     ref.tier = 9u;
     assert(sb_resource_reference_valid(&ref) == 0);
