@@ -25,6 +25,13 @@ static uint32_t put_le32(uint8_t *p, uint32_t value) {
     return value;
 }
 
+static uint32_t get_le32(const uint8_t *p) {
+    return (uint32_t)p[0] |
+           ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
 static sb_block_status_t disk_read(sb_block_device_t *device, uint64_t lba,
                                    uint32_t count, void *buffer) {
     if (device == 0 || buffer == 0 || count == 0 || lba >= device->sector_count ||
@@ -101,8 +108,10 @@ int main(void) {
     sb_fat32_t fs;
     sb_fat32_dirent_t entry;
     sb_fat32_dirent_t found;
+    sb_fat32_dirent_t created;
     char buffer[64];
     static const char patch[] = "SBOS";
+    static const char created_contents[] = "SuiraBox config journal record";
 
     build_image();
     if (!expect(sb_vfs_mount(&device, &mount) == SB_VFS_OK, "VFS mount failed")) return 1;
@@ -150,5 +159,38 @@ int main(void) {
                 "zero-length write should be a successful no-op")) return 1;
     if (!expect(sb_fat32_read_file(&fs, &entry, entry.file_size, 1u, buffer) == 0,
                 "out-of-range read was accepted")) return 1;
+
+    if (!expect(sb_fat32_create_root_file(&fs, "CONFIG.BIN", (uint32_t)(sizeof(created_contents) - 1u), &created) != 0,
+                "root file creation failed")) return 1;
+    if (!expect(strcmp(created.name, "CONFIG.BIN") == 0 && created.root_index == 1u &&
+                created.first_cluster == 4u && created.file_size == sizeof(created_contents) - 1u,
+                "created root entry metadata is wrong")) return 1;
+    if (!expect(get_le32(&disk[SECTOR_SIZE + 16u]) == 0x0FFFFFFFu &&
+                get_le32(&disk[2u * SECTOR_SIZE + 16u]) == 0x0FFFFFFFu,
+                "new cluster was not marked EOC in both FAT copies")) return 1;
+    if (!expect(sb_fat32_find_root_entry(&fs, "CONFIG.BIN", &found) != 0 &&
+                found.first_cluster == created.first_cluster && found.file_size == created.file_size,
+                "created root file was not discoverable")) return 1;
+    memset(buffer, 0, sizeof(buffer));
+    if (!expect(sb_fat32_read_file(&fs, &created, 0u,
+                                   (uint32_t)(sizeof(created_contents) - 1u), buffer) != 0,
+                "created root file read failed")) return 1;
+    if (!expect(memcmp(buffer, "", 0u) == 0 &&
+                memcmp(buffer, created_contents, sizeof(created_contents) - 1u) != 0,
+                "new file unexpectedly contained non-zero data")) return 1;
+    if (!expect(sb_fat32_write_file(&fs, &created, 0u,
+                                    (uint32_t)(sizeof(created_contents) - 1u),
+                                    created_contents) != 0,
+                "created root file write failed")) return 1;
+    memset(buffer, 0, sizeof(buffer));
+    if (!expect(sb_fat32_read_file(&fs, &created, 0u,
+                                   (uint32_t)(sizeof(created_contents) - 1u), buffer) != 0,
+                "created root file reread failed")) return 1;
+    if (!expect(memcmp(buffer, created_contents, sizeof(created_contents) - 1u) == 0,
+                "created root file contents are wrong")) return 1;
+    if (!expect(sb_fat32_create_root_file(&fs, "CONFIG.BIN", 32u, &found) == 0,
+                "duplicate root file was unexpectedly created")) return 1;
+    if (!expect(sb_fat32_create_root_file(&fs, "TOO-LONG.TXT", 4u, &found) == 0,
+                "invalid 8.3 filename was unexpectedly accepted")) return 1;
     return 0;
 }
