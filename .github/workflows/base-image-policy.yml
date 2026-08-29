@@ -1,0 +1,24 @@
+name: SuiraBox Base Image Policy
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  base-image-policy:
+    name: Minimal ISO payload policy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y grub-pc-bin grub-common xorriso mtools
+      - name: Build ISO
+        run: make iso
+      - name: Verify minimal base tree
+        run: sh scripts/check_base_image.sh build/iso
