@@ -94,15 +94,43 @@ static int framebuffer_target(uint64_t *target_address) {
 }
 
 static uint32_t pack_pixel(uint8_t red, uint8_t green, uint8_t blue) {
-    uint32_t pixel = scale_component(red, current.red_mask_size) << current.red_position;
-    pixel |= scale_component(green, current.green_mask_size) << current.green_position;
-    pixel |= scale_component(blue, current.blue_mask_size) << current.blue_position;
-    return pixel;
+    if (current.bits_per_pixel == 32u &&
+        current.red_position == 16u && current.red_mask_size == 8u &&
+        current.green_position == 8u && current.green_mask_size == 8u &&
+        current.blue_position == 0u && current.blue_mask_size == 8u)
+        return ((uint32_t)red << 16) | ((uint32_t)green << 8) | blue;
+    {
+        uint32_t pixel = scale_component(red, current.red_mask_size) << current.red_position;
+        pixel |= scale_component(green, current.green_mask_size) << current.green_position;
+        pixel |= scale_component(blue, current.blue_mask_size) << current.blue_position;
+        return pixel;
+    }
 }
 
 static void store_pixel(volatile uint8_t *dst, uint64_t bytes_per_pixel, uint32_t pixel) {
     for (uint64_t byte = 0u; byte < bytes_per_pixel; ++byte)
         dst[byte] = (uint8_t)(pixel >> (byte * 8u));
+}
+
+static int draw_glyph8_packed(uint64_t target_address, uint64_t bytes_per_pixel,
+                              uint32_t x, uint32_t y, uint64_t bitmap,
+                              uint32_t pixel) {
+    for (uint32_t row_index = 0u; row_index < 8u; ++row_index) {
+        const uint8_t row_bits = (uint8_t)(bitmap >> (row_index * 8u));
+        volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(
+            target_address + (uint64_t)(y + row_index) * current.pitch + (uint64_t)x * bytes_per_pixel);
+        if (bytes_per_pixel == 4u) {
+            volatile uint32_t *fast = (volatile uint32_t *)(void *)row;
+            for (uint32_t column = 0u; column < 8u; ++column)
+                if ((row_bits & (uint8_t)(1u << (7u - column))) != 0u) fast[column] = pixel;
+        } else {
+            for (uint32_t column = 0u; column < 8u; ++column) {
+                if ((row_bits & (uint8_t)(1u << (7u - column))) != 0u)
+                    store_pixel(row + (uint64_t)column * bytes_per_pixel, bytes_per_pixel, pixel);
+            }
+        }
+    }
+    return 0;
 }
 
 int sb_framebuffer_init(uint64_t multiboot_info_address) {
@@ -282,21 +310,21 @@ int sb_framebuffer_draw_glyph8(uint32_t x, uint32_t y, uint64_t bitmap,
     if (x > UINT32_MAX - 7u || y > UINT32_MAX - 7u ||
         x >= current.width || y >= current.height) return -1;
     if (framebuffer_target(&target_address) != 0) return -2;
+    return draw_glyph8_packed(target_address, bytes_per_pixel, x, y, bitmap, pixel);
+}
 
-    for (uint32_t row_index = 0u; row_index < 8u; ++row_index) {
-        const uint8_t row_bits = (uint8_t)(bitmap >> (row_index * 8u));
-        volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(
-            target_address + (uint64_t)(y + row_index) * current.pitch + (uint64_t)x * bytes_per_pixel);
-        if (bytes_per_pixel == 4u) {
-            volatile uint32_t *fast = (volatile uint32_t *)(void *)row;
-            for (uint32_t column = 0u; column < 8u; ++column)
-                if ((row_bits & (uint8_t)(1u << (7u - column))) != 0u) fast[column] = pixel;
-        } else {
-            for (uint32_t column = 0u; column < 8u; ++column) {
-                if ((row_bits & (uint8_t)(1u << (7u - column))) != 0u)
-                    store_pixel(row + (uint64_t)column * bytes_per_pixel, bytes_per_pixel, pixel);
-            }
-        }
-    }
-    return 0;
+int sb_framebuffer_draw_glyph8_pair(uint32_t x, uint32_t y,
+                                    uint64_t bitmap_a, uint64_t bitmap_b,
+                                    uint8_t red, uint8_t green, uint8_t blue) {
+    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    uint64_t target_address;
+    const uint32_t pixel = pack_pixel(red, green, blue);
+
+    if (x > UINT32_MAX - 17u || y > UINT32_MAX - 7u ||
+        x >= current.width || y >= current.height ||
+        x + 10u >= current.width) return -1;
+    if (framebuffer_target(&target_address) != 0) return -2;
+    if (draw_glyph8_packed(target_address, bytes_per_pixel, x, y, bitmap_a, pixel) != 0)
+        return -3;
+    return draw_glyph8_packed(target_address, bytes_per_pixel, x + 10u, y, bitmap_b, pixel);
 }
