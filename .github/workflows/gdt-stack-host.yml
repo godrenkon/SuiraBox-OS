@@ -1,0 +1,20 @@
+name: SuiraBox GDT Stack Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  gdt-stack:
+    name: GDT/TSS stack contract host test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile GDT stack contract
+        run: gcc -Wall -Wextra -Werror -std=c11 -ffreestanding -fno-builtin -Ikernel/arch/x86_64 tests/gdt_stack_host_test.c kernel/arch/x86_64/gdt.c -o gdt-stack-host-test
+      - name: Run GDT stack contract test
+        run: ./gdt-stack-host-test
