@@ -7,7 +7,7 @@
 
 #define SB_USER_RFLAGS_RESERVED 0x2u
 #define SB_USER_RFLAGS_INTERRUPT 0x200u
-#define SB_USER_RSP_ALIGNMENT 16u
+#define SB_USER_RSP_ALIGNMENT 8u
 
 /* Register state required when a userspace thread is resumed. */
 typedef struct {
