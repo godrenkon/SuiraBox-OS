@@ -121,6 +121,18 @@ static void render_taskbar(const sb_compositor_style_t *style,
     }
 }
 
+static int damage_intersects_rect(const sb_surface_rect_t *damage,
+                                  int32_t x, int32_t y,
+                                  uint32_t width, uint32_t height) {
+    const int64_t right = (int64_t)x + (int64_t)width;
+    const int64_t bottom = (int64_t)y + (int64_t)height;
+    const int64_t damage_right = (int64_t)damage->x + (int64_t)damage->width;
+    const int64_t damage_bottom = (int64_t)damage->y + (int64_t)damage->height;
+    return damage != 0 && width != 0u && height != 0u &&
+           (int64_t)x < damage_right && damage->x < right &&
+           (int64_t)y < damage_bottom && damage->y < bottom;
+}
+
 static void compositor_damage_rect(const sb_compositor_style_t *style,
                                    const sb_surface_rect_t *damage,
                                    int32_t x, int32_t y,
@@ -150,6 +162,7 @@ static void render_window_damage(const sb_compositor_style_t *style,
                                  const sb_gui_window_t *window) {
     if (style == 0 || damage == 0 || window == 0 ||
         window->visible == 0u || window->minimized != 0u) return;
+    if (!damage_intersects_rect(damage, window->x, window->y, window->width, window->height)) return;
     compositor_damage_rect(style, damage, window->x, window->y,
                            window->width, window->height, style->titlebar_rgb);
     compositor_damage_rect(style, damage, window->x, window->y,
