@@ -15,6 +15,26 @@ static void io_out8(uint16_t port, uint8_t value) {
     __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
 }
 
+#ifdef SB_KERNEL_DEBUG
+static uint8_t syscall_user_smoke_seen;
+static void syscall_debug_char(char c) {
+    while (1) {
+        uint8_t status;
+        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+        if ((status & 0x20u) != 0u) break;
+    }
+    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
+}
+static void syscall_debug_user_smoke(void) {
+    if (syscall_user_smoke_seen != 0u) return;
+    syscall_user_smoke_seen = 1u;
+    const char message[] = "Userspace: ring3 syscall reached\r\n";
+    for (uint32_t i = 0u; message[i] != '\0'; ++i) syscall_debug_char(message[i]);
+}
+#else
+static void syscall_debug_user_smoke(void) { }
+#endif
+
 static int ps2_wait_input_clear(void) {
     uint32_t timeout = 100000u;
     while ((io_in8(0x64u) & 0x02u) != 0u && timeout-- != 0u) { }
@@ -110,6 +130,9 @@ static uint64_t syscall_config_get(void) {
 
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                           uint64_t arg2, uint64_t arg3, uint64_t arg4) {
+#ifdef SB_KERNEL_DEBUG
+    syscall_debug_user_smoke();
+#endif
     switch (number) {
         case SB_SYS_GET_TICKS:
             return timer_ticks();
