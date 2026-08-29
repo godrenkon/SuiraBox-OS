@@ -57,7 +57,8 @@ int main(void) {
     assert(thread != 0);
     assert(thread->user_context == &context);
     assert(context.rip == SB_USER_BASE);
-    assert(context.rsp == SB_USER_STACK_TOP);
+    assert(context.rsp == SB_USER_STACK_TOP - sizeof(uint64_t));
+    assert((context.rsp & (SB_USER_RSP_ALIGNMENT - 1u)) == 0u);
     assert(thread->kernel_resume_stack_pointer != 0u);
     assert(thread->kernel_resume_stack_pointer ==
            thread->kernel_stack_top - SB_USER_RESUME_FRAME_OFFSET);
