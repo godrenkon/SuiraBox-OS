@@ -19,18 +19,9 @@ static const uint64_t G_S = 0x007c02023c40403eULL;
 static int32_t g_cursor_x;
 static int32_t g_cursor_y;
 
-static void draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rgb) {
-    (void)sb_display_rect(x, y, w, h, rgb);
-}
-
-static void draw_glyph(uint32_t x, uint32_t y, uint64_t glyph) {
-    (void)sb_display_glyph(x, y, glyph, 0xE9F2FFu);
-}
-
-static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) {
-    draw_glyph(x, y, a);
-    draw_glyph(x + 10u, y, b);
-}
+static void draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rgb) { (void)sb_display_rect(x, y, w, h, rgb); }
+static void draw_glyph(uint32_t x, uint32_t y, uint64_t glyph) { (void)sb_display_glyph(x, y, glyph, 0xE9F2FFu); }
+static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) { draw_glyph(x, y, a); draw_glyph(x + 10u, y, b); }
 
 static void draw_first_boot(uint32_t width, uint32_t height, uint32_t selection, uint8_t open) {
     const uint32_t mx = (width - 560u) / 2u;
@@ -50,8 +41,7 @@ static void draw_first_boot(uint32_t width, uint32_t height, uint32_t selection,
     else draw_pair(sx + 20u, my + 124u, G_E, G_S);
     if (open) {
         draw_rect(sx, my + 158u, 420u, 176u, 0x171D27u);
-        for (uint32_t i = 0u; i < 4u; ++i)
-            draw_rect(sx + 2u, my + 160u + i * 44u, 416u, 40u, 0x27313Eu);
+        for (uint32_t i = 0u; i < 4u; ++i) draw_rect(sx + 2u, my + 160u + i * 44u, 416u, 40u, 0x27313Eu);
         draw_rect(sx + 2u, my + 160u + selection * 44u, 416u, 40u, 0x536F8Au);
         draw_pair(sx + 20u, my + 176u, G_J, G_P);
         draw_pair(sx + 20u, my + 220u, G_E, G_N);
@@ -65,12 +55,10 @@ static void draw_launcher(const sb_desktop_shell_t *shell) {
     uint32_t top;
     if (shell == 0 || shell->launcher.open == 0u || shell->screen_height < SB_GUI_TASKBAR_HEIGHT) return;
     top = shell->screen_height - SB_GUI_TASKBAR_HEIGHT - SB_SHELL_MENU_ROW_H * shell->launcher.count;
-    draw_rect(SB_SHELL_LAUNCHER_X, top, SB_SHELL_MENU_W,
-              SB_SHELL_MENU_ROW_H * shell->launcher.count, 0x171D27u);
+    draw_rect(SB_SHELL_LAUNCHER_X, top, SB_SHELL_MENU_W, SB_SHELL_MENU_ROW_H * shell->launcher.count, 0x171D27u);
     for (uint32_t i = 0u; i < shell->launcher.count; ++i) {
         const uint32_t row_y = top + i * SB_SHELL_MENU_ROW_H;
-        draw_rect(SB_SHELL_LAUNCHER_X + 2u, row_y + 2u,
-                  SB_SHELL_MENU_W - 4u, SB_SHELL_MENU_ROW_H - 4u,
+        draw_rect(SB_SHELL_LAUNCHER_X + 2u, row_y + 2u, SB_SHELL_MENU_W - 4u, SB_SHELL_MENU_ROW_H - 4u,
                   i == shell->launcher.selected ? 0x536F8Au : 0x27313Eu);
         if (i == 0u) draw_glyph(SB_SHELL_LAUNCHER_X + 18u, row_y + 14u, G_S);
         else if (i == 1u) draw_pair(SB_SHELL_LAUNCHER_X + 18u, row_y + 14u, G_E, G_N);
@@ -78,12 +66,10 @@ static void draw_launcher(const sb_desktop_shell_t *shell) {
     }
 }
 
-static int point_inside(int32_t x, int32_t y, int32_t left, int32_t top,
-                        uint32_t width, uint32_t height) {
-    int64_t rx = (int64_t)left + (int64_t)width;
-    int64_t by = (int64_t)top + (int64_t)height;
-    return (int64_t)x >= (int64_t)left && (int64_t)y >= (int64_t)top &&
-           (int64_t)x < rx && (int64_t)y < by;
+static int point_inside(int32_t x, int32_t y, int32_t left, int32_t top, uint32_t width, uint32_t height) {
+    const int64_t rx = (int64_t)left + (int64_t)width;
+    const int64_t by = (int64_t)top + (int64_t)height;
+    return (int64_t)x >= (int64_t)left && (int64_t)y >= (int64_t)top && (int64_t)x < rx && (int64_t)y < by;
 }
 
 static int commit_language(sb_config_record_t *config, uint32_t selection) {
@@ -93,8 +79,9 @@ static int commit_language(sb_config_record_t *config, uint32_t selection) {
 }
 
 static int persist_language(sb_config_record_t *config, uint32_t selection) {
+    const uint64_t result = sb_config_set(selection);
     if (commit_language(config, selection) != 0) return -1;
-    return sb_config_set(selection) == 0u ? 0 : -1;
+    return result == 0u || result == SB_CONFIG_SET_VOLATILE ? 0 : -1;
 }
 
 static int load_persisted_language(sb_config_record_t *config, uint32_t *selection) {
@@ -112,20 +99,15 @@ static void decode_mouse(uint64_t packet, int32_t *dx, int32_t *dy, uint8_t *but
     *buttons = (uint8_t)((packet >> 8) & 0x07u);
 }
 
-static void mark_damage(sb_surface_t *surface, int32_t x, int32_t y,
-                        uint32_t width, uint32_t height) {
-    if (surface != 0 && width != 0u && height != 0u)
-        (void)sb_surface_damage_rect(surface, x, y, width, height);
+static void mark_damage(sb_surface_t *surface, int32_t x, int32_t y, uint32_t width, uint32_t height) {
+    if (surface != 0 && width != 0u && height != 0u) (void)sb_surface_damage_rect(surface, x, y, width, height);
 }
 
 static void mark_taskbar_damage(sb_surface_t *surface, uint32_t width, uint32_t height) {
-    if (height >= SB_GUI_TASKBAR_HEIGHT)
-        mark_damage(surface, 0, (int32_t)height - (int32_t)SB_GUI_TASKBAR_HEIGHT,
-                    width, SB_GUI_TASKBAR_HEIGHT);
+    if (height >= SB_GUI_TASKBAR_HEIGHT) mark_damage(surface, 0, (int32_t)height - (int32_t)SB_GUI_TASKBAR_HEIGHT, width, SB_GUI_TASKBAR_HEIGHT);
 }
 
-static void present_damage(sb_surface_t *surface, uint32_t width, uint32_t height,
-                           sb_gui_window_manager_t *wm,
+static void present_damage(sb_surface_t *surface, uint32_t width, uint32_t height, sb_gui_window_manager_t *wm,
                            sb_surface_rect_t *damage, uint32_t capacity) {
     uint32_t count = 0u;
     uint8_t full = 0u;
@@ -137,8 +119,7 @@ static void present_damage(sb_surface_t *surface, uint32_t width, uint32_t heigh
     sb_compositor_present_cursor(&style, g_cursor_x, g_cursor_y);
 }
 
-static int shell_open_app(sb_gui_window_manager_t *wm, const char *id,
-                          uint32_t width, uint32_t height) {
+static int shell_open_app(sb_gui_window_manager_t *wm, const char *id, uint32_t width, uint32_t height) {
     int32_t x;
     int32_t y;
     if (wm == 0 || id == 0 || width < SB_GUI_MIN_WINDOW_WIDTH || height < SB_GUI_MIN_WINDOW_HEIGHT) return -1;
@@ -169,8 +150,7 @@ void sb_desktop_main(void) {
     sb_desktop_shell_t shell;
 
     if (width == 0u || height == 0u || width > UINT32_MAX / 4u) for (;;) { }
-    if (sb_surface_init(&surface, width, height, width * 4u,
-                        SB_SURFACE_FORMAT_XRGB8888, 0) != 0) for (;;) { }
+    if (sb_surface_init(&surface, width, height, width * 4u, SB_SURFACE_FORMAT_XRGB8888, 0) != 0) for (;;) { }
     sb_gui_init(&wm);
     sb_gui_event_queue_init(&events);
     sb_desktop_shell_init(&shell, width, height);
@@ -206,21 +186,14 @@ void sb_desktop_main(void) {
                         dropdown_open = dropdown_open == 0u ? 1u : 0u;
                         draw_first_boot(width, height, selection, dropdown_open);
                     } else if (dropdown_open != 0u && event.key == 0x48u && selection > 0u) {
-                        --selection;
-                        (void)commit_language(&config, selection);
-                        draw_first_boot(width, height, selection, dropdown_open);
+                        --selection; (void)commit_language(&config, selection); draw_first_boot(width, height, selection, dropdown_open);
                     } else if (dropdown_open != 0u && event.key == 0x50u && selection < 3u) {
-                        ++selection;
-                        (void)commit_language(&config, selection);
-                        draw_first_boot(width, height, selection, dropdown_open);
+                        ++selection; (void)commit_language(&config, selection); draw_first_boot(width, height, selection, dropdown_open);
                     } else if (event.key == 0x1Cu) {
                         if (dropdown_open != 0u) {
-                            dropdown_open = 0u;
-                            draw_first_boot(width, height, selection, dropdown_open);
+                            dropdown_open = 0u; draw_first_boot(width, height, selection, dropdown_open);
                         } else if (persist_language(&config, selection) == 0) {
-                            first_boot = 0u;
-                            main_window->visible = 1u;
-                            sb_surface_damage_all(&surface);
+                            first_boot = 0u; main_window->visible = 1u; sb_surface_damage_all(&surface);
                             present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
                         }
                     }
@@ -242,131 +215,70 @@ void sb_desktop_main(void) {
         int32_t dy;
         uint8_t buttons;
         decode_mouse(packet, &dx, &dy, &buttons);
-        sb_gui_event_t mouse = {
-            ((buttons ^ last_buttons) & 0x07u) != 0u ? SB_GUI_EVENT_MOUSE_BUTTON : SB_GUI_EVENT_MOUSE_MOVE,
-            g_cursor_x, g_cursor_y, (int16_t)dx, (int16_t)dy, buttons, 0
-        };
+        sb_gui_event_t mouse = {((buttons ^ last_buttons) & 0x07u) != 0u ? SB_GUI_EVENT_MOUSE_BUTTON : SB_GUI_EVENT_MOUSE_MOVE,
+                                g_cursor_x, g_cursor_y, (int16_t)dx, (int16_t)dy, buttons, 0};
         if (sb_gui_event_queue_push(&events, &mouse) != 0) continue;
         while (sb_gui_event_queue_pop(&events, &mouse) == 0) {
             const int32_t old_cursor_x = g_cursor_x;
             const int32_t old_cursor_y = g_cursor_y;
-            g_cursor_x += mouse.dx;
-            g_cursor_y -= mouse.dy;
-            if (g_cursor_x < 0) g_cursor_x = 0;
-            if (g_cursor_y < 0) g_cursor_y = 0;
+            g_cursor_x += mouse.dx; g_cursor_y -= mouse.dy;
+            if (g_cursor_x < 0) g_cursor_x = 0; if (g_cursor_y < 0) g_cursor_y = 0;
             if (g_cursor_x >= (int32_t)width) g_cursor_x = (int32_t)width - 1;
             if (g_cursor_y >= (int32_t)height) g_cursor_y = (int32_t)height - 1;
-            mark_damage(&surface, old_cursor_x, old_cursor_y, 8u, 8u);
-            mark_damage(&surface, g_cursor_x, g_cursor_y, 8u, 8u);
+            mark_damage(&surface, old_cursor_x, old_cursor_y, 8u, 8u); mark_damage(&surface, g_cursor_x, g_cursor_y, 8u, 8u);
 
-            if (mouse.type == SB_GUI_EVENT_MOUSE_BUTTON &&
-                (mouse.buttons & 1u) != 0u && (last_buttons & 1u) == 0u) {
+            if (mouse.type == SB_GUI_EVENT_MOUSE_BUTTON && (mouse.buttons & 1u) != 0u && (last_buttons & 1u) == 0u) {
                 if (first_boot != 0u) {
                     const uint32_t modal_y = (height - 360u) / 2u;
                     const uint32_t field_x = (width - 420u) / 2u;
-                    if (point_inside(g_cursor_x, g_cursor_y, (int32_t)field_x,
-                                     (int32_t)(modal_y + 104u), 420u, 52u)) {
-                        dropdown_open = dropdown_open == 0u ? 1u : 0u;
-                        draw_first_boot(width, height, selection, dropdown_open);
-                    } else if (dropdown_open != 0u &&
-                               point_inside(g_cursor_x, g_cursor_y, (int32_t)field_x,
-                                            (int32_t)(modal_y + 160u), 420u, 176u)) {
+                    if (point_inside(g_cursor_x, g_cursor_y, (int32_t)field_x, (int32_t)(modal_y + 104u), 420u, 52u)) {
+                        dropdown_open = dropdown_open == 0u ? 1u : 0u; draw_first_boot(width, height, selection, dropdown_open);
+                    } else if (dropdown_open != 0u && point_inside(g_cursor_x, g_cursor_y, (int32_t)field_x, (int32_t)(modal_y + 160u), 420u, 176u)) {
                         const uint32_t row = (uint32_t)(g_cursor_y - (int32_t)(modal_y + 160u)) / 44u;
                         if (row < 4u && commit_language(&config, row) == 0) selection = row;
-                        dropdown_open = 0u;
-                        draw_first_boot(width, height, selection, dropdown_open);
-                    } else if (dropdown_open == 0u &&
-                               point_inside(g_cursor_x, g_cursor_y,
-                                            (int32_t)((width - 240u) / 2u),
-                                            (int32_t)(modal_y + 300u), 240u, 44u) &&
+                        dropdown_open = 0u; draw_first_boot(width, height, selection, dropdown_open);
+                    } else if (dropdown_open == 0u && point_inside(g_cursor_x, g_cursor_y, (int32_t)((width - 240u) / 2u),
+                                                                     (int32_t)(modal_y + 300u), 240u, 44u) &&
                                persist_language(&config, selection) == 0) {
-                        first_boot = 0u;
-                        main_window->visible = 1u;
-                        sb_surface_damage_all(&surface);
+                        first_boot = 0u; main_window->visible = 1u; sb_surface_damage_all(&surface);
                         present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
-                    } else if (dropdown_open != 0u) {
-                        dropdown_open = 0u;
-                        draw_first_boot(width, height, selection, dropdown_open);
-                    }
+                    } else if (dropdown_open != 0u) { dropdown_open = 0u; draw_first_boot(width, height, selection, dropdown_open); }
                 } else {
                     const char *activated_id = 0;
                     if (sb_desktop_shell_click(&shell, g_cursor_x, g_cursor_y, &activated_id) == 0) {
-                        sb_surface_damage_all(&surface);
-                        present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
-                        if (activated_id != 0) {
-                            if (shell_open_app(&wm, activated_id, 420u, 260u) == 0) {
-                                sb_surface_damage_all(&surface);
-                                present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
-                            }
+                        sb_surface_damage_all(&surface); present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
+                        if (activated_id != 0 && shell_open_app(&wm, activated_id, 420u, 260u) == 0) {
+                            sb_surface_damage_all(&surface); present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
                         }
                         if (shell.launcher.open != 0u) draw_launcher(&shell);
                     } else {
-                        const uint32_t taskbar_id = sb_gui_hit_taskbar(&wm, g_cursor_x, g_cursor_y,
-                                                                        width, height);
+                        const uint32_t taskbar_id = sb_gui_hit_taskbar(&wm, g_cursor_x, g_cursor_y, width, height);
                         if (taskbar_id != 0u) {
                             sb_gui_window_t *taskbar_window = sb_gui_find_window(&wm, taskbar_id);
                             if (taskbar_window != 0 && taskbar_window->minimized != 0u) {
-                                const int32_t restored_x = taskbar_window->x;
-                                const int32_t restored_y = taskbar_window->y;
-                                const uint32_t restored_width = taskbar_window->width;
-                                const uint32_t restored_height = taskbar_window->height;
                                 mark_taskbar_damage(&surface, width, height);
                                 if (sb_gui_restore_window(&wm, taskbar_id) == 0) {
-                                    sb_gui_window_t *restored_window = sb_gui_find_window(&wm, taskbar_id);
-                                    mark_damage(&surface, restored_x, restored_y,
-                                                restored_width, restored_height);
-                                    if (restored_window != 0) {
-                                        mark_damage(&surface, restored_window->x, restored_window->y,
-                                                    restored_window->width, restored_window->height);
-                                    }
-                                    present_damage(&surface, width, height, &wm,
-                                                   damage, SB_SURFACE_MAX_DAMAGE);
+                                    sb_gui_window_t *restored = sb_gui_find_window(&wm, taskbar_id);
+                                    if (restored != 0) mark_damage(&surface, restored->x, restored->y, restored->width, restored->height);
+                                    present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
                                 }
-                                dragging = 0u;
-                                resizing = SB_GUI_RESIZE_NONE;
+                                dragging = 0u; resizing = SB_GUI_RESIZE_NONE;
                             }
                         } else {
                             sb_gui_window_t *hit = sb_gui_hit_test(&wm, g_cursor_x, g_cursor_y);
                             if (hit != 0) {
                                 const uint32_t id = hit->id;
-                                const int32_t wx = hit->x;
-                                const int32_t wy = hit->y;
-                                const uint32_t ww = hit->width;
-                                const uint32_t wh = hit->height;
+                                const int32_t wx = hit->x; const int32_t wy = hit->y;
+                                const uint32_t ww = hit->width; const uint32_t wh = hit->height;
                                 const sb_gui_control_t control = sb_gui_hit_control(hit, g_cursor_x, g_cursor_y);
                                 const sb_gui_resize_edge_t edge = sb_gui_hit_resize(hit, g_cursor_x, g_cursor_y);
                                 (void)sb_gui_focus_window(&wm, id);
-                                if (control == SB_GUI_CONTROL_CLOSE) {
-                                    mark_damage(&surface, wx, wy, ww, wh);
-                                    (void)sb_gui_destroy_window(&wm, id);
-                                    dragging = 0u;
-                                    resizing = SB_GUI_RESIZE_NONE;
-                                } else if (control == SB_GUI_CONTROL_MINIMIZE) {
-                                    mark_damage(&surface, wx, wy, ww, wh);
-                                    mark_taskbar_damage(&surface, width, height);
-                                    (void)sb_gui_set_minimized(&wm, id, 1u);
-                                    dragging = 0u;
-                                    resizing = SB_GUI_RESIZE_NONE;
-                                } else if (control == SB_GUI_CONTROL_MAXIMIZE) {
-                                    mark_damage(&surface, wx, wy, ww, wh);
-                                    (void)sb_gui_set_maximized(&wm, id, hit->maximized == 0u ? 1u : 0u,
-                                                              width, height);
-                                    dragging = 0u;
-                                    resizing = SB_GUI_RESIZE_NONE;
-                                } else if (edge != SB_GUI_RESIZE_NONE) {
-                                    resizing = edge;
-                                    dragging = 0u;
-                                    drag_dx = g_cursor_x - wx;
-                                    drag_dy = g_cursor_y - wy;
-                                } else if (g_cursor_y < wy + (int32_t)SB_GUI_TITLEBAR_HEIGHT) {
-                                    resizing = SB_GUI_RESIZE_NONE;
-                                    dragging = 1u;
-                                    drag_dx = g_cursor_x - wx;
-                                    drag_dy = g_cursor_y - wy;
-                                } else {
-                                    dragging = 0u;
-                                    resizing = SB_GUI_RESIZE_NONE;
-                                }
+                                if (control == SB_GUI_CONTROL_CLOSE) { mark_damage(&surface, wx, wy, ww, wh); (void)sb_gui_destroy_window(&wm, id); dragging = 0u; resizing = SB_GUI_RESIZE_NONE; }
+                                else if (control == SB_GUI_CONTROL_MINIMIZE) { mark_damage(&surface, wx, wy, ww, wh); mark_taskbar_damage(&surface, width, height); (void)sb_gui_set_minimized(&wm, id, 1u); dragging = 0u; resizing = SB_GUI_RESIZE_NONE; }
+                                else if (control == SB_GUI_CONTROL_MAXIMIZE) { mark_damage(&surface, wx, wy, ww, wh); (void)sb_gui_set_maximized(&wm, id, hit->maximized == 0u ? 1u : 0u, width, height); dragging = 0u; resizing = SB_GUI_RESIZE_NONE; }
+                                else if (edge != SB_GUI_RESIZE_NONE) { resizing = edge; dragging = 0u; drag_dx = g_cursor_x - wx; drag_dy = g_cursor_y - wy; }
+                                else if (g_cursor_y < wy + (int32_t)SB_GUI_TITLEBAR_HEIGHT) { resizing = SB_GUI_RESIZE_NONE; dragging = 1u; drag_dx = g_cursor_x - wx; drag_dy = g_cursor_y - wy; }
+                                else { dragging = 0u; resizing = SB_GUI_RESIZE_NONE; }
                                 present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
                             }
                         }
@@ -377,47 +289,35 @@ void sb_desktop_main(void) {
             if (first_boot == 0u && (mouse.buttons & 1u) != 0u) {
                 sb_gui_window_t *focused = sb_gui_find_window(&wm, wm.focused_id);
                 if (focused != 0 && focused->visible != 0u && focused->minimized == 0u) {
-                    const int32_t old_x = focused->x;
-                    const int32_t old_y = focused->y;
-                    const uint32_t old_width = focused->width;
-                    const uint32_t old_height = focused->height;
+                    const int32_t old_x = focused->x; const int32_t old_y = focused->y;
+                    const uint32_t old_width = focused->width; const uint32_t old_height = focused->height;
                     if (resizing != SB_GUI_RESIZE_NONE) {
-                        uint32_t new_width = focused->width;
-                        uint32_t new_height = focused->height;
+                        uint32_t new_width = focused->width; uint32_t new_height = focused->height;
                         if (resizing == SB_GUI_RESIZE_RIGHT || resizing == SB_GUI_RESIZE_BOTTOM_RIGHT) {
                             int64_t candidate = (int64_t)g_cursor_x - (int64_t)focused->x;
-                            if (candidate < 0) candidate = 0;
-                            if (candidate > (int64_t)UINT32_MAX) candidate = (int64_t)UINT32_MAX;
+                            if (candidate < 0) candidate = 0; if (candidate > (int64_t)UINT32_MAX) candidate = (int64_t)UINT32_MAX;
                             new_width = (uint32_t)candidate;
                         }
                         if (resizing == SB_GUI_RESIZE_BOTTOM || resizing == SB_GUI_RESIZE_BOTTOM_RIGHT) {
                             int64_t candidate = (int64_t)g_cursor_y - (int64_t)focused->y;
-                            if (candidate < 0) candidate = 0;
-                            if (candidate > (int64_t)UINT32_MAX) candidate = (int64_t)UINT32_MAX;
+                            if (candidate < 0) candidate = 0; if (candidate > (int64_t)UINT32_MAX) candidate = (int64_t)UINT32_MAX;
                             new_height = (uint32_t)candidate;
                         }
                         if (sb_gui_resize_window(&wm, focused->id, new_width, new_height) == 0) {
                             mark_damage(&surface, old_x, old_y, old_width, old_height);
-                            mark_damage(&surface, focused->x, focused->y,
-                                        focused->width, focused->height);
+                            mark_damage(&surface, focused->x, focused->y, focused->width, focused->height);
                             present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
                         }
                     } else if (dragging && focused->maximized == 0u) {
-                        focused->x = g_cursor_x - drag_dx;
-                        focused->y = g_cursor_y - drag_dy;
-                        if (focused->x < 0) focused->x = 0;
-                        if (focused->y < (int32_t)SB_GUI_TITLEBAR_HEIGHT) focused->y = SB_GUI_TITLEBAR_HEIGHT;
-                        mark_damage(&surface, old_x, old_y, old_width, old_height);
-                        mark_damage(&surface, focused->x, focused->y, focused->width, focused->height);
+                        focused->x = g_cursor_x - drag_dx; focused->y = g_cursor_y - drag_dy;
+                        if (focused->x < 0) focused->x = 0; if (focused->y < (int32_t)SB_GUI_TITLEBAR_HEIGHT) focused->y = SB_GUI_TITLEBAR_HEIGHT;
+                        mark_damage(&surface, old_x, old_y, old_width, old_height); mark_damage(&surface, focused->x, focused->y, focused->width, focused->height);
                         present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
                     }
                 }
             }
 
-            if ((mouse.buttons & 1u) == 0u) {
-                dragging = 0u;
-                resizing = SB_GUI_RESIZE_NONE;
-            }
+            if ((mouse.buttons & 1u) == 0u) { dragging = 0u; resizing = SB_GUI_RESIZE_NONE; }
             last_buttons = mouse.buttons;
         }
     }
