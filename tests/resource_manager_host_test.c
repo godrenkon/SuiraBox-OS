@@ -110,19 +110,19 @@ int main(void) {
     const sb_resource_ref_t manifest[] = {core, locale};
     const sb_resource_manager_io_t io = {
         .verify_manifest = verify_manifest,
-        .cache_lookup = cache_lookup,
         .cache_begin = cache_begin,
         .cache_write = cache_write,
         .cache_commit = cache_commit,
         .cache_abort = cache_abort,
         .activate = activate,
         .fetch = fetch,
+        .cache_lookup = cache_lookup,
         .user = &store
     };
     sb_resource_manager_t manager;
     char cache_path[SB_RESOURCE_MANAGER_CACHE_PATH_MAX];
 
-    assert(sb_resource_manager_abi_version() == 1u);
+    assert(sb_resource_manager_abi_version() == SB_RESOURCE_MANAGER_ABI_VERSION);
     assert(sb_resource_manager_cache_path(hello_hash, cache_path, sizeof(cache_path)) == 0);
     assert(cache_path[0] == '/');
     assert(sb_resource_manager_cache_path("bad", cache_path, sizeof(cache_path)) != 0);
