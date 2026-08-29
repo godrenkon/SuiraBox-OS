@@ -1,5 +1,6 @@
 #include "process.h"
 #include "mm/pmm.h"
+#include "arch/x86_64/irq_frame.h"
 
 static sb_process_t processes[SB_MAX_PROCESSES];
 static uint32_t process_count_value;
@@ -14,6 +15,15 @@ static int process_pid_in_use(uint64_t pid) {
 
 static void clear_kernel_stack(uint8_t *stack) {
     for (uint32_t i = 0u; i < SB_USER_KERNEL_STACK_SIZE; ++i) stack[i] = 0u;
+}
+
+static void process_remove_last_thread(sb_process_t *process) {
+    if (process == 0 || process->thread_count == 0u) return;
+    sb_thread_t *thread = &process->threads[process->thread_count - 1u];
+    if (thread->kernel_stack_base != 0u)
+        pmm_free_page((void *)(uintptr_t)thread->kernel_stack_base);
+    *thread = (sb_thread_t){0};
+    --process->thread_count;
 }
 
 void process_init(void) {
@@ -68,6 +78,7 @@ sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t
     thread->user_context = 0;
     thread->kernel_stack_base = (uint64_t)(uintptr_t)stack;
     thread->kernel_stack_top = thread->kernel_stack_base + SB_USER_KERNEL_STACK_SIZE;
+    thread->kernel_resume_stack_pointer = 0u;
     ++process->thread_count;
     return thread;
 }
@@ -81,6 +92,52 @@ int process_prepare_thread_context(sb_thread_t *thread,
         thread->kernel_stack_base == 0u || thread->kernel_stack_top == 0u) return -1;
     if (sb_user_context_init(context, entry_point, user_stack_top) != 0) return -1;
     thread->user_context = context;
+    return process_prepare_user_resume_frame(thread);
+}
+
+int process_prepare_user_resume_frame(sb_thread_t *thread) {
+    if (thread == 0 || thread->user_context == 0 ||
+        thread->kernel_stack_base == 0u || thread->kernel_stack_top == 0u ||
+        thread->kernel_stack_top < thread->kernel_stack_base ||
+        thread->kernel_stack_top - thread->kernel_stack_base < SB_USER_RESUME_FRAME_SIZE) {
+        return -1;
+    }
+    if (sb_user_context_validate(thread->user_context) != 0) return -1;
+
+    const uint64_t frame_address = thread->kernel_stack_top - SB_USER_RESUME_FRAME_SIZE;
+    if ((frame_address & 0xFu) != 0u) return -1;
+
+    sb_timer_saved_gpr_t *gpr = (sb_timer_saved_gpr_t *)(uintptr_t)frame_address;
+    sb_x86_64_user_iret_frame_t *iret =
+        (sb_x86_64_user_iret_frame_t *)(uintptr_t)(frame_address + sizeof(*gpr));
+    const sb_user_context_t *context = thread->user_context;
+
+    *gpr = (sb_timer_saved_gpr_t){
+        .r15 = context->r15,
+        .r14 = context->r14,
+        .r13 = context->r13,
+        .r12 = context->r12,
+        .rbp = context->rbp,
+        .rbx = context->rbx,
+        .r11 = context->r11,
+        .r10 = context->r10,
+        .r9 = context->r9,
+        .r8 = context->r8,
+        .rdi = context->rdi,
+        .rsi = context->rsi,
+        .rdx = context->rdx,
+        .rcx = context->rcx,
+        .rax = context->rax,
+    };
+    *iret = (sb_x86_64_user_iret_frame_t){
+        .rip = context->rip,
+        .cs = context->cs,
+        .rflags = context->rflags,
+        .rsp = context->rsp,
+        .ss = context->ss,
+    };
+
+    thread->kernel_resume_stack_pointer = frame_address;
     return 0;
 }
 
@@ -115,6 +172,7 @@ void process_destroy(sb_process_t *process) {
             process->threads[i].kernel_stack_top = 0u;
         }
         process->threads[i].user_context = 0;
+        process->threads[i].kernel_resume_stack_pointer = 0u;
     }
     address_space_destroy(&process->address_space);
     *process = (sb_process_t){0};

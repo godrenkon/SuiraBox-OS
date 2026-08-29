@@ -8,6 +8,7 @@
 #define SB_MAX_PROCESSES 32u
 #define SB_MAX_THREADS_PER_PROCESS 16u
 #define SB_USER_KERNEL_STACK_SIZE 4096u
+#define SB_USER_RESUME_FRAME_SIZE 160u
 
 typedef enum {
     SB_PROCESS_UNUSED = 0,
@@ -25,6 +26,8 @@ typedef struct {
     sb_user_context_t *user_context;
     uint64_t kernel_stack_base;
     uint64_t kernel_stack_top;
+    /* %rsp value consumed by sb_resume_user_from_kernel_stack. */
+    uint64_t kernel_resume_stack_pointer;
 } sb_thread_t;
 
 typedef struct {
@@ -44,6 +47,7 @@ int process_prepare_thread_context(sb_thread_t *thread,
                                    sb_user_context_t *context,
                                    uint64_t entry_point,
                                    uint64_t user_stack_top);
+int process_prepare_user_resume_frame(sb_thread_t *thread);
 sb_process_t *process_get(uint64_t pid);
 uint32_t process_count(void);
 int process_activate(sb_process_t *process);
