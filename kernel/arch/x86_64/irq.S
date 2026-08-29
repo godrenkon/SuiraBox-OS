@@ -34,26 +34,16 @@ sb_timer_irq_stub:
     pushq %r15
 
     serial_mark 0x45
-    /*
-     * The hardware frame is immediately above the saved GPRs.
-     * RSP0 is 16-byte aligned. Both CPL0 and CPL3 interrupt frames have an
-     * even number of eight-byte words (3 and 5 respectively), and the stub
-     * saves 15 words, so RSP is 16-byte aligned before the C call in either
-     * path. The scheduler receives the original GPR-save address.
-     */
-    movq 128(%rsp), %rax
-    testb $3, %al
-    jnz .Ltimer_user_call
-
+    /* Keep the saved-GPR base in RDI and align RSP for the SysV C call. */
     movq %rsp, %rdi
-    call sb_timer_irq_dispatch
-    jmp .Ltimer_dispatch_done
-
-.Ltimer_user_call:
-    movq %rsp, %rdi
+    movq %rsp, %rax
+    andq $0xFu, %rax
+    cmpq $8u, %rax
+    je .Ltimer_aligned
+    subq $8u, %rsp
+.Ltimer_aligned:
     call sb_timer_irq_dispatch
 
-.Ltimer_dispatch_done:
     movq %rax, %rsi
     serial_mark 0x54
 
