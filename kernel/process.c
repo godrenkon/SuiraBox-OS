@@ -99,7 +99,7 @@ int process_prepare_user_resume_frame(sb_thread_t *thread) {
 
     const uint64_t frame_address = thread->kernel_stack_top - SB_USER_RESUME_FRAME_OFFSET;
     if (frame_address < thread->kernel_stack_base ||
-        frame_address + SB_USER_RESUME_FRAME_SIZE > thread->kernel_stack_top - SB_USER_RESUME_FRAME_SIZE ||
+        thread->kernel_stack_top - frame_address < SB_USER_RESUME_FRAME_SIZE ||
         (frame_address & 0xFu) != 0u) return -1;
 
     sb_timer_saved_gpr_t *gpr = (sb_timer_saved_gpr_t *)(uintptr_t)frame_address;
