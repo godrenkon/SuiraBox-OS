@@ -53,23 +53,14 @@ typedef struct {
     const char *dependencies[SB_RESOURCE_MAX_DEPENDENCIES];
 } sb_resource_ref_t;
 
-typedef struct {
-    const sb_resource_ref_t *ref;
-    sb_resource_state_t state;
-} sb_resource_item_t;
-
-/* Only immutable descriptors live in the OS. Payload bytes stay external. */
-const sb_resource_ref_t *sb_resource_builtin_reference(sb_resource_type_t type,
-                                                        uint32_t key);
+int sb_resource_schema_version(void);
 const char *sb_resource_repository_url(void);
-uint32_t sb_resource_schema_version(void);
-
+int sb_resource_id_valid(const char *id);
+int sb_resource_path_valid(const char *path);
+int sb_resource_reference_valid(const sb_resource_ref_t *ref);
+int sb_resource_can_activate(const sb_resource_ref_t *ref, uint32_t running_api);
 int sb_resource_state_transition(sb_resource_state_t current,
                                  sb_resource_state_t next);
 int sb_resource_state_is_usable(sb_resource_state_t state);
-int sb_resource_reference_valid(const sb_resource_ref_t *ref);
-int sb_resource_id_valid(const char *id);
-int sb_resource_path_valid(const char *path);
-int sb_resource_can_activate(const sb_resource_ref_t *ref, uint32_t running_api);
 
 #endif
