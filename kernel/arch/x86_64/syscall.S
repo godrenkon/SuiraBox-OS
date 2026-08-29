@@ -23,8 +23,10 @@
  *   r8  = arg3
  *   r9  = arg4
  *
- * Preserve every userspace GPR except RAX, which carries the syscall result.
- * Keep the C-call stack aligned according to the SysV x86-64 ABI.
+ * The TSS/RSP0 stack is 16-byte aligned. An int 0x80 from CPL3 adds the
+ * five-word iret frame (40 bytes), then this stub saves nine GPRs (72 bytes),
+ * leaving RSP 16-byte aligned before CALL as required by the SysV ABI.
+ * RAX is intentionally not restored: it is the syscall return value.
  */
 sb_syscall_int80_stub:
     pushq %r11
@@ -37,17 +39,6 @@ sb_syscall_int80_stub:
     pushq %rdi
     pushq %rax
 
-    /* Stack layout after pushes:
-     *    0: original rax / syscall number
-     *    8: original rdi / arg0
-     *   16: original rsi / arg1
-     *   24: original rdx / arg2
-     *   32: original rcx
-     *   40: original r8  / arg4
-     *   48: original r9
-     *   56: original r10 / arg3
-     *   64: original r11
-     */
     movq 0(%rsp), %rdi
     movq 8(%rsp), %rsi
     movq 16(%rsp), %rdx
@@ -55,18 +46,10 @@ sb_syscall_int80_stub:
     movq 56(%rsp), %r8
     movq 40(%rsp), %r9
 
-    /*
-     * At this point the saved frame is 16-byte aligned for the user entry
-     * path.  Shift by eight bytes so the C call observes the SysV ABI's
-     * required 8 mod 16 %rsp before CALL.
-     */
-    subq $8, %rsp
     call sb_syscall_dispatch_entry
 
-    /* Store the result in the reserved RAX slot, then restore all GPRs. */
-    movq %rax, 8(%rsp)
+    /* Drop the saved RAX slot; keep the dispatcher result in RAX. */
     addq $8, %rsp
-    popq %rax
     popq %rdi
     popq %rsi
     popq %rdx
