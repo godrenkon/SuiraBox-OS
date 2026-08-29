@@ -5,6 +5,7 @@
 static uint32_t display_rect_calls;
 static uint32_t display_rect_pixels;
 static uint32_t display_glyph_calls;
+static uint32_t launcher_present_calls;
 static uint32_t last_glyph_x;
 static uint32_t last_glyph_y;
 
@@ -24,6 +25,10 @@ int sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap, uint32_t color) {
     last_glyph_x = x;
     last_glyph_y = y;
     return 0;
+}
+
+void sb_desktop_shell_present_launcher(void) {
+    ++launcher_present_calls;
 }
 
 int main(void) {
@@ -77,25 +82,31 @@ int main(void) {
     assert(sb_gui_minimized_count(&wm) == 1u);
     display_rect_calls = 0u;
     display_rect_pixels = 0u;
+    launcher_present_calls = 0u;
     sb_compositor_present(&style, &wm);
     assert(display_rect_calls > 0u);
     assert(display_rect_pixels > 0u);
+    assert(launcher_present_calls == 1u);
     assert(sb_gui_hit_taskbar(&wm, 16, 730, 1024u, 768u) == b->id);
 
     damage[0] = (sb_surface_rect_t){110, 120, 40u, 30u};
     damage[1] = (sb_surface_rect_t){900, 700, 20u, 20u};
     display_rect_calls = 0u;
     display_rect_pixels = 0u;
+    launcher_present_calls = 0u;
     sb_compositor_present_damage(&style, &wm, damage, 2u, 0u);
     assert(display_rect_calls > 0u);
     assert(display_rect_pixels > 0u);
     assert(display_rect_pixels < 1024u * 768u);
+    assert(launcher_present_calls == 1u);
 
     display_rect_calls = 0u;
     display_rect_pixels = 0u;
+    launcher_present_calls = 0u;
     sb_compositor_present_damage(&style, &wm, damage, 2u, 1u);
     assert(display_rect_calls > 0u);
     assert(display_rect_pixels > 1024u * 768u);
+    assert(launcher_present_calls == 1u);
 
     display_glyph_calls = 0u;
     sb_compositor_present_cursor(&style, 100, 200);
