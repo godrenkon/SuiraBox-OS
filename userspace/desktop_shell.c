@@ -1,9 +1,13 @@
 #include "desktop_shell.h"
 #include "gui.h"
+
+#if __STDC_HOSTED__ == 0
 #include "syscall.h"
+#endif
 
 static sb_desktop_shell_t *active_shell;
 
+#if __STDC_HOSTED__ == 0
 static const uint64_t G_J = 0x003844040404043eULL;
 static const uint64_t G_P = 0x004040407c44447cULL;
 static const uint64_t G_E = 0x007c40407840407cULL;
@@ -21,6 +25,7 @@ static void draw_glyph(uint32_t x, uint32_t y, uint64_t glyph) {
 static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) {
     (void)sb_display_glyph_pair(x, y, a, b, 0xE9F2FFu);
 }
+#endif
 
 void sb_desktop_shell_init(sb_desktop_shell_t *shell,
                            uint32_t screen_width, uint32_t screen_height) {
@@ -79,6 +84,7 @@ int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
 }
 
 void sb_desktop_shell_present_launcher(void) {
+#if __STDC_HOSTED__ == 0
     sb_desktop_shell_t *shell = active_shell;
     if (shell == 0 || shell->initialized == 0u || shell->launcher.open == 0u ||
         shell->screen_height < SB_GUI_TASKBAR_HEIGHT || shell->launcher.count == 0u) return;
@@ -96,4 +102,7 @@ void sb_desktop_shell_present_launcher(void) {
         else if (i == 1u) draw_pair(SB_SHELL_LAUNCHER_X + 18u, row_y + 14u, G_E, G_N);
         else draw_pair(SB_SHELL_LAUNCHER_X + 18u, row_y + 14u, G_J, G_P);
     }
+#else
+    (void)active_shell;
+#endif
 }
