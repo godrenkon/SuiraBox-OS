@@ -155,8 +155,12 @@ uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr) {
         if (!thread_runnable(next_thread) || !process_runnable(next_process)) continue;
         if (next_thread == current_thread) continue;
         if (process_prepare_user_resume_frame(next_thread) != 0) continue;
-        if (gdt_try_set_kernel_stack(next_thread->kernel_stack_top) != 0) continue;
         if (process_activate(next_process) != 0) continue;
+        if (gdt_try_set_kernel_stack(next_thread->kernel_stack_top) != 0) {
+            (void)process_activate(current_process);
+            (void)gdt_try_set_kernel_stack(current_thread->kernel_stack_top);
+            continue;
+        }
 
         current_thread->state = SB_PROCESS_CREATED;
         next_thread->state = SB_PROCESS_RUNNING;
