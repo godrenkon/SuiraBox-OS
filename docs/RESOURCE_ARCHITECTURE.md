@@ -2,182 +2,195 @@
 
 ## 目的
 
-SuiraBox OS の ISO / kernel / 基本 desktop をできるだけ小さく保ち、言語データ、テーマ、壁紙、追加アプリ、アイコン、フォントなどの非必須データを OS 本体から分離する。
+SuiraBox OS の ISO / kernel / 基本 desktop をできるだけ小さく保ちつつ、初回起動後に大量の追加ダウンロードを要求しない。OSとして日常的に必要な基本機能は最初から完成した状態で利用でき、利用者が選ぶ大容量データや追加機能だけを外部 Resource Repository から必要時に取得する。
 
-基本原則:
+Resource は次の3層に分ける。
 
-- OS 本体には起動に必須なコードだけを入れる。
-- 非必須リソースは外部 Resource Repository からオンデマンド取得する。
-- 取得対象は選択されたリソースだけにする。
-- 同一リソースは SHA-256 の content ID でキャッシュし、再取得しない。
-- 一時ファイルへ保存して検証完了後に atomic activation する。
-- ダウンロード失敗時でも OS の既存状態を壊さない。
-- Resource Repository の最新版を盲目的に信用せず、OS が許可した manifest / key policy に従う。
-- ISO に巨大な fallback asset bundle を埋め込まない。起動維持に必要な最小 UI だけはコードとして保持する。
+- **Core / Built-in**: OSとして必要、または全ユーザーが高確率で使う基本機能。ISOに最初から含め、オフラインでも使える。
+- **Optional / Local**: 必須ではないが、設定でON/OFFできる機能。小容量ならOSへ同梱可能な独立モジュールとして保持し、無効時はロードしない。
+- **Remote / On-demand**: 大容量、利用者ごとに選択が分かれる、または更新頻度が高いデータ・追加アプリ。外部Repositoryから選択時だけ取得する。
+
+## Coreの原則
+
+Coreを削りすぎて「起動したのに何もできないOS」にしない。少なくとも以下は最初から完成状態で提供する。
+
+- kernel / boot / memory / process / VM / syscall
+- 必須hardware support
+- display / keyboard / mouse
+- filesystem / configuration / recovery
+- compositor / window manager / Desktop Shell
+- Settings
+- Terminal / CLI
+- File Managerの基本機能
+- 最小の標準フォント / glyph
+- fallback theme
+- fallback wallpaper / background
+- resource manager / cache / integrity verification
+- Resource未取得時のfallback UI
+
+これらはRemote取得を前提にしてはいけない。ネットワークが存在しない環境でも、起動、設定変更、ファイル操作、Terminal利用、復旧が成立する必要がある。
+
+## Optional / Local
+
+Optionalは「無効にしてもOSが正常に使える」機能だけを対象とする。
+
+例:
+
+- 追加言語の軽量pack
+- 追加テーマ
+- 追加フォント
+- アクセシビリティ拡張
+- 小型ユーティリティ
+- 追加shell provider
+
+設定画面から有効/無効を変更できる。無効時は可能な限り対応コード・データをロードせず、RAM使用量を増やさない。
+
+## Remote / On-demand
+
+Remoteは「利用者が選ぶ」「容量が大きい」「頻繁に更新される」のいずれかを満たすものを優先する。
+
+例:
+
+- 全言語の大規模locale pack
+- 高解像度 wallpaper / wallpaper collection
+- 大型theme / icon pack
+- notification / sound pack
+- 追加アプリ / app bundle
+- 大規模help / documentation data
+- Minecraft関連の追加resource
+- 開発toolchain
+- 大規模サンプルデータ
+
+Remoteは選択されていない限り取得しない。OS本体へ大量の未使用assetを埋め込まない。
 
 ## Resource Repository
 
-予定リポジトリ名:
+予定Repository:
 
 `godrenkon/SuiraBox-OS-Resources`
 
-現在の GitHub 接続では新規 repository 作成 mutation が提供されていないため、このリポジトリ自体はまだ自動作成していない。OS 側の契約は先に固定し、repository 作成後は endpoint を変更せず接続できる構成にする。
+現在のGitHub接続では新規repository作成mutationが提供されていないため、このRepository自体はまだ自動作成していない。OS側の契約を先に固定し、Repository作成後にendpoint設定だけで接続できるようにする。
 
-想定構成:
+## Manifest契約
 
-```text
-manifest/
-  manifest-v1.json
-  channels/stable.json
-locales/
-  ja-JP/
-    locale.pack.zst
-  en-US/
-    locale.pack.zst
-  zh-CN/
-    locale.pack.zst
-  es-ES/
-    locale.pack.zst
-themes/
-  default/
-    theme.json.zst
-    icons.pack.zst
-wallpapers/
-  default/
-    wallpaper.avif
-apps/
-  terminal/
-    app.sbx.zst
-  files/
-    app.sbx.zst
-```
+各resource entryは少なくとも以下を持つ。
 
-個別ファイルをそのまま参照するのではなく、manifest に immutable asset metadata を記載する。
+- `id`: stable logical ID
+- `version`: resource version
+- `type`: resource type
+- `size`: payload size
+- `sha256`: immutable content hash
+- `path`: repository relative path
+- `compression`: supported compression
+- `min_os`: required SB Resource ABI version
+- `dependencies`: required resource IDs
 
-## Manifest 契約
-
-各 resource entry は少なくとも以下を持つ。
-
-- `id`: 論理 ID
-- `version`: リソース版
-- `type`: `locale`, `theme`, `wallpaper`, `icon`, `font`, `app` など
-- `size`: 展開前ではなく取得 payload のバイト数
-- `sha256`: payload の content hash
-- `path`: repository 上の相対パス
-- `compression`: `none` または対応圧縮方式
-- `min_os`: 必要 OS API version
-- `dependencies`: 必要リソース ID の配列
-
-OS は URL を固定文字列として各ファイルへ埋め込まず、信頼済み manifest から path を解決する。
-
-## ダウンロード単位
-
-`language` を Japanese に変更した場合、OS は `ja-JP` locale pack とその必須依存だけを取得する。
-
-テーマ変更時は theme metadata、必要 icon pack、必要 wallpaper のみを取得する。
-
-アプリ追加時はその app package と依存ライブラリだけを取得する。
-
-これにより、例えば日本語ユーザーがスペイン語、別テーマ、未使用壁紙、未使用アプリのデータを持つ必要はない。
+OSはRepository URLを各assetへ直接ハードコードせず、信頼済みmanifestからpathを解決する。
 
 ## Content-Addressed Cache
 
-キャッシュは論理 ID ではなく content hash を主キーにする。
+取得済みresourceはcontent hashを主キーとして共有キャッシュする。
 
 ```text
 /cache/suirabox/objects/sha256/<first2>/<remaining62>
 ```
 
-同一 payload が複数リソースから参照されても 1 個だけ保存する。バージョン更新で payload が変わった場合は別 hash object として保存する。
-
-active manifest が参照しなくなった object は GC 対象にする。GC は空き容量が必要になった時だけ実行し、通常時の I/O を増やさない。
+同一payloadを複数機能が参照しても1個だけ保持する。inactive objectは空き容量が必要なときにGCし、通常時のI/Oを増やさない。ユーザーがpinしたresourceはGC対象外にする。
 
 ## Atomic Install
 
-1. 空き容量と payload size を確認。
-2. 一時 object を作成。
-3. streaming download。
-4. 受信中に SHA-256 を更新。
-5. byte count と hash を manifest と照合。
-6. 圧縮 payload なら展開結果のサイズと必要な検証を行う。
-7. object を content-addressed cache へ atomic rename。
-8. active state を commit。
+1. payload sizeと保存領域を検査
+2. temporary objectを作成
+3. streaming download
+4. 受信中にSHA-256を計算
+5. size / hash / version / ABIを検証
+6. 必要なら展開前後のサイズ制限を検証
+7. content-addressed objectへatomic activation
+8. active stateをcommit
 
-検証に失敗した一時 object は即時削除する。
+失敗したtemporary objectは削除し、以前のactive resourceはそのまま維持する。
 
-## 再開と通信量削減
+## ダウンロード量削減
 
-ネットワーク層が Range request を提供できる場合は部分取得を許可する。再開可能な temporary object に既取得 byte count を保持し、接続断で最初から再取得しない。
+優先順:
 
-manifest 自体は小さく保ち、OS が保持する前回 manifest hash と同一なら再取得を省略する。
-
-## 更新
-
-更新は以下の優先順で行う。
-
-1. local cache hit
-2. delta / range update
+1. verified local cache hit
+2. range / delta update
 3. full payload
 
-未使用 resource は自動更新しない。
+ユーザーが使っていないresourceを勝手に更新しない。manifestだけ更新が必要な場合もmanifestを軽量に保つ。
 
 ## 言語システム
 
-OS core が保持するのは言語 ID と最小限の UI 記号だけにする。言語名、desktop menu、dialog、エラー文、設定画面などの全文文字列は locale pack に移す。
+Coreにはfirst bootと基本UIを表示できる最小glyph / fallback文字列を残す。通常UIの大量翻訳データはlocale resourceへ分離する。
 
-first boot は言語 pack が存在しなくても動作するよう、選択対象を固定 enum として扱える最小 UI を維持する。言語決定後に該当 locale pack を取得し、成功した場合のみ通常 UI の翻訳テーブルを有効化する。
+日本語を選択した場合は日本語packだけを取得し、他言語packを取得しない。すでにcache済みなら再取得しない。locale packが取得できなくてもfallback UIへ戻れる。
 
-## テーマシステム
+## テーマ・壁紙
 
-色、spacing、window chrome、icon、cursor、wallpaper は theme resource へ分離する。ただし boot emergency UI の最小配色だけは kernel / desktop core に残す。
+Coreには軽量なfallback themeと最小backgroundを保持する。大容量theme、icon、壁紙collectionはRemote。
 
-テーマはコードを含まず data-only にする。これによりテーマ追加のため OS binary を再ビルドしない。
+テーマはdata-onlyとして扱い、OS binaryへコードを埋め込まない。テーマ変更時にkernelを再構築する必要はない。
 
 ## アプリシステム
 
-標準アプリも将来的には OS core から分離する。kernel は process / VM / syscall / storage / network などの基盤だけを持ち、Terminal、File Manager、Settings などは application package として取得する。
+Settings / Terminal / 基本File Managerなど、OSの基本操作に必要なアプリはCoreとして最初から利用できる。
 
-ただし設定 UI など recovery に必要な最小機能は、ネットワーク障害時の復旧経路として別の minimal system app にできるようにする。
+一方、追加アプリはOptionalまたはRemoteとし、ユーザーが必要なものだけ有効化/取得する。Remote appが未取得でもCore Desktopは正常に起動できる。
 
 ## セキュリティ
 
-外部 resource は未検証のまま有効化しない。
+External resourceは未検証のまま有効化しない。
 
-manifest の信頼根は OS release に紐付け、resource repository のファイル URL が書き換えられても SHA-256 mismatch で拒否する。将来は release signing key による manifest signature を必須化する。
+- manifest version / syntax validation
+- SHA-256 verification
+- package size limit
+- path traversal rejection
+- decompression bomb limit
+- integer overflow checks
+- dependency cycle detection
+- OS ABI compatibility checks
+- 将来のsigned manifest / release key validation
 
-圧縮 bomb、整数 overflow、size mismatch、依存循環、path traversal、manifest version incompatibility を拒否する。
+Remote resourceはkernel置換機構ではなく、dataまたは通常のuserspace packageとして扱う。
 
-## オフライン時
+## Offline behavior
 
-オンライン取得できなくても、既に cache にある resource は利用可能にする。
+ネットワークなしでもCoreは完全に使用できる。既にcacheされたOptional / Remote resourceも継続利用できる。
 
-未取得 resource を選択した場合は設定値を壊さず、resource unavailable 状態として扱う。次回接続時に再取得できる。
+未取得resourceを選択した場合は「ダウンロードできない＝OSが使えない」にしない。設定値を保持し、resource unavailableとして扱い、接続回復後に取得可能にする。
 
-## OS サイズ削減方針
+## OSサイズ最小化ルール
 
-OS 本体へ原則として入れないもの:
+OS本体から外へ出す優先度が高いもの:
 
-- 全言語の翻訳文字列
-- 大量のフォント
-- 壁紙
-- テーマ追加データ
-- アイコン pack
-- 標準アプリ本体
-- サウンド pack
-- チュートリアル / ヘルプ文書
-- 大容量サンプルデータ
-- 互換用の複数バージョン resource
+- 全言語の大量翻訳データ
+- 大量font pack
+- 高解像度wallpaper
+- 大型theme / icon pack
+- sound pack
+- tutorial / documentation bulk data
+- large sample data
+- optional applications
+- Minecraft等のfeature-specific resources
 
-OS 本体へ残すもの:
+OS本体へ残すもの:
 
-- bootloader integration
-- kernel
-- process / VM / syscall 基盤
-- storage / filesystem 基盤
-- 必須 hardware support
-- 最小 desktop bootstrap
-- 最小 recovery UI
-- resource manifest client
-- resource cache / integrity contract
+- boot / kernel
+- process / VM / syscall
+- storage / filesystem / recovery
+- 必須hardware support
+- display / input
+- compositor / window manager / Desktop Shell
+- Settings / Terminal / basic File Manager
+- minimal font / glyph / fallback theme
+- resource manager and integrity verifier
+- offline fallback UI
 
-この分離を前提に、将来的には通常の desktop ISO から標準アプリを外し、network-connected first boot で必要なものだけを取得する。
+## 基本UX原則
+
+ユーザーは「OSをインストールしたのに、次に何十個も機能をダウンロードしないと使えない」状態を経験しない。
+
+初回起動直後から基本Desktopは完成している。追加データを選択した時だけ、その機能に必要な最小resourceを取得する。
+
+また、設定画面からOptional featureをOFFにした場合は、必要なら後からONへ戻せる。Remote resourceを削除してもCoreには影響しない。
