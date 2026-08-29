@@ -47,16 +47,17 @@ sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t
         return 0;
     }
 
-    for (uint32_t i = 0u; i < process->thread_count; ++i) {
+    for (uint32_t i = 0u; i < SB_MAX_THREADS_PER_PROCESS; ++i) {
         if (process->threads[i].tid == tid) return 0;
     }
 
-    sb_thread_t *thread = &process->threads[process->thread_count++];
+    sb_thread_t *thread = &process->threads[process->thread_count];
     *thread = (sb_thread_t){0};
     thread->tid = tid;
     thread->priority = priority;
     thread->state = SB_PROCESS_CREATED;
     thread->user_context = 0;
+    ++process->thread_count;
     return thread;
 }
 
