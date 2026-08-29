@@ -12,6 +12,7 @@
 
 void gdt_init(void);
 void arch_gdt_init(void);
+int gdt_kernel_stack_pointer_valid(uint64_t stack_pointer);
 void gdt_set_kernel_stack(uint64_t stack_pointer);
 int gdt_try_set_kernel_stack(uint64_t stack_pointer);
 
