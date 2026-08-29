@@ -9,6 +9,7 @@ COMPOSITOR_HOST_TEST := $(BUILD)/compositor-host-test
 CONFIG_HOST_TEST := $(BUILD)/config-host-test
 SURFACE_HOST_TEST := $(BUILD)/surface-host-test
 EVENT_QUEUE_HOST_TEST := $(BUILD)/event-queue-host-test
+LOCALE_HOST_TEST := $(BUILD)/locale-host-test
 
 CC ?= gcc
 AS ?= as
@@ -62,8 +63,9 @@ COMPOSITOR_OBJ := $(BUILD)/compositor.o
 CONFIG_OBJ := $(BUILD)/config.o
 SURFACE_OBJ := $(BUILD)/surface.o
 EVENT_QUEUE_OBJ := $(BUILD)/event_queue.o
+LOCALE_OBJ := $(BUILD)/locale.o
 
-.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test
+.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test
 
 all: iso userspace
 
@@ -136,8 +138,8 @@ $(SCHED_OBJ): kernel/scheduler.c kernel/scheduler.h kernel/timer.h kernel/arch/x
 $(CONTEXT_OBJ): kernel/arch/x86_64/context.S kernel/arch/x86_64/context.h | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/mm/address_space.h | $(BUILD)
-	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
+$(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/mm/address_space.h kernel/arch/x86_64/user_context.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 -c $< -o $@
 
 $(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.h kernel/elf_loader.h kernel/mm/address_space.h kernel/mm/multiboot_modules.h kernel/mm/pmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
@@ -160,7 +162,7 @@ $(ELF_LOADER_OBJ): kernel/elf_loader.c kernel/elf_loader.h kernel/elf.h kernel/m
 $(GDT_OBJ): kernel/arch/x86_64/gdt.c kernel/arch/x86_64/gdt.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel/arch/x86_64 -c $< -o $@
 
-$(USERMODE_OBJ): kernel/arch/x86_64/user_mode.S kernel/arch/x86_64/user_mode.h | $(BUILD)
+$(USERMODE_OBJ): kernel/arch/x86_64/user_mode.S kernel/arch/x86_64/user_mode.h kernel/arch/x86_64/user_context.h | $(BUILD)
 	$(AS) --64 $< -o $@
 
 $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h | $(BUILD)
@@ -169,7 +171,7 @@ $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h |
 $(DESKTOP_ENTRY_OBJ): userspace/sb_desktop_entry.S | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.h userspace/config.h userspace/compositor.h userspace/surface.h userspace/event_queue.h | $(BUILD)
+$(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.h userspace/config.h userspace/compositor.h userspace/surface.h userspace/event_queue.h userspace/locale.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 
 $(GUI_OBJ): userspace/gui.c userspace/gui.h | $(BUILD)
@@ -187,8 +189,11 @@ $(SURFACE_OBJ): userspace/surface.c userspace/surface.h | $(BUILD)
 $(EVENT_QUEUE_OBJ): userspace/event_queue.c userspace/event_queue.h userspace/gui.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 
-$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ)
+$(LOCALE_OBJ): userspace/locale.c userspace/locale.h userspace/config.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
+$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LOCALE_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LOCALE_OBJ)
 
 userspace: $(DESKTOP_ELF)
 
@@ -244,7 +249,13 @@ $(EVENT_QUEUE_HOST_TEST): tests/event_queue_host_test.c userspace/event_queue.c 
 host-event-queue-test: $(EVENT_QUEUE_HOST_TEST)
 	$(EVENT_QUEUE_HOST_TEST)
 
-check: $(KERNEL) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test
+$(LOCALE_HOST_TEST): tests/locale_host_test.c userspace/locale.c userspace/locale.h userspace/config.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iuserspace tests/locale_host_test.c userspace/locale.c -o $@
+
+host-locale-test: $(LOCALE_HOST_TEST)
+	$(LOCALE_HOST_TEST)
+
+check: $(KERNEL) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
