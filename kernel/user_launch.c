@@ -32,7 +32,7 @@ int process_start_user_thread(sb_process_t *process, sb_thread_t *thread) {
 
     process->state = SB_PROCESS_RUNNING;
     thread->state = SB_PROCESS_RUNNING;
-    sb_resume_user_from_kernel_stack();
+    sb_resume_user_from_kernel_stack((uintptr_t)thread->kernel_resume_stack_pointer);
     __builtin_unreachable();
 
 fail_cr3:
