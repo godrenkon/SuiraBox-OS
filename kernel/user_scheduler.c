@@ -30,6 +30,32 @@ static int process_runnable(const sb_process_t *process) {
            (process->state == SB_PROCESS_CREATED || process->state == SB_PROCESS_RUNNING);
 }
 
+static void remove_slot_at(uint32_t index) {
+    if (index >= slot_count) return;
+    for (uint32_t i = index + 1u; i < slot_count; ++i) slots[i - 1u] = slots[i];
+    slots[slot_count - 1u].process = 0;
+    slots[slot_count - 1u].thread = 0;
+    --slot_count;
+    if (slot_count == 0u) {
+        current_index = 0u;
+        quantum_ticks = 0u;
+    } else if (current_index >= slot_count) {
+        current_index = 0u;
+    } else if (index < current_index) {
+        --current_index;
+    }
+}
+
+static void prune_dead_slots(void) {
+    uint32_t i = 0u;
+    while (i < slot_count) {
+        if (!thread_runnable(slots[i].thread) || !process_runnable(slots[i].process))
+            remove_slot_at(i);
+        else
+            ++i;
+    }
+}
+
 void user_scheduler_init(void) {
     for (uint32_t i = 0u; i < SB_MAX_USER_SCHED_THREADS; ++i) {
         slots[i].process = 0;
@@ -41,6 +67,7 @@ void user_scheduler_init(void) {
 }
 
 int user_scheduler_add(sb_process_t *process, sb_thread_t *thread) {
+    prune_dead_slots();
     if (!process_runnable(process) || !thread_runnable(thread)) return -1;
     for (uint32_t i = 0u; i < slot_count; ++i) {
         if (slot_matches(&slots[i], process, thread)) return -2;
@@ -52,11 +79,23 @@ int user_scheduler_add(sb_process_t *process, sb_thread_t *thread) {
     return 0;
 }
 
+int user_scheduler_remove(sb_process_t *process, sb_thread_t *thread) {
+    for (uint32_t i = 0u; i < slot_count; ++i) {
+        if (slot_matches(&slots[i], process, thread)) {
+            remove_slot_at(i);
+            return 0;
+        }
+    }
+    return -1;
+}
+
 int user_scheduler_set_current(sb_process_t *process, sb_thread_t *thread) {
+    prune_dead_slots();
     if (!thread_runnable(thread) || !process_runnable(process)) return -1;
     for (uint32_t i = 0u; i < slot_count; ++i) {
         if (slot_matches(&slots[i], process, thread)) {
             current_index = i;
+            quantum_ticks = 0u;
             return 0;
         }
     }
@@ -64,16 +103,21 @@ int user_scheduler_set_current(sb_process_t *process, sb_thread_t *thread) {
 }
 
 sb_thread_t *user_scheduler_current_thread(void) {
+    prune_dead_slots();
     if (slot_count == 0u || current_index >= slot_count) return 0;
     return slots[current_index].thread;
 }
 
 sb_process_t *user_scheduler_current_process(void) {
+    prune_dead_slots();
     if (slot_count == 0u || current_index >= slot_count) return 0;
     return slots[current_index].process;
 }
 
-uint32_t user_scheduler_count(void) { return slot_count; }
+uint32_t user_scheduler_count(void) {
+    prune_dead_slots();
+    return slot_count;
+}
 
 static int frame_is_user_mode(const sb_timer_saved_gpr_t *gpr,
                               sb_x86_64_user_iret_frame_t **iret_out) {
@@ -90,6 +134,8 @@ uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr) {
 
     sb_x86_64_user_iret_frame_t *iret = 0;
     if (!frame_is_user_mode(gpr, &iret)) return (uintptr_t)gpr;
+
+    prune_dead_slots();
     if (slot_count == 0u || current_index >= slot_count) return (uintptr_t)gpr;
 
     sb_thread_t *current_thread = slots[current_index].thread;

@@ -10,6 +10,7 @@
 
 void user_scheduler_init(void);
 int user_scheduler_add(sb_process_t *process, sb_thread_t *thread);
+int user_scheduler_remove(sb_process_t *process, sb_thread_t *thread);
 int user_scheduler_set_current(sb_process_t *process, sb_thread_t *thread);
 sb_thread_t *user_scheduler_current_thread(void);
 sb_process_t *user_scheduler_current_process(void);
