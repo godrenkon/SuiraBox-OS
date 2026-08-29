@@ -8,6 +8,7 @@
 #define SB_CONFIG_STORE_COMPLETED 1u
 #define SB_CONFIG_STORE_RECORD_SIZE 32u
 #define SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED 0x0000001Fu
+#define SB_CONFIG_SET_KEEP_OPTIONS 0xFFFFFFFFu
 
 typedef struct __attribute__((packed)) {
     uint32_t magic;
