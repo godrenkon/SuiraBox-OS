@@ -3,6 +3,12 @@
 
 #include <stdint.h>
 
+#define SB_USER_CODE_SELECTOR 0x23u
+#define SB_USER_DATA_SELECTOR 0x2Bu
+#define SB_USER_RFLAGS_RESERVED 0x2u
+#define SB_USER_RFLAGS_INTERRUPT 0x200u
+#define SB_USER_RSP_ALIGNMENT 16u
+
 /* Register state required when a userspace thread is resumed. */
 typedef struct {
     uint64_t r15;
@@ -26,5 +32,10 @@ typedef struct {
     uint64_t rsp;
     uint64_t ss;
 } sb_user_context_t;
+
+int sb_user_context_init(sb_user_context_t *context,
+                         uint64_t entry_point,
+                         uint64_t user_stack_top);
+int sb_user_context_validate(const sb_user_context_t *context);
 
 #endif
