@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define SB_RESOURCE_SCHEMA_VERSION 1u
-#define SB_RESOURCE_REPOSITORY_URL "https://raw.githubusercontent.com/godrenkon/SuiraBox-OS-Resources/main/manifest/manifest-v1.json"
+#define SB_RESOURCE_REPOSITORY_URL "https://raw.githubusercontent.com/godrenkon/SuiraBox-Resources/main/manifest/manifest-v1.json"
 #define SB_RESOURCE_SHA256_HEX_SIZE 65u
 #define SB_RESOURCE_ID_MAX 63u
 #define SB_RESOURCE_PATH_MAX 127u
