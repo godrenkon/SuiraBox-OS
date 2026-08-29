@@ -7,6 +7,7 @@
 
 #define SB_MAX_PROCESSES 32u
 #define SB_MAX_THREADS_PER_PROCESS 16u
+#define SB_USER_KERNEL_STACK_SIZE 4096u
 
 typedef enum {
     SB_PROCESS_UNUSED = 0,
@@ -22,6 +23,8 @@ typedef struct {
     uint32_t priority;
     sb_process_state_t state;
     sb_user_context_t *user_context;
+    uint64_t kernel_stack_base;
+    uint64_t kernel_stack_top;
 } sb_thread_t;
 
 typedef struct {
