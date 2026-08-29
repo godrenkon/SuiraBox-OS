@@ -79,6 +79,7 @@ int main(void) {
     iret->cs = 0x18u;
     assert(user_scheduler_timer_dispatch(gpr) == (uintptr_t)gpr);
 
+    setup_thread(&p1, &t1, &c1, 1u, 0x10000u);
     setup_thread(&p2, &t2, &c2, 2u, 0x20000u);
     iret->cs = 0x23u;
     user_scheduler_init();
