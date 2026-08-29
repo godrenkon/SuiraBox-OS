@@ -1,0 +1,20 @@
+name: SuiraBox Process User Context Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  process-user-context:
+    name: process/user-context host contract test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile process/user-context contract
+        run: gcc -Wall -Wextra -Werror -std=c11 -ffreestanding -fno-builtin -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 tests/process_user_context_host_test.c kernel/process.c kernel/arch/x86_64/user_context.c -o process-user-context-host-test
+      - name: Run process/user-context contract test
+        run: ./process-user-context-host-test
