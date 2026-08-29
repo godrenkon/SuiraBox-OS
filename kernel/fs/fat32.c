@@ -103,9 +103,7 @@ static int fat_write_entry(sb_fat32_t *fs, uint32_t cluster, uint32_t value) {
 }
 
 static int fat_next_cluster(sb_fat32_t *fs, uint32_t cluster, uint32_t *next) {
-    uint32_t value;
-    if (next == 0 || !fat_read_entry(fs, cluster, &value)) return 0;
-    *next = value;
+    if (next == 0 || !fat_read_entry(fs, cluster, next)) return 0;
     return 1;
 }
 
@@ -118,6 +116,52 @@ static int zero_cluster(sb_fat32_t *fs, uint32_t cluster) {
         if (!write_sector(fs, lba + i, sector)) return 0;
     }
     return 1;
+}
+
+static int release_cluster_chain(sb_fat32_t *fs, uint32_t first_cluster) {
+    uint32_t cluster = first_cluster;
+    uint32_t guard = 0u;
+    if (first_cluster == 0u) return 1;
+    while (valid_cluster(fs, cluster) && guard++ <= fs->max_cluster) {
+        uint32_t next;
+        if (!fat_read_entry(fs, cluster, &next)) return 0;
+        if (!fat_write_entry(fs, cluster, 0u)) return 0;
+        if (next >= SB_FAT32_EOC_MIN) return 1;
+        if (!valid_cluster(fs, next)) return 0;
+        cluster = next;
+    }
+    return 0;
+}
+
+static int allocate_cluster_chain(sb_fat32_t *fs, uint32_t count, uint32_t *first_cluster) {
+    uint32_t first = 0u;
+    uint32_t previous = 0u;
+    uint32_t current = 0u;
+    uint32_t remaining = count;
+    if (fs == 0 || first_cluster == 0 || count == 0u) return 0;
+
+    for (uint32_t candidate = 2u; candidate <= fs->max_cluster && remaining > 0u; ++candidate) {
+        uint32_t value;
+        if (!fat_read_entry(fs, candidate, &value)) goto fail;
+        if (value != 0u) continue;
+        current = candidate;
+        if (!fat_write_entry(fs, current, SB_FAT32_EOC_VALUE)) goto fail;
+        if (!zero_cluster(fs, current)) goto fail;
+        if (first == 0u) first = current;
+        if (previous != 0u && !fat_write_entry(fs, previous, current)) goto fail;
+        previous = current;
+        current = 0u;
+        --remaining;
+    }
+    if (remaining == 0u) {
+        *first_cluster = first;
+        return 1;
+    }
+
+fail:
+    if (current != 0u) (void)fat_write_entry(fs, current, 0u);
+    if (first != 0u) (void)release_cluster_chain(fs, first);
+    return 0;
 }
 
 static int root_slot_location(sb_fat32_t *fs, uint32_t index,
@@ -211,46 +255,6 @@ static int find_free_root_slot(sb_fat32_t *fs, uint32_t *index,
     return 0;
 }
 
-static int release_cluster_chain(sb_fat32_t *fs, uint32_t first_cluster) {
-    uint32_t cluster = first_cluster;
-    uint32_t guard = 0u;
-    while (valid_cluster(fs, cluster) && guard++ <= fs->max_cluster) {
-        uint32_t next;
-        if (!fat_read_entry(fs, cluster, &next)) return 0;
-        if (!fat_write_entry(fs, cluster, 0u)) return 0;
-        if (next >= SB_FAT32_EOC_MIN) return 1;
-        cluster = next;
-    }
-    return first_cluster == 0u;
-}
-
-static int allocate_cluster_chain(sb_fat32_t *fs, uint32_t count, uint32_t *first_cluster) {
-    uint32_t first = 0u;
-    uint32_t previous = 0u;
-    uint32_t remaining = count;
-    if (fs == 0 || first_cluster == 0 || count == 0u) return 0;
-
-    for (uint32_t candidate = 2u; candidate <= fs->max_cluster && remaining > 0u; ++candidate) {
-        uint32_t value;
-        if (!fat_read_entry(fs, candidate, &value)) goto fail;
-        if (value != 0u) continue;
-        if (!fat_write_entry(fs, candidate, SB_FAT32_EOC_VALUE)) goto fail;
-        if (!zero_cluster(fs, candidate)) goto fail;
-        if (first == 0u) first = candidate;
-        if (previous != 0u && !fat_write_entry(fs, previous, candidate)) goto fail;
-        previous = candidate;
-        --remaining;
-    }
-    if (remaining == 0u) {
-        *first_cluster = first;
-        return 1;
-    }
-
-fail:
-    if (first != 0u) (void)release_cluster_chain(fs, first);
-    return 0;
-}
-
 static void format_83_name(const uint8_t *raw, char out[13]) {
     uint32_t pos = 0u;
     uint32_t i;
@@ -330,10 +334,22 @@ int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *
 }
 
 int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t *entry) {
+    uint8_t sector[SB_FAT32_SECTOR_BYTES];
     if (fs == 0 || name == 0 || name[0] == '\0' || entry == 0) return 0;
     for (uint32_t index = 0u; index < SB_FAT32_MAX_ROOT_LOOKUP_ENTRIES; ++index) {
+        uint32_t lba;
+        uint32_t entry_offset;
+        uint8_t *raw;
         sb_fat32_dirent_t candidate;
-        if (!sb_fat32_read_root_entry(fs, index, &candidate)) return 0;
+        if (!root_slot_location(fs, index, &lba, &entry_offset) || !read_sector(fs, lba, sector)) return 0;
+        raw = &sector[entry_offset];
+        if (raw[0] == 0x00u) break;
+        if (raw[0] == 0xE5u || (raw[11] & 0x0Fu) == 0x0Fu) continue;
+        format_83_name(raw, candidate.name);
+        candidate.attributes = raw[11];
+        candidate.first_cluster = ((uint32_t)le16(&raw[20]) << 16) | le16(&raw[26]);
+        candidate.file_size = le32(&raw[28]);
+        candidate.root_index = index;
         if (str_equal(candidate.name, name)) {
             *entry = candidate;
             return 1;
@@ -382,12 +398,6 @@ int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name,
         return 0;
     }
 
-    for (uint32_t i = 0u; i < 12u; ++i) entry->name[i] = '\0';
-    for (uint32_t i = 0u; i < 11u; ++i) {
-        if (raw_name[i] == ' ') break;
-        entry->name[i] = (char)raw_name[i];
-        if (i == 7u && raw_name[8] != ' ') entry->name[i + 1u] = '.';
-    }
     format_83_name(raw_name, entry->name);
     entry->attributes = 0x20u;
     entry->first_cluster = first_cluster;
