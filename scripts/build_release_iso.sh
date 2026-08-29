@@ -13,9 +13,12 @@ make -f GNUmakefile \
     USER_CFLAGS="$USER_CFLAGS" \
     iso
 
-# Strip linker-only symbols from the release images. Runtime load segments are
-# preserved; this only removes non-runtime symbol tables/metadata.
+# Strip linker-only symbols before rebuilding the ISO staging tree so the
+# distributed ISO, rather than only the build artifacts, receives the savings.
 strip --strip-all build/suirabox.elf build/sb-desktop.elf
+cp build/suirabox.elf build/iso/boot/suirabox.elf
+cp build/sb-desktop.elf build/iso/boot/sb-desktop.elf
+grub-mkrescue -o build/suirabox.iso build/iso >/dev/null
 
 sh scripts/check_base_image.sh build/iso
 
