@@ -3,9 +3,8 @@ name: SuiraBox Release Profile
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - 'feat/**'
+    tags:
+      - 'v*'
 
 jobs:
   release-profile:
@@ -24,13 +23,13 @@ jobs:
         run: sh scripts/build_release_iso.sh
 
       - name: Verify Multiboot2 kernel
-        run: grub-file --is-x86-multiboot2 build/suirabox.elf
+        run: grub-file --is-x86-multiboot2 build/suirabox-release.elf
 
       - name: Verify ELF headers
         run: |
-          readelf -h build/suirabox.elf | grep -q 'Class:.*ELF64'
+          readelf -h build/suirabox-release.elf | grep -q 'Class:.*ELF64'
           readelf -h build/sb-desktop.elf | grep -q 'Class:.*ELF64'
-          if readelf -S build/suirabox.elf | grep -q '\.symtab'; then
+          if readelf -S build/suirabox-release.elf | grep -q '\.symtab'; then
             echo 'release kernel still contains a symbol table'
             exit 1
           fi
@@ -40,8 +39,8 @@ jobs:
           fi
 
       - name: Verify minimal ISO payload
-        run: sh scripts/check_base_image.sh build/iso
+        run: sh scripts/check_base_image.sh build/release-iso
 
       - name: Report artifact sizes
         run: |
-          stat -c '%n %s bytes' build/suirabox.iso build/suirabox.elf build/sb-desktop.elf
+          stat -c '%n %s bytes' build/suirabox-release.iso build/suirabox-release.elf build/sb-desktop.elf
