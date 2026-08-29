@@ -97,6 +97,10 @@ static uint64_t syscall_config_get(void) {
            ((uint64_t)record.generation << 16);
 }
 
+static void syscall_idle(void) {
+    __asm__ volatile ("sti\n\thlt\n\tcli" ::: "memory");
+}
+
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                           uint64_t arg2, uint64_t arg3, uint64_t arg4) {
     switch (number) {
@@ -137,6 +141,9 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             if (arg0 > 3u) return UINT64_MAX;
             if (!sb_storage_ready()) return SB_CONFIG_SET_VOLATILE;
             return sb_config_store_set((uint8_t)arg0) == 0 ? 0u : UINT64_MAX;
+        case SB_SYS_YIELD:
+            syscall_idle();
+            return 0u;
         default:
             return UINT64_MAX;
     }
