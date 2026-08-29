@@ -100,12 +100,13 @@ static void build_image(void) {
     put_le32(&fat[12], 0x0FFFFFFFu);
     memcpy(&disk[2u * SECTOR_SIZE], fat, SECTOR_SIZE);
 
-    memcpy(&root[0], name, sizeof(name));
-    root[11] = 0x20u;
-    put_le16(&root[20], 0u);
-    put_le16(&root[26], 3u);
-    put_le32(&root[28], (uint32_t)(sizeof(contents) - 1u));
-    root[32] = 0u;
+    root[0] = 0xE5u; /* Deleted entry must not terminate lookup. */
+    memcpy(&root[32], name, sizeof(name));
+    root[32 + 11u] = 0x20u;
+    put_le16(&root[32 + 20u], 0u);
+    put_le16(&root[32 + 26u], 3u);
+    put_le32(&root[32 + 28u], (uint32_t)(sizeof(contents) - 1u));
+    root[64] = 0u;
 
     memcpy(file, contents, sizeof(contents) - 1u);
 }
@@ -116,6 +117,7 @@ int main(void) {
     sb_fat32_dirent_t entry;
     sb_fat32_dirent_t found;
     sb_fat32_dirent_t created;
+    sb_fat32_dirent_t empty;
     char buffer[64];
     static const char patch[] = "SBOS";
     static const char created_contents[] = "SuiraBox config journal record";
@@ -123,13 +125,17 @@ int main(void) {
     build_image();
     if (!expect(sb_vfs_mount(&device, &mount) == SB_VFS_OK, "VFS mount failed")) return 1;
     if (!expect(sb_fat32_mount(&mount, &fs) != 0, "FAT32 mount failed")) return 1;
-    if (!expect(sb_fat32_read_root_entry(&fs, 0u, &entry) != 0, "root entry was not found")) return 1;
+    if (!expect(sb_fat32_read_root_entry(&fs, 0u, &entry) == 0,
+                "deleted root entry was unexpectedly returned")) return 1;
+    if (!expect(sb_fat32_read_root_entry(&fs, 1u, &entry) != 0, "root entry was not found")) return 1;
     if (!expect(strcmp(entry.name, "HELLO.TXT") == 0, "8.3 filename formatting is wrong")) return 1;
     if (!expect(entry.first_cluster == 3u, "root entry cluster is wrong")) return 1;
     if (!expect(entry.file_size == 27u, "root entry file size is wrong")) return 1;
-    if (!expect(entry.root_index == 0u, "root entry index was not recorded")) return 1;
+    if (!expect(entry.root_index == 1u, "root entry index was not recorded")) return 1;
     if (!expect(sb_fat32_find_root_entry(&fs, "HELLO.TXT", &found) != 0,
                 "root filename lookup failed")) return 1;
+    if (!expect(sb_fat32_find_root_entry(&fs, "hello.txt", &found) != 0,
+                "lowercase root filename lookup failed")) return 1;
     if (!expect(found.root_index == entry.root_index &&
                 found.first_cluster == entry.first_cluster &&
                 found.file_size == entry.file_size,
@@ -169,7 +175,7 @@ int main(void) {
 
     if (!expect(sb_fat32_create_root_file(&fs, "CONFIG.BIN", (uint32_t)(sizeof(created_contents) - 1u), &created) != 0,
                 "root file creation failed")) return 1;
-    if (!expect(strcmp(created.name, "CONFIG.BIN") == 0 && created.root_index == 1u &&
+    if (!expect(strcmp(created.name, "CONFIG.BIN") == 0 && created.root_index == 0u &&
                 created.first_cluster == 4u && created.file_size == sizeof(created_contents) - 1u,
                 "created root entry metadata is wrong")) return 1;
     if (!expect(get_le32(&disk[SECTOR_SIZE + 16u]) == 0x0FFFFFFFu &&
@@ -194,6 +200,12 @@ int main(void) {
                 "created root file reread failed")) return 1;
     if (!expect(memcmp(buffer, created_contents, sizeof(created_contents) - 1u) == 0,
                 "created root file contents are wrong")) return 1;
+    if (!expect(sb_fat32_create_root_file(&fs, "EMPTY.BIN", 0u, &empty) != 0,
+                "zero-size root file creation failed")) return 1;
+    if (!expect(empty.first_cluster == 0u && empty.file_size == 0u,
+                "zero-size root file metadata is wrong")) return 1;
+    if (!expect(sb_fat32_read_file(&fs, &empty, 0u, 0u, buffer) != 0,
+                "zero-size file read was rejected")) return 1;
     if (!expect(sb_fat32_create_root_file(&fs, "CONFIG.BIN", 32u, &found) == 0,
                 "duplicate root file was unexpectedly created")) return 1;
     if (!expect(sb_fat32_create_root_file(&fs, "TOO-LONG9.TXT", 4u, &found) == 0,
