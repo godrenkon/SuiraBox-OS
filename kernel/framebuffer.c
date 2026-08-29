@@ -41,6 +41,9 @@ typedef struct __attribute__((packed)) {
 static sb_framebuffer_info_t current;
 static int available;
 static int geometry_valid;
+static uint8_t bytes_per_pixel_cached;
+static uint8_t standard_rgb8888;
+static uint64_t identity_end_cached;
 
 static uint64_t align8(uint64_t value) {
     if (value > UINT64_MAX - 7u) return UINT64_MAX;
@@ -84,21 +87,15 @@ static int framebuffer_target(uint64_t *target_address) {
         return 0;
     }
 
-    {
-        const uint64_t span = (uint64_t)current.pitch * current.height;
-        const uint64_t end = current.address + span;
-        if (current.address >= SB_IDENTITY_MAP_LIMIT || end > SB_IDENTITY_MAP_LIMIT)
-            return -3;
-    }
+    if (identity_end_cached == 0u || current.address >= SB_IDENTITY_MAP_LIMIT ||
+        identity_end_cached > SB_IDENTITY_MAP_LIMIT)
+        return -3;
     *target_address = current.address;
     return 0;
 }
 
 static uint32_t pack_pixel(uint8_t red, uint8_t green, uint8_t blue) {
-    if (current.bits_per_pixel == 32u &&
-        current.red_position == 16u && current.red_mask_size == 8u &&
-        current.green_position == 8u && current.green_mask_size == 8u &&
-        current.blue_position == 0u && current.blue_mask_size == 8u)
+    if (standard_rgb8888 != 0u)
         return ((uint32_t)red << 16) | ((uint32_t)green << 8) | blue;
     {
         uint32_t pixel = scale_component(red, current.red_mask_size) << current.red_position;
@@ -137,6 +134,9 @@ static int draw_glyph8_packed(uint64_t target_address, uint64_t bytes_per_pixel,
 int sb_framebuffer_init(uint64_t multiboot_info_address) {
     available = 0;
     geometry_valid = 0;
+    bytes_per_pixel_cached = 0u;
+    standard_rgb8888 = 0u;
+    identity_end_cached = 0u;
     current = (sb_framebuffer_info_t){0};
 
     if (multiboot_info_address == 0u || multiboot_info_address >= 0x40000000ull)
@@ -182,6 +182,14 @@ int sb_framebuffer_init(uint64_t multiboot_info_address) {
                         current.blue_mask_size = direct->blue_mask_size;
                         geometry_valid = framebuffer_geometry_ok();
                         available = geometry_valid;
+                        if (geometry_valid) {
+                            bytes_per_pixel_cached = (uint8_t)bytes_per_pixel;
+                            standard_rgb8888 = (uint8_t)(current.bits_per_pixel == 32u &&
+                                current.red_position == 16u && current.red_mask_size == 8u &&
+                                current.green_position == 8u && current.green_mask_size == 8u &&
+                                current.blue_position == 0u && current.blue_mask_size == 8u);
+                            identity_end_cached = current.address + total_bytes;
+                        }
                     }
                 }
             }
@@ -235,7 +243,7 @@ int sb_framebuffer_map(void) {
 }
 
 int sb_framebuffer_clear(uint8_t red, uint8_t green, uint8_t blue) {
-    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    const uint64_t bytes_per_pixel = bytes_per_pixel_cached;
     uint64_t target_address;
     const uint32_t pixel = pack_pixel(red, green, blue);
 
@@ -256,7 +264,7 @@ int sb_framebuffer_clear(uint8_t red, uint8_t green, uint8_t blue) {
 }
 
 int sb_framebuffer_draw_pixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green, uint8_t blue) {
-    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    const uint64_t bytes_per_pixel = bytes_per_pixel_cached;
     uint64_t target_address;
 
     if (x >= current.width || y >= current.height) return -1;
@@ -277,7 +285,7 @@ int sb_framebuffer_draw_pixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green
 
 int sb_framebuffer_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                              uint8_t red, uint8_t green, uint8_t blue) {
-    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    const uint64_t bytes_per_pixel = bytes_per_pixel_cached;
     uint64_t target_address;
     uint32_t pixel;
 
@@ -306,7 +314,7 @@ int sb_framebuffer_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t he
 
 int sb_framebuffer_draw_glyph8(uint32_t x, uint32_t y, uint64_t bitmap,
                                uint8_t red, uint8_t green, uint8_t blue) {
-    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    const uint64_t bytes_per_pixel = bytes_per_pixel_cached;
     uint64_t target_address;
     const uint32_t pixel = pack_pixel(red, green, blue);
 
@@ -319,7 +327,7 @@ int sb_framebuffer_draw_glyph8(uint32_t x, uint32_t y, uint64_t bitmap,
 int sb_framebuffer_draw_glyph8_pair(uint32_t x, uint32_t y,
                                     uint64_t bitmap_a, uint64_t bitmap_b,
                                     uint8_t red, uint8_t green, uint8_t blue) {
-    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    const uint64_t bytes_per_pixel = bytes_per_pixel_cached;
     uint64_t target_address;
     const uint32_t pixel = pack_pixel(red, green, blue);
 
