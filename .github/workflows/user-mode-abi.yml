@@ -1,0 +1,24 @@
+name: SuiraBox User Mode ABI Host Check
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  user-mode-abi:
+    name: x86_64 user-mode assembly ABI check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Assemble user-mode entry
+        run: as --64 kernel/arch/x86_64/user_mode.S -o user-mode.o
+      - name: Verify required symbols
+        run: |
+          nm -g user-mode.o | grep -q '^0000000000000000 T arch_enter_user$'
+          nm -g user-mode.o | grep -q ' T arch_enter_user_context$'
+      - name: Verify iretq entry exists
+        run: objdump -d user-mode.o | grep -q 'iretq'
