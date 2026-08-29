@@ -1,6 +1,7 @@
 #include "syscall.h"
 #include "timer.h"
 #include "scheduler.h"
+#include "user_scheduler.h"
 #include "framebuffer.h"
 #include "storage.h"
 #include "config_store.h"
@@ -71,6 +72,10 @@ static void mouse_init(void) {
 }
 
 static uint64_t syscall_process_id(void) {
+    sb_process_t *process = user_scheduler_current_process();
+    if (process != 0) return process->pid;
+
+    /* Kernel-only callers have no user scheduler entry; retain the kernel task ID as fallback. */
     sb_task_t *task = scheduler_current();
     return task != 0 ? task->id : 0u;
 }
@@ -203,4 +208,4 @@ uint64_t sb_syscall_dispatch_entry(uint64_t number, uint64_t arg0, uint64_t arg1
 void syscall_init(void) {
     (void)sb_storage_init();
     mouse_init();
-}
+} 
