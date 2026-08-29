@@ -2,6 +2,8 @@
 #include "timer.h"
 #include "scheduler.h"
 #include "framebuffer.h"
+#include "storage.h"
+#include "config_store.h"
 
 static uint8_t io_in8(uint16_t port) {
     uint8_t value;
@@ -35,11 +37,11 @@ static void mouse_init(void) {
     if (mouse_initialized || mouse_init_attempted) return;
     mouse_init_attempted = 1u;
     if (!ps2_wait_input_clear()) return;
-    io_out8(0x64u, 0xA8u); /* Enable auxiliary PS/2 device. */
+    io_out8(0x64u, 0xA8u);
     if (!ps2_wait_input_clear()) return;
-    io_out8(0x64u, 0xD4u); /* Next byte is addressed to mouse. */
+    io_out8(0x64u, 0xD4u);
     if (!ps2_wait_input_clear()) return;
-    io_out8(0x60u, 0xF4u); /* Enable data reporting. */
+    io_out8(0x60u, 0xF4u);
     if (ps2_wait_output_ready()) {
         response = io_in8(0x60u);
         if (response == 0xFAu) mouse_initialized = 1u;
@@ -108,8 +110,18 @@ static uint64_t syscall_display_glyph(uint64_t x, uint64_t y, uint64_t bitmap, u
     return 0u;
 }
 
+static uint64_t syscall_config_get(void) {
+    sb_config_store_record_t record;
+    if (!sb_config_store_get(&record)) return 0u;
+    return 1u | ((uint64_t)record.language << 8) |
+           ((uint64_t)record.generation << 16);
+}
+
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                           uint64_t arg2, uint64_t arg3, uint64_t arg4) {
+    (void)arg1;
+    (void)arg2;
+    (void)arg3;
     switch (number) {
         case SB_SYS_GET_TICKS:
             return timer_ticks();
@@ -137,6 +149,10 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             return syscall_display_glyph(arg0, arg1, arg2, arg3);
         case SB_SYS_INPUT_MOUSE:
             return syscall_input_mouse();
+        case SB_SYS_CONFIG_GET:
+            return syscall_config_get();
+        case SB_SYS_CONFIG_SET:
+            return sb_config_store_set((uint8_t)arg0) == 0 ? 0u : UINT64_MAX;
         default:
             return UINT64_MAX;
     }
@@ -148,5 +164,6 @@ uint64_t sb_syscall_dispatch_entry(uint64_t number, uint64_t arg0, uint64_t arg1
 }
 
 void syscall_init(void) {
+    (void)sb_storage_init();
     mouse_init();
 }
