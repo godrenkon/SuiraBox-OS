@@ -1,0 +1,28 @@
+name: SuiraBox Release Profile Smoke
+
+on:
+  push:
+    branches:
+      - 'feat/gui-framebuffer-bootstrap'
+
+jobs:
+  release-smoke:
+    name: Build and validate minimal release ISO
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc binutils make grub-pc-bin grub-common xorriso mtools
+      - name: Build release ISO
+        run: sh scripts/build_release_iso.sh
+      - name: Verify Multiboot2 release kernel
+        run: grub-file --is-x86-multiboot2 build/suirabox-release.elf
+      - name: Verify stripped ELF
+        run: |
+          ! readelf -S build/suirabox-release.elf | grep -q '\.symtab'
+          ! readelf -S build/sb-desktop.elf | grep -q '\.symtab'
+      - name: Verify minimal payload
+        run: sh scripts/check_base_image.sh build/release-iso
