@@ -2,9 +2,8 @@
 #define SB_ARCH_X86_64_USER_CONTEXT_H
 
 #include <stdint.h>
+#include "gdt.h"
 
-#define SB_USER_CODE_SELECTOR 0x23u
-#define SB_USER_DATA_SELECTOR 0x2Bu
 #define SB_USER_RFLAGS_RESERVED 0x2u
 #define SB_USER_RFLAGS_INTERRUPT 0x200u
 #define SB_USER_RSP_ALIGNMENT 16u
