@@ -29,6 +29,11 @@ typedef enum {
 } sb_resource_tier_t;
 
 typedef enum {
+    SB_RESOURCE_COMPRESSION_NONE = 0u,
+    SB_RESOURCE_COMPRESSION_ZSTD = 1u
+} sb_resource_compression_t;
+
+typedef enum {
     SB_RESOURCE_UNAVAILABLE = 0u,
     SB_RESOURCE_AVAILABLE = 1u,
     SB_RESOURCE_DOWNLOADING = 2u,
@@ -49,6 +54,7 @@ typedef struct {
     uint32_t min_os_api;
     uint8_t tier;
     sb_resource_type_t type;
+    sb_resource_compression_t compression;
     uint8_t dependency_count;
     const char *dependencies[SB_RESOURCE_MAX_DEPENDENCIES];
 } sb_resource_ref_t;

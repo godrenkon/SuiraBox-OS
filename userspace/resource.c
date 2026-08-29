@@ -54,6 +54,7 @@ int sb_resource_reference_valid(const sb_resource_ref_t *ref) {
     if (ref == 0 || ref->type < SB_RESOURCE_LOCALE ||
         ref->type > SB_RESOURCE_DOCUMENT ||
         ref->tier > SB_RESOURCE_TIER_REMOTE ||
+        ref->compression > SB_RESOURCE_COMPRESSION_ZSTD ||
         ref->version == 0u || ref->min_os_api == 0u ||
         ref->compressed_size == 0u ||
         ref->compressed_size > SB_RESOURCE_MAX_PAYLOAD ||
