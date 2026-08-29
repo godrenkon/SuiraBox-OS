@@ -119,9 +119,6 @@ static uint64_t syscall_config_get(void) {
 
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                           uint64_t arg2, uint64_t arg3, uint64_t arg4) {
-    (void)arg1;
-    (void)arg2;
-    (void)arg3;
     switch (number) {
         case SB_SYS_GET_TICKS:
             return timer_ticks();
@@ -152,6 +149,8 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_CONFIG_GET:
             return syscall_config_get();
         case SB_SYS_CONFIG_SET:
+            if (arg0 > 3u) return UINT64_MAX;
+            if (!sb_storage_ready()) return SB_CONFIG_SET_VOLATILE;
             return sb_config_store_set((uint8_t)arg0) == 0 ? 0u : UINT64_MAX;
         default:
             return UINT64_MAX;
