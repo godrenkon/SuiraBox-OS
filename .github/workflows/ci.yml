@@ -25,6 +25,9 @@ jobs:
       - name: Build ISO
         run: make
 
+      - name: Check Core footprint and ISO resource boundary
+        run: python3 tools/check_core_footprint.py
+
       - name: Validate Multiboot2 image
         run: make check
 
