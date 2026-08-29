@@ -1,6 +1,12 @@
 #include "user_context.h"
 #include "../../mm/address_space.h"
 
+#define SB_USER_RFLAGS_IOPL_MASK (3ull << 12u)
+#define SB_USER_RFLAGS_NT        (1ull << 14u)
+#define SB_USER_RFLAGS_VM        (1ull << 17u)
+#define SB_USER_RFLAGS_VIF       (1ull << 19u)
+#define SB_USER_RFLAGS_VIP       (1ull << 20u)
+
 static int user_address_valid(uint64_t address) {
     return address >= SB_USER_BASE && address < SB_USER_LIMIT &&
            (address >> 63u) == 0u;
@@ -30,6 +36,10 @@ int sb_user_context_validate(const sb_user_context_t *context) {
         (context->rsp & (SB_USER_RSP_ALIGNMENT - 1u)) != 0u ||
         (context->rflags & SB_USER_RFLAGS_RESERVED) == 0u ||
         (context->rflags & SB_USER_RFLAGS_INTERRUPT) == 0u ||
-        (context->rflags & (1ull << 17u)) != 0u) return -1;
+        (context->rflags & SB_USER_RFLAGS_IOPL_MASK) != 0u ||
+        (context->rflags & SB_USER_RFLAGS_NT) != 0u ||
+        (context->rflags & SB_USER_RFLAGS_VM) != 0u ||
+        (context->rflags & SB_USER_RFLAGS_VIF) != 0u ||
+        (context->rflags & SB_USER_RFLAGS_VIP) != 0u) return -1;
     return 0;
 }
