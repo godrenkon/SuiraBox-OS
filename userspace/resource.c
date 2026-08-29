@@ -3,18 +3,25 @@
 static int valid_text(const char *text, uint32_t max_len, uint8_t allow_slash) {
     uint32_t length = 0u;
     uint32_t segment = 0u;
+    uint8_t dot_only = 1u;
     if (text == 0 || max_len == 0u) return 0;
     while (length < max_len) {
         const uint8_t c = (uint8_t)text[length];
-        if (c == '\0') return segment != 0u;
+        if (c == '\0') {
+            if (segment == 0u || (dot_only != 0u && segment <= 2u)) return 0;
+            return 1;
+        }
         if (c == '/') {
-            if (allow_slash == 0u || segment == 0u) return 0;
+            if (allow_slash == 0u || segment == 0u ||
+                (dot_only != 0u && segment <= 2u)) return 0;
             segment = 0u;
+            dot_only = 1u;
         } else if (!((c >= 'a' && c <= 'z') ||
                      (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) {
             return 0;
         } else {
             ++segment;
+            if (c != '.') dot_only = 0u;
         }
         ++length;
     }
