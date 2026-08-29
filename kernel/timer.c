@@ -101,8 +101,18 @@ uint64_t timer_ticks(void) { return ticks; }
 
 uintptr_t sb_timer_irq_dispatch(sb_timer_saved_gpr_t *gpr) {
     ++ticks;
-    const uintptr_t user_resume_rsp = user_scheduler_timer_dispatch(gpr);
-    if (user_resume_rsp != 0u) return user_resume_rsp;
+
+    /*
+     * A CPL0 interrupt frame contains only RIP/CS/RFLAGS. A CPL3 frame adds
+     * user RSP/SS. user_scheduler_timer_dispatch() requires the latter, so
+     * never interpret a kernel-mode frame as a userspace frame.
+     */
+    const uint64_t interrupted_cs = *((const uint64_t *)((uintptr_t)gpr + sizeof(*gpr) + sizeof(uint64_t)));
+    if ((interrupted_cs & 3u) == 3u) {
+        const uintptr_t user_resume_rsp = user_scheduler_timer_dispatch(gpr);
+        if (user_resume_rsp != 0u) return user_resume_rsp;
+    }
+
     scheduler_tick();
     if ((ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1u)
         (void)scheduler_pick_next();
