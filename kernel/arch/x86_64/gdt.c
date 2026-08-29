@@ -104,6 +104,13 @@ void arch_gdt_init(void) {
     gdt_init();
 }
 
-void gdt_set_kernel_stack(uint64_t stack_pointer) {
+int gdt_try_set_kernel_stack(uint64_t stack_pointer) {
+    if (stack_pointer == 0u ||
+        (stack_pointer & (SB_TSS_STACK_ALIGNMENT - 1u)) != 0u) return -1;
     tss.rsp0 = stack_pointer;
+    return 0;
+}
+
+void gdt_set_kernel_stack(uint64_t stack_pointer) {
+    (void)gdt_try_set_kernel_stack(stack_pointer);
 }
