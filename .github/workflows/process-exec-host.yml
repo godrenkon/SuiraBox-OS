@@ -15,6 +15,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Compile process exec contract
-        run: gcc -Wall -Wextra -Werror -std=c11 -ffreestanding -fno-builtin -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 tests/process_exec_host_test.c kernel/process_exec.c kernel/process.c kernel/arch/x86_64/user_context.c kernel/user_scheduler.c -o process-exec-host-test
+        run: gcc -Wall -Wextra -Werror -std=c11 -ffreestanding -fno-builtin -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 tests/process_exec_host_test.c kernel/process_exec.c kernel/process.c kernel/arch/x86_64/user_context.c kernel/user_scheduler.c kernel/arch/x86_64/irq_frame.c -o process-exec-host-test
       - name: Run process exec contract test
         run: ./process-exec-host-test
