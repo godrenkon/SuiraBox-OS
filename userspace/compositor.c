@@ -217,7 +217,6 @@ void sb_compositor_present_damage(const sb_compositor_style_t *style,
     if (full_damage != 0u || damage == 0 || damage_count == 0u) {
         if (full_damage == 0u && damage_count == 0u) return;
         sb_compositor_present(style, wm);
-        if (sb_desktop_shell_present_launcher != 0) sb_desktop_shell_present_launcher();
         return;
     }
 
@@ -248,6 +247,7 @@ void sb_compositor_present(const sb_compositor_style_t *style,
     compositor_rect(style, 0, (int32_t)style->height - 72, style->width, 72u, style->chrome_rgb);
     for (uint32_t i = 0u; i < wm->count; ++i) render_window(style, &wm->windows[i]);
     render_taskbar(style, wm);
+    if (sb_desktop_shell_present_launcher != 0) sb_desktop_shell_present_launcher();
 }
 
 void sb_compositor_present_cursor(const sb_compositor_style_t *style,
