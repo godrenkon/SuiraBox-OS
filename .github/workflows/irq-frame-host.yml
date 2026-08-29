@@ -1,0 +1,20 @@
+name: SuiraBox IRQ Frame Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  irq-frame:
+    name: timer IRQ/user context frame contract host test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile IRQ frame bridge
+        run: gcc -Wall -Wextra -Werror -std=c11 -ffreestanding -fno-builtin -Ikernel/arch/x86_64 -Ikernel/mm tests/irq_frame_host_test.c kernel/arch/x86_64/irq_frame.c kernel/arch/x86_64/user_context.c -o irq-frame-host-test
+      - name: Run IRQ frame bridge test
+        run: ./irq-frame-host-test
