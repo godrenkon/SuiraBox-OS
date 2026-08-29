@@ -12,40 +12,36 @@
 #define SB_SYS_INPUT_KEY       6u
 #define SB_SYS_DISPLAY_GLYPH   7u
 #define SB_SYS_INPUT_MOUSE     8u
+#define SB_SYS_CONFIG_GET      9u
+#define SB_SYS_CONFIG_SET      10u
 
 #ifdef SB_HOST_TEST
-
 uint64_t sb_syscall0(uint64_t number);
 uint64_t sb_syscall1(uint64_t number, uint64_t arg0);
 uint64_t sb_syscall3(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2);
-uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1,
-                     uint64_t arg2, uint64_t arg3);
+uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3);
 uint64_t sb_get_ticks(void);
 uint64_t sb_process_id(void);
 uint64_t sb_display_info(void);
 uint64_t sb_display_clear(uint32_t rgb);
-uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width,
-                         uint32_t height, uint32_t rgb);
+uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t rgb);
 uint64_t sb_input_key(void);
 uint64_t sb_input_mouse(void);
-uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
-                          uint32_t rgb);
-
+uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap, uint32_t rgb);
+uint64_t sb_config_get(void);
+uint64_t sb_config_set(uint32_t language);
 #else
-
 static inline uint64_t sb_syscall0(uint64_t number) {
     uint64_t result;
     __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number) : "memory");
     return result;
 }
-
 static inline uint64_t sb_syscall1(uint64_t number, uint64_t arg0) {
     uint64_t result;
     register uint64_t rdi __asm__("rdi") = arg0;
     __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi) : "memory");
     return result;
 }
-
 static inline uint64_t sb_syscall3(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2) {
     uint64_t result;
     register uint64_t rdi __asm__("rdi") = arg0;
@@ -54,9 +50,7 @@ static inline uint64_t sb_syscall3(uint64_t number, uint64_t arg0, uint64_t arg1
     __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx) : "memory");
     return result;
 }
-
-static inline uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1,
-                                   uint64_t arg2, uint64_t arg3) {
+static inline uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3) {
     uint64_t result;
     register uint64_t rdi __asm__("rdi") = arg0;
     register uint64_t rsi __asm__("rsi") = arg1;
@@ -65,25 +59,11 @@ static inline uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1
     __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10) : "memory");
     return result;
 }
-
-static inline uint64_t sb_get_ticks(void) {
-    return sb_syscall0(SB_SYS_GET_TICKS);
-}
-
-static inline uint64_t sb_process_id(void) {
-    return sb_syscall0(SB_SYS_PROCESS_ID);
-}
-
-static inline uint64_t sb_display_info(void) {
-    return sb_syscall0(SB_SYS_DISPLAY_INFO);
-}
-
-static inline uint64_t sb_display_clear(uint32_t rgb) {
-    return sb_syscall1(SB_SYS_DISPLAY_CLEAR, rgb);
-}
-
-static inline uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width,
-                                       uint32_t height, uint32_t rgb) {
+static inline uint64_t sb_get_ticks(void) { return sb_syscall0(SB_SYS_GET_TICKS); }
+static inline uint64_t sb_process_id(void) { return sb_syscall0(SB_SYS_PROCESS_ID); }
+static inline uint64_t sb_display_info(void) { return sb_syscall0(SB_SYS_DISPLAY_INFO); }
+static inline uint64_t sb_display_clear(uint32_t rgb) { return sb_syscall1(SB_SYS_DISPLAY_CLEAR, rgb); }
+static inline uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t rgb) {
     uint64_t result;
     register uint64_t rdi __asm__("rdi") = x;
     register uint64_t rsi __asm__("rsi") = y;
@@ -93,17 +73,9 @@ static inline uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width,
     __asm__ volatile ("int $0x80" : "=a"(result) : "a"(SB_SYS_DISPLAY_RECT), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r"(r8) : "memory");
     return result;
 }
-
-static inline uint64_t sb_input_key(void) {
-    return sb_syscall0(SB_SYS_INPUT_KEY);
-}
-
-static inline uint64_t sb_input_mouse(void) {
-    return sb_syscall0(SB_SYS_INPUT_MOUSE);
-}
-
-static inline uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
-                                        uint32_t rgb) {
+static inline uint64_t sb_input_key(void) { return sb_syscall0(SB_SYS_INPUT_KEY); }
+static inline uint64_t sb_input_mouse(void) { return sb_syscall0(SB_SYS_INPUT_MOUSE); }
+static inline uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap, uint32_t rgb) {
     uint64_t result;
     register uint64_t rdi __asm__("rdi") = x;
     register uint64_t rsi __asm__("rsi") = y;
@@ -112,7 +84,8 @@ static inline uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
     __asm__ volatile ("int $0x80" : "=a"(result) : "a"(SB_SYS_DISPLAY_GLYPH), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10) : "memory");
     return result;
 }
-
+static inline uint64_t sb_config_get(void) { return sb_syscall0(SB_SYS_CONFIG_GET); }
+static inline uint64_t sb_config_set(uint32_t language) { return sb_syscall1(SB_SYS_CONFIG_SET, language); }
 #endif
 
 #endif
