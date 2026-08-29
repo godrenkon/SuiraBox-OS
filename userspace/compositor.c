@@ -8,7 +8,7 @@ extern int sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
 #include "syscall.h"
 #endif
 
-extern void sb_desktop_shell_present_launcher(void) __attribute__((weak));
+extern void sb_desktop_shell_present_launcher(void);
 
 void sb_compositor_init(sb_compositor_style_t *style,
                         uint32_t width, uint32_t height) {
@@ -235,7 +235,7 @@ void sb_compositor_present_damage(const sb_compositor_style_t *style,
                                56u, 48u, style->accent_rgb);
         render_taskbar_damage(style, region, wm);
     }
-    if (sb_desktop_shell_present_launcher != 0) sb_desktop_shell_present_launcher();
+    sb_desktop_shell_present_launcher();
 }
 
 void sb_compositor_present(const sb_compositor_style_t *style,
@@ -247,7 +247,7 @@ void sb_compositor_present(const sb_compositor_style_t *style,
     compositor_rect(style, 0, (int32_t)style->height - 72, style->width, 72u, style->chrome_rgb);
     for (uint32_t i = 0u; i < wm->count; ++i) render_window(style, &wm->windows[i]);
     render_taskbar(style, wm);
-    if (sb_desktop_shell_present_launcher != 0) sb_desktop_shell_present_launcher();
+    sb_desktop_shell_present_launcher();
 }
 
 void sb_compositor_present_cursor(const sb_compositor_style_t *style,
