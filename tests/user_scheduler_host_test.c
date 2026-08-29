@@ -4,10 +4,28 @@
 
 static int process_activate_calls;
 static int gdt_calls;
+static int fail_next_gdt;
 
-int process_activate(sb_process_t *process) { return process != 0 ? (++process_activate_calls, 0) : -1; }
-int process_prepare_user_resume_frame(sb_thread_t *thread) { return (thread != 0 && thread->user_context != 0 && thread->kernel_resume_stack_pointer != 0u) ? 0 : -1; }
-int gdt_try_set_kernel_stack(uint64_t stack_pointer) { return (stack_pointer != 0u && (stack_pointer & 0xFu) == 0u) ? (++gdt_calls, 0) : -1; }
+int process_activate(sb_process_t *process) {
+    if (process == 0) return -1;
+    ++process_activate_calls;
+    return 0;
+}
+
+int process_prepare_user_resume_frame(sb_thread_t *thread) {
+    return (thread != 0 && thread->user_context != 0 && thread->kernel_resume_stack_pointer != 0u) ? 0 : -1;
+}
+
+int gdt_try_set_kernel_stack(uint64_t stack_pointer) {
+    if (stack_pointer == 0u || (stack_pointer & 0xFu) != 0u) return -1;
+    if (fail_next_gdt != 0) {
+        fail_next_gdt = 0;
+        return -1;
+    }
+    ++gdt_calls;
+    return 0;
+}
+
 int sb_user_context_from_timer_frame(sb_user_context_t *context, const sb_timer_saved_gpr_t *gpr, const sb_x86_64_user_iret_frame_t *iret) {
     if (context == 0 || gpr == 0 || iret == 0) return -1;
     context->rip = iret->rip; context->cs = iret->cs; context->rflags = iret->rflags;
@@ -56,5 +74,22 @@ int main(void) {
     assert(user_scheduler_current_thread() == &t1);
     iret->cs = 0x18u;
     assert(user_scheduler_timer_dispatch(gpr) == (uintptr_t)gpr);
+
+    setup_thread(&p2, &t2, &c2, 2u, 0x20000u);
+    iret->cs = 0x23u;
+    user_scheduler_init();
+    process_activate_calls = 0;
+    gdt_calls = 0;
+    fail_next_gdt = 1;
+    assert(user_scheduler_add(&p1, &t1) == 0);
+    assert(user_scheduler_add(&p2, &t2) == 0);
+    assert(user_scheduler_set_current(&p1, &t1) == 0);
+    for (unsigned i = 0u; i < SB_USER_SCHED_QUANTUM_TICKS; ++i)
+        assert(user_scheduler_timer_dispatch(gpr) == (uintptr_t)gpr);
+    assert(user_scheduler_current_thread() == &t1);
+    assert(user_scheduler_current_process() == &p1);
+    assert(process_activate_calls == 2);
+    assert(gdt_calls == 1);
+
     return 0;
 }
