@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "mm/address_space.h"
+#include "arch/x86_64/user_context.h"
 
 #define SB_MAX_PROCESSES 32u
 #define SB_MAX_THREADS_PER_PROCESS 16u
@@ -20,6 +21,7 @@ typedef struct {
     uint64_t runtime_ticks;
     uint32_t priority;
     sb_process_state_t state;
+    sb_user_context_t *user_context;
 } sb_thread_t;
 
 typedef struct {
@@ -35,6 +37,10 @@ typedef struct {
 void process_init(void);
 sb_process_t *process_create(uint64_t pid);
 sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t priority);
+int process_prepare_thread_context(sb_thread_t *thread,
+                                   sb_user_context_t *context,
+                                   uint64_t entry_point,
+                                   uint64_t user_stack_top);
 sb_process_t *process_get(uint64_t pid);
 uint32_t process_count(void);
 int process_activate(sb_process_t *process);
