@@ -3,10 +3,10 @@
 static int valid_text(const char *text, uint32_t max_len, uint8_t allow_slash) {
     uint32_t length = 0u;
     uint32_t segment = 0u;
-    if (text == 0 || max_len == 0u || text[0] == '\0') return 0;
-    while (text[length] != '\0') {
+    if (text == 0 || max_len == 0u) return 0;
+    while (length < max_len) {
         const uint8_t c = (uint8_t)text[length];
-        if (length >= max_len) return 0;
+        if (c == '\0') return segment != 0u;
         if (c == '/') {
             if (allow_slash == 0u || segment == 0u) return 0;
             segment = 0u;
@@ -18,7 +18,7 @@ static int valid_text(const char *text, uint32_t max_len, uint8_t allow_slash) {
         }
         ++length;
     }
-    return segment != 0u;
+    return 0;
 }
 
 int sb_resource_id_valid(const char *id) {
