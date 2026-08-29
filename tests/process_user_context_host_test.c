@@ -52,7 +52,8 @@ int main(void) {
     assert(sb_user_context_validate(&context) == 0);
 
     assert(process_create_thread(&process, 1u, 128u) != 0);
+    assert(process_create_thread(&process, 2u, 128u) != 0);
     process_destroy(&process);
-    assert(free_count == 1u);
+    assert(free_count == 2u);
     return 0;
 }
