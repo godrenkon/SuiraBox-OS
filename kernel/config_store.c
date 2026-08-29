@@ -41,17 +41,18 @@ static int load_slot(sb_fat32_t *fs, const char *name,
 }
 
 int sb_config_store_get(sb_config_store_record_t *record) {
-    sb_fat32_t *fs;
+    sb_fat32_t *fs = sb_storage_fat32();
     sb_config_store_record_t a;
     sb_config_store_record_t b;
     sb_fat32_dirent_t entry_a;
     sb_fat32_dirent_t entry_b;
-    const int valid_a = load_slot(sb_storage_fat32(), SB_CONFIG_FILE_A, &a, &entry_a);
-    const int valid_b = load_slot(sb_storage_fat32(), SB_CONFIG_FILE_B, &b, &entry_b);
+    int valid_a;
+    int valid_b;
 
-    fs = sb_storage_fat32();
-    (void)fs;
-    if (record == 0 || (valid_a == 0 && valid_b == 0)) return 0;
+    if (record == 0 || fs == 0) return 0;
+    valid_a = load_slot(fs, SB_CONFIG_FILE_A, &a, &entry_a);
+    valid_b = load_slot(fs, SB_CONFIG_FILE_B, &b, &entry_b);
+    if (valid_a == 0 && valid_b == 0) return 0;
     if (valid_a != 0 && (valid_b == 0 || a.generation >= b.generation)) *record = a;
     else *record = b;
     return 1;
@@ -65,22 +66,21 @@ static int ensure_slot(sb_fat32_t *fs, const char *name,
 }
 
 int sb_config_store_set(uint8_t language) {
-    sb_fat32_t *fs;
+    sb_fat32_t *fs = sb_storage_fat32();
     sb_config_store_record_t current_a = {0};
     sb_config_store_record_t current_b = {0};
     sb_fat32_dirent_t entry_a = {0};
     sb_fat32_dirent_t entry_b = {0};
-    const int valid_a = load_slot(sb_storage_fat32(), SB_CONFIG_FILE_A, &current_a, &entry_a);
-    const int valid_b = load_slot(sb_storage_fat32(), SB_CONFIG_FILE_B, &current_b, &entry_b);
+    int valid_a;
+    int valid_b;
     sb_fat32_dirent_t *target_entry;
-    const char *target_name;
     uint32_t generation = 1u;
     sb_config_store_record_t next = {0};
     int ensure_result;
 
-    if (language > 3u) return -1;
-    fs = sb_storage_fat32();
-    if (fs == 0) return -1;
+    if (language > 3u || fs == 0) return -1;
+    valid_a = load_slot(fs, SB_CONFIG_FILE_A, &current_a, &entry_a);
+    valid_b = load_slot(fs, SB_CONFIG_FILE_B, &current_b, &entry_b);
 
     if (valid_a != 0 || valid_b != 0) {
         const sb_config_store_record_t *latest =
@@ -91,23 +91,18 @@ int sb_config_store_set(uint8_t language) {
     }
 
     if (valid_a == 0) {
-        target_name = SB_CONFIG_FILE_A;
         target_entry = &entry_a;
-        ensure_result = ensure_slot(fs, target_name, target_entry);
+        ensure_result = ensure_slot(fs, SB_CONFIG_FILE_A, target_entry);
     } else if (valid_b == 0) {
-        target_name = SB_CONFIG_FILE_B;
         target_entry = &entry_b;
-        ensure_result = ensure_slot(fs, target_name, target_entry);
+        ensure_result = ensure_slot(fs, SB_CONFIG_FILE_B, target_entry);
     } else if (current_a.generation <= current_b.generation) {
-        target_name = SB_CONFIG_FILE_A;
         target_entry = &entry_a;
         ensure_result = 0;
     } else {
-        target_name = SB_CONFIG_FILE_B;
         target_entry = &entry_b;
         ensure_result = 0;
     }
-    (void)target_name;
     if (ensure_result < 0) return -1;
 
     next.magic = SB_CONFIG_STORE_MAGIC;
