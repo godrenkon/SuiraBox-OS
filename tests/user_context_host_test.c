@@ -38,7 +38,7 @@ int main(void) {
     assert(sb_user_context_validate(&context) != 0);
     context.rflags &= ~(1ull << 19u);
     context.rflags |= (1ull << 20u);
-    assert(sb_user_context_validate(&context) != 0;
+    assert(sb_user_context_validate(&context) != 0);
     context.rflags &= ~(1ull << 20u);
     context.cs = SB_USER_CODE_SELECTOR;
     assert(sb_user_context_validate(&context) == 0);
