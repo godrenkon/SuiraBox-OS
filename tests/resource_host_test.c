@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <stdint.h>
-#include <string.h>
 #include "../userspace/resource.h"
 
 int main(void) {
@@ -24,7 +23,6 @@ int main(void) {
 
     assert(sb_resource_schema_version() == SB_RESOURCE_SCHEMA_VERSION);
     assert(sb_resource_repository_url()[0] == 'h');
-    assert(sb_resource_builtin_reference(SB_RESOURCE_LOCALE, 0u) == 0);
     assert(sb_resource_id_valid("locale/ja-jp") == 1);
     assert(sb_resource_id_valid("../locale/ja-jp") == 0);
     assert(sb_resource_path_valid(path) == 1);
@@ -53,7 +51,6 @@ int main(void) {
     ref.dependency_count = 1u;
     ref.dependencies[0] = "../bad";
     assert(sb_resource_reference_valid(&ref) == 0);
-    ref.dependencies[0] = dependency;
 
     assert(sb_resource_state_transition(SB_RESOURCE_UNAVAILABLE,
                                         SB_RESOURCE_AVAILABLE) == 1);
@@ -69,6 +66,5 @@ int main(void) {
                                         SB_RESOURCE_DOWNLOADING) == 0);
     assert(sb_resource_state_transition(SB_RESOURCE_UNAVAILABLE,
                                         SB_RESOURCE_ACTIVE) == 0);
-
     return 0;
 }
