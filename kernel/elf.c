@@ -6,6 +6,10 @@ static uint64_t u64_add_overflow(uint64_t a, uint64_t b, uint64_t *out) {
     return 0u;
 }
 
+static int power_of_two(uint64_t value) {
+    return value != 0u && (value & (value - 1u)) == 0u;
+}
+
 int elf64_validate(const void *image, uint64_t size,
                    const sb_elf64_header_t **header_out) {
     if (image == 0 || size < sizeof(sb_elf64_header_t)) return -1;
@@ -23,28 +27,51 @@ int elf64_validate(const void *image, uint64_t size,
         (header->type != SB_ELF_TYPE_EXEC && header->type != SB_ELF_TYPE_DYN) ||
         header->version != 1u ||
         header->ehsize < sizeof(sb_elf64_header_t) ||
-        header->phentsize < sizeof(sb_elf64_program_header_t)) {
+        header->phentsize < sizeof(sb_elf64_program_header_t) ||
+        header->phnum == 0u) {
         return -1;
     }
 
     uint64_t ph_end;
-    if (header->phnum != 0u &&
-        u64_add_overflow(header->phoff,
+    if (u64_add_overflow(header->phoff,
                          (uint64_t)header->phentsize * header->phnum,
-                         &ph_end)) {
+                         &ph_end) ||
+        ph_end > size) {
         return -1;
     }
-    if (header->phnum != 0u && ph_end > size) return -1;
 
+    int load_segment_seen = 0;
+    int entry_segment_seen = 0;
     for (uint16_t i = 0; i < header->phnum; ++i) {
-        uint64_t offset = header->phoff + (uint64_t)i * header->phentsize;
+        const uint64_t offset = header->phoff + (uint64_t)i * header->phentsize;
         const sb_elf64_program_header_t *ph =
             (const sb_elf64_program_header_t *)((const uint8_t *)image + offset);
-        uint64_t file_end;
         if (ph->type != SB_ELF_PT_LOAD) continue;
-        if (ph->file_size > ph->memory_size) return -1;
-        if (u64_add_overflow(ph->offset, ph->file_size, &file_end) || file_end > size) return -1;
+
+        uint64_t file_end;
+        uint64_t memory_end;
+        if (ph->memory_size == 0u ||
+            ph->file_size > ph->memory_size ||
+            u64_add_overflow(ph->offset, ph->file_size, &file_end) ||
+            file_end > size ||
+            u64_add_overflow(ph->virtual_address, ph->memory_size, &memory_end) ||
+            memory_end <= ph->virtual_address) return -1;
+
+        if (ph->align != 0u) {
+            if (!power_of_two(ph->align) ||
+                ((ph->virtual_address - ph->offset) & (ph->align - 1u)) != 0u)
+                return -1;
+        }
+
+        if ((ph->flags & ~(uint32_t)0x7u) != 0u) return -1;
+        if (header->type == SB_ELF_TYPE_EXEC && ph->virtual_address < 0x1000u) return -1;
+        ++load_segment_seen;
+
+        if (header->entry >= ph->virtual_address && header->entry < memory_end)
+            entry_segment_seen = 1;
     }
+
+    if (!load_segment_seen || !entry_segment_seen) return -1;
 
     if (header_out != 0) *header_out = header;
     return 0;
