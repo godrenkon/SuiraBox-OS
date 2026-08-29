@@ -46,6 +46,9 @@ jobs:
           grep -F "Kernel initialized." qemu.log
           grep -F "PCI: scanning bus/device/function space..." qemu.log
           grep -F "PCI: scan complete." qemu.log
+          grep -F "Display: framebuffer ready" qemu.log
+          grep -F "Display: framebuffer mapped" qemu.log
+          grep -F "Display: framebuffer clear OK" qemu.log
           grep -F "Memory: PMM bootstrap free pages =" qemu.log
           grep -F "Memory: VMM map/translate/unmap OK" qemu.log
           grep -F "Memory: kernel heap alloc/free OK" qemu.log
