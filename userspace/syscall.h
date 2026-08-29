@@ -15,6 +15,7 @@
 #define SB_SYS_CONFIG_GET      9u
 #define SB_SYS_CONFIG_SET      10u
 #define SB_SYS_YIELD           11u
+#define SB_SYS_DISPLAY_GLYPH_PAIR 12u
 #define SB_CONFIG_SET_VOLATILE 1u
 
 #ifdef SB_HOST_TEST
@@ -30,6 +31,7 @@ uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height
 uint64_t sb_input_key(void);
 uint64_t sb_input_mouse(void);
 uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap, uint32_t rgb);
+uint64_t sb_display_glyph_pair(uint32_t x, uint32_t y, uint64_t bitmap_a, uint64_t bitmap_b, uint32_t rgb);
 uint64_t sb_config_get(void);
 uint64_t sb_config_set(uint32_t language);
 uint64_t sb_yield(void);
@@ -85,6 +87,16 @@ static inline uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
     register uint64_t rdx __asm__("rdx") = bitmap;
     register uint64_t r10 __asm__("r10") = rgb;
     __asm__ volatile ("int $0x80" : "=a"(result) : "a"(SB_SYS_DISPLAY_GLYPH), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10) : "memory");
+    return result;
+}
+static inline uint64_t sb_display_glyph_pair(uint32_t x, uint32_t y, uint64_t bitmap_a, uint64_t bitmap_b, uint32_t rgb) {
+    uint64_t result;
+    register uint64_t rdi __asm__("rdi") = x;
+    register uint64_t rsi __asm__("rsi") = y;
+    register uint64_t rdx __asm__("rdx") = bitmap_a;
+    register uint64_t r10 __asm__("r10") = bitmap_b;
+    register uint64_t r8 __asm__("r8") = rgb;
+    __asm__ volatile ("int $0x80" : "=a"(result) : "a"(SB_SYS_DISPLAY_GLYPH_PAIR), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r"(r8) : "memory");
     return result;
 }
 static inline uint64_t sb_config_get(void) { return sb_syscall0(SB_SYS_CONFIG_GET); }
