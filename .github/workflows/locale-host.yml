@@ -1,0 +1,20 @@
+name: SuiraBox Locale Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  locale:
+    name: locale resource contract host test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile locale contract
+        run: gcc -Wall -Wextra -Werror -std=c11 -ffreestanding -fno-builtin -Iuserspace tests/locale_host_test.c userspace/locale.c -o locale-host-test
+      - name: Run locale contract host test
+        run: ./locale-host-test
