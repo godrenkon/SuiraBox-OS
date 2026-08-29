@@ -43,14 +43,6 @@ uint32_t sb_resource_schema_version(void) {
     return SB_RESOURCE_SCHEMA_VERSION;
 }
 
-const sb_resource_ref_t *sb_resource_builtin_reference(sb_resource_type_t type,
-                                                        uint32_t key) {
-    (void)type;
-    (void)key;
-    /* Core payloads are compiled in only where required by the OS baseline. */
-    return 0;
-}
-
 int sb_resource_reference_valid(const sb_resource_ref_t *ref) {
     if (ref == 0 || ref->type < SB_RESOURCE_LOCALE ||
         ref->type > SB_RESOURCE_DOCUMENT ||
