@@ -5,16 +5,16 @@
 .type sb_timer_irq_stub, @function
 .extern sb_timer_irq_dispatch
 
-#ifdef SB_KERNEL_DEBUG
+.altmacro
+.set SB_TIMER_DEBUG, 0
+
 .macro serial_mark ch
+.if SB_TIMER_DEBUG
     movw $0x3F8, %dx
     movb $\ch, %al
     outb %al, %dx
+.endif
 .endm
-#else
-.macro serial_mark ch
-.endm
-#endif
 
 sb_timer_irq_stub:
     pushq %rax
