@@ -52,6 +52,7 @@ int sb_resource_reference_valid(const sb_resource_ref_t *ref) {
         ref->compressed_size > SB_RESOURCE_MAX_PAYLOAD ||
         ref->expanded_size == 0u ||
         ref->expanded_size > SB_RESOURCE_MAX_PAYLOAD ||
+        ref->dependency_count > SB_RESOURCE_MAX_DEPENDENCIES ||
         !sb_resource_id_valid(ref->id) ||
         !sb_resource_path_valid(ref->path) ||
         ref->sha256 == 0) return 0;
@@ -62,6 +63,7 @@ int sb_resource_reference_valid(const sb_resource_ref_t *ref) {
                         (c >= 'A' && c <= 'F');
         if (!hex) return 0;
     }
+    if (ref->sha256[SB_RESOURCE_SHA256_HEX_SIZE - 1u] != '\0') return 0;
     for (uint32_t i = 0u; i < ref->dependency_count; ++i) {
         if (ref->dependencies[i] == 0 || !sb_resource_id_valid(ref->dependencies[i])) return 0;
     }
