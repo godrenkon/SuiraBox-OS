@@ -35,7 +35,9 @@ int elf64_load_image(sb_address_space_t *space,
 
     uint64_t load_bias = 0u;
     if (header->type == SB_ELF_TYPE_DYN) {
-        load_bias = SB_USER_BASE - align_down(header->entry);
+        const uint64_t aligned_entry = align_down(header->entry);
+        if (aligned_entry > SB_USER_BASE) return -1;
+        load_bias = SB_USER_BASE - aligned_entry;
     }
 
     int entry_mapped = 0;
@@ -80,20 +82,21 @@ int elf64_load_image(sb_address_space_t *space,
 
             if (va < virtual_end && va + SB_PAGE_SIZE > virtual_start) {
                 uint64_t copy_start = va > virtual_start ? va : virtual_start;
-                uint64_t copy_end = (va + SB_PAGE_SIZE) < (virtual_start + ph->file_size)
-                    ? (va + SB_PAGE_SIZE) : (virtual_start + ph->file_size);
+                uint64_t file_virtual_end;
+                if (range_end(virtual_start, ph->file_size, &file_virtual_end)) return -1;
+                uint64_t copy_end = (va + SB_PAGE_SIZE) < file_virtual_end
+                    ? (va + SB_PAGE_SIZE) : file_virtual_end;
                 if (copy_end > copy_start &&
                     copy_start >= virtual_start &&
-                    copy_end <= virtual_start + ph->file_size) {
+                    copy_end <= file_virtual_end) {
                     page_file_start = segment_file_start + (copy_start - virtual_start);
                     page_file_end = segment_file_start + (copy_end - virtual_start);
                     if (page_file_start < segment_file_start || page_file_end > segment_file_end ||
                         page_file_end > image_size) return -1;
                     uint64_t dst_offset = copy_start - va;
                     const uint8_t *src = (const uint8_t *)image + page_file_start;
-                    for (uint64_t j = 0; j < page_file_end - page_file_start; ++j) {
+                    for (uint64_t j = 0; j < page_file_end - page_file_start; ++j)
                         dst[dst_offset + j] = src[j];
-                    }
                 }
             }
 
