@@ -1,5 +1,6 @@
 #include <assert.h>
 #include "../kernel/arch/x86_64/irq_frame.h"
+#include "../kernel/mm/address_space.h"
 
 int main(void) {
     sb_timer_saved_gpr_t gpr = {0};
