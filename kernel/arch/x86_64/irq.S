@@ -42,9 +42,10 @@ sb_timer_irq_stub:
     movq %rax, %rsi
     serial_mark 0x54
 
+    /* Send PIC EOI while preserving the saved general-purpose registers. */
+    movb $0x20, %al
     movw $0x20, %dx
-    movb $0x20, %dl
-    outb %dl, %dx
+    outb %al, %dx
     serial_mark 0x4F
 
     testq %rsi, %rsi
