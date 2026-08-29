@@ -79,11 +79,22 @@ int sb_config_store_set(uint8_t language, uint32_t optional_enabled_mask) {
     sb_config_store_record_t next = {0};
     int ensure_result;
 
-    if (language > 3u ||
-        (optional_enabled_mask & ~SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED) != 0u ||
-        fs == 0) return -1;
+    if (language > 3u || fs == 0) return -1;
     valid_a = load_slot(fs, SB_CONFIG_FILE_A, &current_a, &entry_a);
     valid_b = load_slot(fs, SB_CONFIG_FILE_B, &current_b, &entry_b);
+
+    if (optional_enabled_mask == SB_CONFIG_SET_KEEP_OPTIONS) {
+        if (valid_a != 0 || valid_b != 0) {
+            const sb_config_store_record_t *latest =
+                (valid_a != 0 && (valid_b == 0 || current_a.generation >= current_b.generation))
+                    ? &current_a : &current_b;
+            optional_enabled_mask = latest->optional_enabled_mask;
+        } else {
+            optional_enabled_mask = 0u;
+        }
+    }
+    if ((optional_enabled_mask & ~SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED) != 0u)
+        return -1;
 
     if (valid_a != 0 || valid_b != 0) {
         const sb_config_store_record_t *latest =
