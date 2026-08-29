@@ -36,9 +36,9 @@ sb_timer_irq_stub:
     serial_mark 0x45
     /*
      * The hardware frame is immediately above the saved GPRs.  A CPL3 IRQ
-     * has a five-word frame, so with a 16-byte-aligned TSS stack top the saved
-     * GPR pointer is already correctly aligned for the SysV C call.  A CPL0
-     * IRQ has only a three-word frame and therefore needs an eight-byte shift.
+     * has a five-word frame; a CPL0 IRQ has only a three-word frame.
+     * With a 16-byte-aligned kernel stack top, this makes the two paths
+     * differ by eight bytes at the C-call boundary.
      */
     movq 128(%rsp), %rax
     testb $3, %al
@@ -51,8 +51,11 @@ sb_timer_irq_stub:
     jmp .Ltimer_dispatch_done
 
 .Ltimer_user_call:
-    movq %rsp, %rdi
+    /* CPL3 path also needs the SysV pre-call 8 mod 16 alignment. */
+    subq $8, %rsp
+    leaq 8(%rsp), %rdi
     call sb_timer_irq_dispatch
+    addq $8, %rsp
 
 .Ltimer_dispatch_done:
     movq %rax, %rsi
