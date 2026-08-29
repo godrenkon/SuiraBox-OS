@@ -26,6 +26,7 @@ int sb_config_make(sb_config_record_t *record, sb_language_t language, uint32_t 
     record->language = (uint8_t)language;
     record->completed = SB_CONFIG_COMPLETED;
     record->generation = generation;
+    record->optional_enabled_mask = 0u;
     record->checksum = sb_config_checksum(record);
     return 0;
 }
@@ -36,6 +37,7 @@ int sb_config_validate(const sb_config_record_t *record) {
     if (record->version != SB_CONFIG_VERSION) return -1;
     if (record->language > SB_LANGUAGE_SPANISH) return -1;
     if (record->completed != SB_CONFIG_COMPLETED) return -1;
+    if ((record->optional_enabled_mask & ~SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED) != 0u) return -1;
     if (record->checksum != sb_config_checksum(record)) return -1;
     return 0;
 }
