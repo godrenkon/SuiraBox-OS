@@ -206,15 +206,19 @@ int sb_framebuffer_map(void) {
 int sb_framebuffer_clear(uint8_t red, uint8_t green, uint8_t blue) {
     const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
     uint64_t target_address;
-    uint32_t pixel;
+    const uint32_t pixel = pack_pixel(red, green, blue);
 
     if (framebuffer_target(&target_address) != 0) return -1;
-    pixel = pack_pixel(red, green, blue);
 
     for (uint32_t y = 0u; y < current.height; ++y) {
         volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(target_address + (uint64_t)y * current.pitch);
-        for (uint32_t x = 0u; x < current.width; ++x)
-            store_pixel(row + (uint64_t)x * bytes_per_pixel, bytes_per_pixel, pixel);
+        if (bytes_per_pixel == 4u) {
+            volatile uint32_t *fast = (volatile uint32_t *)(void *)row;
+            for (uint32_t x = 0u; x < current.width; ++x) fast[x] = pixel;
+        } else {
+            for (uint32_t x = 0u; x < current.width; ++x)
+                store_pixel(row + (uint64_t)x * bytes_per_pixel, bytes_per_pixel, pixel);
+        }
     }
 
     return 0;
@@ -228,9 +232,15 @@ int sb_framebuffer_draw_pixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green
     if (framebuffer_target(&target_address) != 0) return -2;
     if ((uint64_t)y * current.pitch > UINT64_MAX - (uint64_t)x * bytes_per_pixel) return -3;
 
-    store_pixel((volatile uint8_t *)(uintptr_t)(target_address + (uint64_t)y * current.pitch +
-                                                   (uint64_t)x * bytes_per_pixel),
-                bytes_per_pixel, pack_pixel(red, green, blue));
+    if (bytes_per_pixel == 4u) {
+        volatile uint32_t *pixel = (volatile uint32_t *)(uintptr_t)(target_address +
+            (uint64_t)y * current.pitch + (uint64_t)x * 4u);
+        *pixel = pack_pixel(red, green, blue);
+    } else {
+        store_pixel((volatile uint8_t *)(uintptr_t)(target_address + (uint64_t)y * current.pitch +
+                                                       (uint64_t)x * bytes_per_pixel),
+                    bytes_per_pixel, pack_pixel(red, green, blue));
+    }
     return 0;
 }
 
@@ -238,16 +248,12 @@ int sb_framebuffer_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t he
                              uint8_t red, uint8_t green, uint8_t blue) {
     const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
     uint64_t target_address;
-    uint32_t right, bottom;
     uint32_t pixel;
 
     if (width == 0u || height == 0u) return 0;
     if (x >= current.width || y >= current.height) return -1;
     if (width > current.width - x) width = current.width - x;
     if (height > current.height - y) height = current.height - y;
-    right = x + width;
-    bottom = y + height;
-    (void)right; (void)bottom;
 
     if (framebuffer_target(&target_address) != 0) return -2;
     pixel = pack_pixel(red, green, blue);
@@ -255,8 +261,13 @@ int sb_framebuffer_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t he
     for (uint32_t row_index = y; row_index < y + height; ++row_index) {
         const uint64_t row_offset = (uint64_t)row_index * current.pitch + (uint64_t)x * bytes_per_pixel;
         volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(target_address + row_offset);
-        for (uint32_t column = 0u; column < width; ++column)
-            store_pixel(row + (uint64_t)column * bytes_per_pixel, bytes_per_pixel, pixel);
+        if (bytes_per_pixel == 4u) {
+            volatile uint32_t *fast = (volatile uint32_t *)(void *)row;
+            for (uint32_t column = 0u; column < width; ++column) fast[column] = pixel;
+        } else {
+            for (uint32_t column = 0u; column < width; ++column)
+                store_pixel(row + (uint64_t)column * bytes_per_pixel, bytes_per_pixel, pixel);
+        }
     }
 
     return 0;
@@ -276,9 +287,15 @@ int sb_framebuffer_draw_glyph8(uint32_t x, uint32_t y, uint64_t bitmap,
         const uint8_t row_bits = (uint8_t)(bitmap >> (row_index * 8u));
         volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(
             target_address + (uint64_t)(y + row_index) * current.pitch + (uint64_t)x * bytes_per_pixel);
-        for (uint32_t column = 0u; column < 8u; ++column) {
-            if ((row_bits & (uint8_t)(1u << (7u - column))) != 0u)
-                store_pixel(row + (uint64_t)column * bytes_per_pixel, bytes_per_pixel, pixel);
+        if (bytes_per_pixel == 4u) {
+            volatile uint32_t *fast = (volatile uint32_t *)(void *)row;
+            for (uint32_t column = 0u; column < 8u; ++column)
+                if ((row_bits & (uint8_t)(1u << (7u - column))) != 0u) fast[column] = pixel;
+        } else {
+            for (uint32_t column = 0u; column < 8u; ++column) {
+                if ((row_bits & (uint8_t)(1u << (7u - column))) != 0u)
+                    store_pixel(row + (uint64_t)column * bytes_per_pixel, bytes_per_pixel, pixel);
+            }
         }
     }
     return 0;
