@@ -307,8 +307,8 @@ int sb_framebuffer_draw_glyph8(uint32_t x, uint32_t y, uint64_t bitmap,
     uint64_t target_address;
     const uint32_t pixel = pack_pixel(red, green, blue);
 
-    if (x > UINT32_MAX - 7u || y > UINT32_MAX - 7u ||
-        x >= current.width || y >= current.height) return -1;
+    if (current.width < 8u || current.height < 8u || x > current.width - 8u || y > current.height - 8u)
+        return -1;
     if (framebuffer_target(&target_address) != 0) return -2;
     return draw_glyph8_packed(target_address, bytes_per_pixel, x, y, bitmap, pixel);
 }
@@ -320,9 +320,8 @@ int sb_framebuffer_draw_glyph8_pair(uint32_t x, uint32_t y,
     uint64_t target_address;
     const uint32_t pixel = pack_pixel(red, green, blue);
 
-    if (x > UINT32_MAX - 17u || y > UINT32_MAX - 7u ||
-        x >= current.width || y >= current.height ||
-        x + 10u >= current.width) return -1;
+    if (current.width < 18u || current.height < 8u || x > current.width - 18u || y > current.height - 8u)
+        return -1;
     if (framebuffer_target(&target_address) != 0) return -2;
     if (draw_glyph8_packed(target_address, bytes_per_pixel, x, y, bitmap_a, pixel) != 0)
         return -3;
