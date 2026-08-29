@@ -18,3 +18,7 @@ jobs:
         run: gcc -Wall -Wextra -Werror -std=c11 -Iuserspace tests/resource_host_test.c userspace/resource.c -o resource-host-test
       - name: Run resource host test
         run: ./resource-host-test
+      - name: Compile resource policy host test
+        run: gcc -Wall -Wextra -Werror -std=c11 -Iuserspace tests/resource_policy_host_test.c userspace/resource_policy.c -o resource-policy-host-test
+      - name: Run resource policy host test
+        run: ./resource-policy-host-test
