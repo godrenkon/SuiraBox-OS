@@ -125,13 +125,13 @@ int main(void) {
     assert(store.fetch_count == 1u);
     assert(store.begin_count == 1u);
     assert(store.commit_count == 1u);
-    assert(store.activate_count == 2u);
+    assert(store.activate_count == 1u);
     assert(store.committed == 1u);
     assert(store.aborted == 0u);
 
     assert(sb_resource_manager_acquire(&manager, "locale/en-us") == 0);
     assert(store.fetch_count == 1u);
-    assert(store.activate_count == 3u);
+    assert(store.activate_count == 2u);
 
     sb_resource_ref_t bad = locale;
     bad.sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
