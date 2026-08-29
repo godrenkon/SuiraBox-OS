@@ -5,13 +5,16 @@
 .type sb_resume_user_from_kernel_stack, @function
 
 /*
- * Enter with %rsp pointing at a prepared sb_timer_saved_gpr_t followed by
- * sb_x86_64_user_iret_frame_t. Restore all user GPRs and return through the
- * hardware-compatible iret frame.
+ * Enter with rdi pointing at a prepared sb_timer_saved_gpr_t followed by
+ * sb_x86_64_user_iret_frame_t. Switch RSP before consuming the frame.
  *
  * This routine never returns.
  */
 sb_resume_user_from_kernel_stack:
+    testq %rdi, %rdi
+    jz .Lresume_fault
+    movq %rdi, %rsp
+
     popq %r15
     popq %r14
     popq %r13
@@ -28,6 +31,12 @@ sb_resume_user_from_kernel_stack:
     popq %rcx
     popq %rax
     iretq
+
+.Lresume_fault:
+    cli
+.Lresume_fault_halt:
+    hlt
+    jmp .Lresume_fault_halt
 
 .size sb_resume_user_from_kernel_stack, .-sb_resume_user_from_kernel_stack
 
