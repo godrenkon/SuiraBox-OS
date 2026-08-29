@@ -19,14 +19,31 @@ int process_start_user_thread(sb_process_t *process, sb_thread_t *thread) {
         thread->kernel_stack_top == 0u) return -1;
     if (sb_user_context_validate(thread->user_context) != 0) return -1;
 
+    sb_thread_t *old_thread = user_scheduler_current_thread();
+    sb_process_t *old_process = user_scheduler_current_process();
+    const int already_registered = old_thread == thread && old_process == process;
+
     interrupts_disable();
-    if (gdt_try_set_kernel_stack(thread->kernel_stack_top) != 0) return -1;
-    if (process_activate(process) != 0) return -1;
-    if (user_scheduler_add(process, thread) != 0 && user_scheduler_current_thread() != thread) return -1;
-    if (user_scheduler_set_current(process, thread) != 0) return -1;
+
+    if (!already_registered && user_scheduler_add(process, thread) != 0) goto fail;
+    if (user_scheduler_set_current(process, thread) != 0) goto fail_remove;
+    if (process_activate(process) != 0) goto fail_scheduler;
+    if (gdt_try_set_kernel_stack(thread->kernel_stack_top) != 0) goto fail_cr3;
 
     process->state = SB_PROCESS_RUNNING;
     thread->state = SB_PROCESS_RUNNING;
     sb_resume_user_from_kernel_stack();
     __builtin_unreachable();
+
+fail_cr3:
+    if (old_process != 0) (void)process_activate(old_process);
+    if (old_thread != 0) (void)gdt_try_set_kernel_stack(old_thread->kernel_stack_top);
+fail_scheduler:
+    if (old_process != 0 && old_thread != 0)
+        (void)user_scheduler_set_current(old_process, old_thread);
+fail_remove:
+    if (!already_registered) (void)user_scheduler_remove(process, thread);
+fail:
+    interrupts_enable();
+    return -1;
 }
