@@ -42,22 +42,27 @@ int sb_resource_policy_core_available(uint32_t feature) {
 int sb_resource_policy_remote_id_valid(const char *resource_id) {
     uint32_t length = 0u;
     uint32_t segment_length = 0u;
+    uint8_t dot_only = 1u;
     if (resource_id == 0 || resource_id[0] == '\0') return 0;
 
-    while (resource_id[length] != '\0') {
+    while (length < SB_RESOURCE_ID_MAX) {
         const uint8_t c = (uint8_t)resource_id[length];
-        if (length >= SB_RESOURCE_ID_MAX) return 0;
+        if (c == '\0') {
+            return segment_length != 0u && !(dot_only != 0u && segment_length <= 2u);
+        }
         if (!((c >= 'a' && c <= 'z') ||
-              (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '/')) return 0;
+              (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '/' || c == '.')) return 0;
         if (c == '/') {
-            if (segment_length == 0u) return 0;
+            if (segment_length == 0u || (dot_only != 0u && segment_length <= 2u)) return 0;
             segment_length = 0u;
+            dot_only = 1u;
         } else {
             ++segment_length;
+            if (c != '.') dot_only = 0u;
         }
         ++length;
     }
-    return segment_length != 0u;
+    return 0;
 }
 
 uint32_t sb_resource_policy_hash_id(const char *resource_id) {
