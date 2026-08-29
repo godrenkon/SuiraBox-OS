@@ -261,3 +261,25 @@ int sb_framebuffer_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t he
 
     return 0;
 }
+
+int sb_framebuffer_draw_glyph8(uint32_t x, uint32_t y, uint64_t bitmap,
+                               uint8_t red, uint8_t green, uint8_t blue) {
+    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
+    uint64_t target_address;
+    const uint32_t pixel = pack_pixel(red, green, blue);
+
+    if (x > UINT32_MAX - 7u || y > UINT32_MAX - 7u ||
+        x >= current.width || y >= current.height) return -1;
+    if (framebuffer_target(&target_address) != 0) return -2;
+
+    for (uint32_t row_index = 0u; row_index < 8u; ++row_index) {
+        const uint8_t row_bits = (uint8_t)(bitmap >> (row_index * 8u));
+        volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(
+            target_address + (uint64_t)(y + row_index) * current.pitch + (uint64_t)x * bytes_per_pixel);
+        for (uint32_t column = 0u; column < 8u; ++column) {
+            if ((row_bits & (uint8_t)(1u << (7u - column))) != 0u)
+                store_pixel(row + (uint64_t)column * bytes_per_pixel, bytes_per_pixel, pixel);
+        }
+    }
+    return 0;
+}
