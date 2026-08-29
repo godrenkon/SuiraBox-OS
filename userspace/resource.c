@@ -1,11 +1,38 @@
 #include "resource.h"
 
-static int valid_text(const char *text, uint32_t max_len) {
-    if (text == 0 || max_len == 0u) return 0;
-    for (uint32_t i = 0u; i < max_len; ++i) {
-        if (text[i] == '\0') return i != 0u;
+static int valid_text(const char *text, uint32_t max_len, uint8_t allow_slash) {
+    uint32_t length = 0u;
+    uint32_t segment = 0u;
+    if (text == 0 || max_len == 0u || text[0] == '\0') return 0;
+    while (text[length] != '\0') {
+        const uint8_t c = (uint8_t)text[length];
+        if (length >= max_len) return 0;
+        if (c == '/') {
+            if (allow_slash == 0u || segment == 0u) return 0;
+            segment = 0u;
+        } else if (!((c >= 'a' && c <= 'z') ||
+                     (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.')) {
+            return 0;
+        } else {
+            ++segment;
+        }
+        ++length;
     }
-    return 0;
+    return segment != 0u;
+}
+
+int sb_resource_id_valid(const char *id) {
+    return valid_text(id, SB_RESOURCE_ID_MAX, 1u);
+}
+
+int sb_resource_path_valid(const char *path) {
+    uint32_t i = 0u;
+    if (!valid_text(path, SB_RESOURCE_PATH_MAX, 1u)) return 0;
+    while (path[i] != '\0') {
+        if (path[i] == '.' && path[i + 1u] == '.') return 0;
+        ++i;
+    }
+    return 1;
 }
 
 const char *sb_resource_repository_url(void) {
@@ -20,23 +47,31 @@ const sb_resource_ref_t *sb_resource_builtin_reference(sb_resource_type_t type,
                                                         uint32_t key) {
     (void)type;
     (void)key;
-    /* Optional payloads are deliberately not compiled into Core. */
+    /* Core payloads are compiled in only where required by the OS baseline. */
     return 0;
 }
 
 int sb_resource_reference_valid(const sb_resource_ref_t *ref) {
     if (ref == 0 || ref->type < SB_RESOURCE_LOCALE ||
-        ref->type > SB_RESOURCE_DOCUMENT || ref->size == 0u ||
-        ref->version == 0u || ref->min_os_api == 0u) return 0;
-    if (!valid_text(ref->id, SB_RESOURCE_ID_MAX) ||
-        !valid_text(ref->path, SB_RESOURCE_PATH_MAX) ||
-        !valid_text(ref->sha256, SB_RESOURCE_SHA256_HEX_SIZE)) return 0;
+        ref->type > SB_RESOURCE_DOCUMENT ||
+        ref->tier > SB_RESOURCE_TIER_REMOTE ||
+        ref->version == 0u || ref->min_os_api == 0u ||
+        ref->compressed_size == 0u ||
+        ref->compressed_size > SB_RESOURCE_MAX_PAYLOAD ||
+        ref->expanded_size == 0u ||
+        ref->expanded_size > SB_RESOURCE_MAX_PAYLOAD ||
+        !sb_resource_id_valid(ref->id) ||
+        !sb_resource_path_valid(ref->path) ||
+        ref->sha256 == 0) return 0;
     for (uint32_t i = 0u; i < SB_RESOURCE_SHA256_HEX_SIZE - 1u; ++i) {
         const char c = ref->sha256[i];
         const int hex = (c >= '0' && c <= '9') ||
                         (c >= 'a' && c <= 'f') ||
                         (c >= 'A' && c <= 'F');
         if (!hex) return 0;
+    }
+    for (uint32_t i = 0u; i < ref->dependency_count; ++i) {
+        if (ref->dependencies[i] == 0 || !sb_resource_id_valid(ref->dependencies[i])) return 0;
     }
     return 1;
 }
@@ -69,4 +104,9 @@ int sb_resource_state_transition(sb_resource_state_t current,
         default:
             return 0;
     }
+}
+
+int sb_resource_can_activate(const sb_resource_ref_t *ref, uint32_t running_api) {
+    if (running_api == 0u || !sb_resource_reference_valid(ref)) return 0;
+    return ref->min_os_api <= running_api;
 }
