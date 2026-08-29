@@ -38,6 +38,7 @@ int main(void) {
     sb_process_t process = {0};
     sb_user_context_t context = {0};
     sb_thread_t *thread;
+    sb_thread_t *thread2;
 
     process.state = SB_PROCESS_CREATED;
     thread = process_create_thread(&process, 1u, 128u);
@@ -55,8 +56,12 @@ int main(void) {
     assert(thread->user_context == &context);
     assert(sb_user_context_validate(&context) == 0);
 
-    assert(process_create_thread(&process, 1u, 128u) != 0);
-    assert(process_create_thread(&process, 2u, 128u) != 0);
+    assert(process_create_thread(&process, 1u, 128u) == 0);
+    thread2 = process_create_thread(&process, 2u, 128u);
+    assert(thread2 != 0);
+    assert(thread2->tid == 2u);
+    assert(process.thread_count == 2u);
+    assert(alloc_count == 2u);
     process_destroy(&process);
     assert(free_count == 2u);
     return 0;
