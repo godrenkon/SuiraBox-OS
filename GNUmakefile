@@ -77,6 +77,7 @@ release-iso: $(RELEASE_KERNEL) $(DESKTOP_ELF) boot/grub.cfg
 	strip --strip-all $(RELEASE_KERNEL) $(DESKTOP_ELF)
 	cp $(RELEASE_KERNEL) $(BUILD)/release-iso/boot/suirabox.elf
 	cp $(DESKTOP_ELF) $(BUILD)/release-iso/boot/sb-desktop.elf
+	cp boot/grub.cfg $(BUILD)/release-iso/boot/grub/grub.cfg
 	grub-mkrescue -o $(BUILD)/suirabox-release.iso $(BUILD)/release-iso >/dev/null
 	sh scripts/check_base_image.sh $(BUILD)/release-iso
 
