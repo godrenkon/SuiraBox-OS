@@ -12,7 +12,7 @@ static int process_pid_in_use(uint64_t pid) {
 }
 
 void process_init(void) {
-    for (uint32_t i = 0; i < SB_MAX_PROCESSES; ++i) {
+    for (uint32_t i = 0u; i < SB_MAX_PROCESSES; ++i) {
         processes[i] = (sb_process_t){0};
         processes[i].state = SB_PROCESS_UNUSED;
     }
@@ -56,7 +56,19 @@ sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t
     thread->tid = tid;
     thread->priority = priority;
     thread->state = SB_PROCESS_CREATED;
+    thread->user_context = 0;
     return thread;
+}
+
+int process_prepare_thread_context(sb_thread_t *thread,
+                                   sb_user_context_t *context,
+                                   uint64_t entry_point,
+                                   uint64_t user_stack_top) {
+    if (thread == 0 || context == 0 || thread->tid == 0u ||
+        thread->state == SB_PROCESS_UNUSED || thread->state == SB_PROCESS_EXITED) return -1;
+    if (sb_user_context_init(context, entry_point, user_stack_top) != 0) return -1;
+    thread->user_context = context;
+    return 0;
 }
 
 sb_process_t *process_get(uint64_t pid) {
