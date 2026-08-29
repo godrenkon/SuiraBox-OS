@@ -14,10 +14,13 @@
 #define SB_RESOURCE_MANAGER_SHA256_HEX 65u
 
 typedef int (*sb_resource_manifest_verify_fn)(void *user,
-                                              const uint8_t *canonical_manifest,
-                                              uint32_t canonical_manifest_size,
                                               const sb_resource_ref_t *manifest,
                                               uint32_t manifest_count);
+typedef int (*sb_resource_manifest_verify_bytes_fn)(void *user,
+                                                    const uint8_t *canonical_manifest,
+                                                    uint32_t canonical_manifest_size,
+                                                    const sb_resource_ref_t *manifest,
+                                                    uint32_t manifest_count);
 typedef int (*sb_resource_cache_lookup_fn)(void *user,
                                            const char *sha256);
 typedef int (*sb_resource_cache_begin_fn)(void *user,
@@ -42,6 +45,7 @@ typedef int (*sb_resource_fetch_fn)(void *user,
 
 typedef struct {
     sb_resource_manifest_verify_fn verify_manifest;
+    sb_resource_manifest_verify_bytes_fn verify_manifest_bytes;
     sb_resource_cache_lookup_fn cache_lookup;
     sb_resource_cache_begin_fn cache_begin;
     sb_resource_cache_write_fn cache_write;
