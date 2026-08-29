@@ -3,7 +3,7 @@ set -eu
 
 # Release build: use the minimal GUI kernel entrypoint instead of the
 # diagnostic development kernel. Development CI keeps the full self-tests.
-CFLAGS_RELEASE='-ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2 -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-ident'
+CFLAGS_RELEASE='-ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2 -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-ident -DSB_KERNEL_DEBUG=0'
 USER_CFLAGS_RELEASE='-ffreestanding -fno-stack-protector -fno-pie -fno-builtin -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2 -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-ident'
 
 rm -rf build
