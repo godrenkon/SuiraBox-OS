@@ -3,7 +3,7 @@
 
 .global sb_timer_irq_stub
 .type sb_timer_irq_stub, @function
-.extern sb_timer_tick
+.extern sb_timer_irq_dispatch
 
 #ifdef SB_KERNEL_DEBUG
 .macro serial_mark ch
@@ -34,13 +34,19 @@ sb_timer_irq_stub:
     pushq %r15
 
     serial_mark 0x45
-    call sb_timer_tick
+    movq %rsp, %rdi
+    call sb_timer_irq_dispatch
+    movq %rax, %rsi
     serial_mark 0x54
 
     movw $0x20, %dx
-    movb $0x20, %al
-    outb %al, %dx
+    movb $0x20, %dl
+    outb %dl, %dx
     serial_mark 0x4F
+
+    testq %rsi, %rsi
+    jz .Ltimer_fault
+    movq %rsi, %rsp
 
     popq %r15
     popq %r14
@@ -59,5 +65,11 @@ sb_timer_irq_stub:
     popq %rax
     serial_mark 0x52
     iretq
+
+.Ltimer_fault:
+    cli
+.Ltimer_fault_halt:
+    hlt
+    jmp .Ltimer_fault_halt
 
 .section .note.GNU-stack,"",@progbits

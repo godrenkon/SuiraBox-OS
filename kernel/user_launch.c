@@ -1,4 +1,5 @@
 #include "user_launch.h"
+#include "user_scheduler.h"
 #include "arch/x86_64/gdt.h"
 #include "arch/x86_64/user_resume.h"
 
@@ -21,6 +22,8 @@ int process_start_user_thread(sb_process_t *process, sb_thread_t *thread) {
     if (sb_user_context_validate(thread->user_context) != 0) return -1;
     if (gdt_try_set_kernel_stack(thread->kernel_stack_top) != 0) return -1;
     if (process_activate(process) != 0) return -1;
+    if (user_scheduler_add(process, thread) != 0 && user_scheduler_current_thread() != thread) return -1;
+    if (user_scheduler_set_current(process, thread) != 0) return -1;
 
     process->state = SB_PROCESS_RUNNING;
     thread->state = SB_PROCESS_RUNNING;

@@ -1,6 +1,8 @@
 #include "timer.h"
 #include "arch/x86_64/interrupts.h"
+#include "arch/x86_64/irq_frame.h"
 #include "scheduler.h"
+#include "user_scheduler.h"
 #include <stdint.h>
 
 #define PIT_COMMAND 0x43u
@@ -99,6 +101,19 @@ void timer_init(void) {
 }
 
 uint64_t timer_ticks(void) { return ticks; }
+
+uintptr_t sb_timer_irq_dispatch(sb_timer_saved_gpr_t *gpr) {
+    ++ticks;
+    scheduler_tick();
+
+    const uintptr_t user_resume_rsp = user_scheduler_timer_dispatch(gpr);
+    if (user_resume_rsp != 0u) return user_resume_rsp;
+
+    if ((ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1u)
+        (void)scheduler_pick_next();
+    return (uintptr_t)gpr;
+}
+
 void sb_timer_tick(void) {
     ++ticks;
     scheduler_tick();
