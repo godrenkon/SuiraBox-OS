@@ -20,4 +20,11 @@ int process_prepare_boot_module(sb_process_t *process,
                                 const char *module_name,
                                 sb_process_image_t *image_info);
 
+int process_prepare_elf_thread(sb_process_t *process,
+                               uint64_t tid,
+                               uint32_t priority,
+                               sb_user_context_t *context,
+                               const sb_process_image_t *image_info,
+                               sb_thread_t **thread_out);
+
 #endif
