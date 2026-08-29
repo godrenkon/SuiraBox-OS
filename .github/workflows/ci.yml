@@ -61,6 +61,7 @@ jobs:
           grep -F "Phase 1 bootstrap complete." qemu.log
           grep -F "Userspace: entering SB Desktop ring3" qemu.log
           grep -F "Userspace: ring3 syscall reached" qemu.log
+          grep -F "Userspace: GUI framebuffer draw reached" qemu.log
 
       - name: Framebuffer smoke test
         run: |
@@ -78,6 +79,7 @@ jobs:
           grep -F "Display: framebuffer mapped" qemu-gui.log
           grep -F "Display: framebuffer clear OK" qemu-gui.log
           grep -F "Desktop: kernel fallback surface rendered" qemu-gui.log
+          grep -F "Userspace: GUI framebuffer draw reached" qemu-gui.log
           grep -F "Memory: VMM map/translate/unmap OK" qemu-gui.log
 
       - name: Upload kernel artifacts
