@@ -4,6 +4,10 @@ include Makefile
 
 LAUNCHER_OBJ := $(BUILD)/launcher.o
 DESKTOP_SHELL_OBJ := $(BUILD)/desktop_shell.o
+SETTINGS_POLICY_OBJ := $(BUILD)/settings_policy.o
+SETTINGS_VIEW_OBJ := $(BUILD)/settings_view.o
+SETTINGS_RUNTIME_OBJ := $(BUILD)/settings_runtime.o
+RESOURCE_POLICY_OBJ := $(BUILD)/resource_policy.o
 STORAGE_OBJ := $(BUILD)/storage.o
 CONFIG_STORE_OBJ := $(BUILD)/config_store.o
 LAUNCHER_HOST_TEST := $(BUILD)/launcher-host-test
@@ -15,6 +19,18 @@ $(LAUNCHER_OBJ): userspace/launcher.c userspace/launcher.h | $(BUILD)
 
 $(DESKTOP_SHELL_OBJ): userspace/desktop_shell.c userspace/desktop_shell.h userspace/launcher.h userspace/gui.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -mcmodel=large -Iuserspace -c $< -o $@
+
+$(RESOURCE_POLICY_OBJ): userspace/resource_policy.c userspace/resource_policy.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
+$(SETTINGS_POLICY_OBJ): userspace/settings_policy.c userspace/settings_policy.h userspace/resource_policy.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
+$(SETTINGS_VIEW_OBJ): userspace/settings_view.c userspace/settings_view.h userspace/settings_policy.h userspace/resource_policy.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
+$(SETTINGS_RUNTIME_OBJ): userspace/settings_runtime.c userspace/settings_runtime.h userspace/settings_view.h userspace/settings_policy.h userspace/syscall.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 
 $(LAUNCHER_HOST_TEST): tests/launcher_host_test.c userspace/launcher.c userspace/launcher.h | $(BUILD)
 	$(CC) -Wall -Wextra -Werror -Iuserspace tests/launcher_host_test.c userspace/launcher.c -o $@
@@ -35,8 +51,8 @@ $(KERNEL): $(STORAGE_OBJ) $(CONFIG_STORE_OBJ)
 $(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
-$(DESKTOP_ELF): $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ)
-$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ)
+$(DESKTOP_ELF): $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ) $(RESOURCE_POLICY_OBJ) $(SETTINGS_POLICY_OBJ) $(SETTINGS_VIEW_OBJ) $(SETTINGS_RUNTIME_OBJ)
+$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ) $(RESOURCE_POLICY_OBJ) $(SETTINGS_POLICY_OBJ) $(SETTINGS_VIEW_OBJ) $(SETTINGS_RUNTIME_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ) $(RESOURCE_POLICY_OBJ) $(SETTINGS_POLICY_OBJ) $(SETTINGS_VIEW_OBJ) $(SETTINGS_RUNTIME_OBJ)
 
 check: host-launcher-test
