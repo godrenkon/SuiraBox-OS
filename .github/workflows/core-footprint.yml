@@ -9,10 +9,12 @@ on:
 
 jobs:
   footprint:
-    name: Core footprint policy
+    name: Core footprint and resource policy
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Check source footprint
         run: python3 tools/check_core_footprint.py
+      - name: Check resource manifest
+        run: python3 tools/check_resource_manifest.py
