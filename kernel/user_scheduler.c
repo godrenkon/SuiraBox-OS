@@ -20,7 +20,7 @@ static int slot_matches(const sb_user_sched_slot_t *slot,
 }
 
 static int thread_runnable(const sb_thread_t *thread) {
-    return thread != 0 && thread->user_context != 0u &&
+    return thread != 0 && thread->user_context != 0 &&
            thread->kernel_resume_stack_pointer != 0u &&
            (thread->state == SB_PROCESS_CREATED || thread->state == SB_PROCESS_RUNNING);
 }
