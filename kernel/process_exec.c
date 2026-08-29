@@ -45,7 +45,8 @@ int process_prepare_elf(sb_process_t *process,
     if (process == 0 || image == 0 || image_size == 0u || image_info == 0 ||
         process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED) return -1;
 
-    /* process_create() normally creates the address space already. */
+    *image_info = (sb_process_image_t){0};
+
     if (process->address_space.pml4_physical == 0u &&
         address_space_create(&process->address_space) != 0) {
         return -1;
@@ -85,4 +86,27 @@ int process_prepare_boot_module(sb_process_t *process,
                                 (const void *)(uintptr_t)module.start,
                                 module.end - module.start,
                                 image_info);
+}
+
+int process_prepare_elf_thread(sb_process_t *process,
+                               uint64_t tid,
+                               uint32_t priority,
+                               sb_user_context_t *context,
+                               const sb_process_image_t *image_info,
+                               sb_thread_t **thread_out) {
+    if (process == 0 || context == 0 || image_info == 0 || thread_out == 0 ||
+        image_info->entry_point == 0u || image_info->user_stack_top == 0u ||
+        process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED) return -1;
+
+    *thread_out = 0;
+    if (sb_user_context_init(context,
+                             image_info->entry_point,
+                             image_info->user_stack_top) != 0) return -1;
+
+    sb_thread_t *thread = process_create_thread(process, tid, priority);
+    if (thread == 0) return -1;
+
+    thread->user_context = context;
+    *thread_out = thread;
+    return 0;
 }
