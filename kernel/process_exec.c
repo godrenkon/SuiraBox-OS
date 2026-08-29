@@ -107,6 +107,11 @@ int process_prepare_elf_thread(sb_process_t *process,
     if (thread == 0) return -1;
 
     thread->user_context = context;
+    if (process_prepare_user_resume_frame(thread) != 0) {
+        (void)process_destroy_thread(process, thread);
+        return -1;
+    }
+
     *thread_out = thread;
     return 0;
 }

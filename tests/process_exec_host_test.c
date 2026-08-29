@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include "../kernel/process_exec.h"
+#include "../kernel/arch/x86_64/irq_frame.h"
 
 int address_space_create(sb_address_space_t *space) {
     if (space == 0) return -1;
@@ -52,6 +53,34 @@ int main(void) {
     assert(thread->user_context == &context);
     assert(context.rip == SB_USER_BASE);
     assert(context.rsp == SB_USER_STACK_TOP);
+    assert(thread->kernel_resume_stack_pointer != 0u);
+    assert(thread->kernel_resume_stack_pointer ==
+           thread->kernel_stack_top - SB_USER_RESUME_FRAME_SIZE);
+
+    const sb_timer_saved_gpr_t *gpr =
+        (const sb_timer_saved_gpr_t *)(uintptr_t)thread->kernel_resume_stack_pointer;
+    const sb_x86_64_user_iret_frame_t *iret =
+        (const sb_x86_64_user_iret_frame_t *)(uintptr_t)(thread->kernel_resume_stack_pointer + sizeof(*gpr));
+    assert(gpr->r15 == context.r15);
+    assert(gpr->r14 == context.r14);
+    assert(gpr->r13 == context.r13);
+    assert(gpr->r12 == context.r12);
+    assert(gpr->rbp == context.rbp);
+    assert(gpr->rbx == context.rbx);
+    assert(gpr->r11 == context.r11);
+    assert(gpr->r10 == context.r10);
+    assert(gpr->r9 == context.r9);
+    assert(gpr->r8 == context.r8);
+    assert(gpr->rdi == context.rdi);
+    assert(gpr->rsi == context.rsi);
+    assert(gpr->rdx == context.rdx);
+    assert(gpr->rcx == context.rcx);
+    assert(gpr->rax == context.rax);
+    assert(iret->rip == context.rip);
+    assert(iret->cs == context.cs);
+    assert(iret->rflags == context.rflags);
+    assert(iret->rsp == context.rsp);
+    assert(iret->ss == context.ss);
 
     assert(process_prepare_elf_thread(&process, 1u, 128u, &context, &image, &thread) != 0);
     assert(thread == 0);

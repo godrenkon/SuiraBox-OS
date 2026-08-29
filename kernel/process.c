@@ -17,15 +17,6 @@ static void clear_kernel_stack(uint8_t *stack) {
     for (uint32_t i = 0u; i < SB_USER_KERNEL_STACK_SIZE; ++i) stack[i] = 0u;
 }
 
-static void process_remove_last_thread(sb_process_t *process) {
-    if (process == 0 || process->thread_count == 0u) return;
-    sb_thread_t *thread = &process->threads[process->thread_count - 1u];
-    if (thread->kernel_stack_base != 0u)
-        pmm_free_page((void *)(uintptr_t)thread->kernel_stack_base);
-    *thread = (sb_thread_t){0};
-    --process->thread_count;
-}
-
 void process_init(void) {
     for (uint32_t i = 0u; i < SB_MAX_PROCESSES; ++i) {
         processes[i] = (sb_process_t){0};
@@ -81,6 +72,17 @@ sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t
     thread->kernel_resume_stack_pointer = 0u;
     ++process->thread_count;
     return thread;
+}
+
+int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
+    if (process == 0 || thread == 0 || process->thread_count == 0u) return -1;
+    sb_thread_t *last = &process->threads[process->thread_count - 1u];
+    if (thread != last) return -1;
+    if (thread->kernel_stack_base != 0u)
+        pmm_free_page((void *)(uintptr_t)thread->kernel_stack_base);
+    *thread = (sb_thread_t){0};
+    --process->thread_count;
+    return 0;
 }
 
 int process_prepare_thread_context(sb_thread_t *thread,

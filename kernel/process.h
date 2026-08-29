@@ -43,6 +43,7 @@ typedef struct {
 void process_init(void);
 sb_process_t *process_create(uint64_t pid);
 sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t priority);
+int process_destroy_thread(sb_process_t *process, sb_thread_t *thread);
 int process_prepare_thread_context(sb_thread_t *thread,
                                    sb_user_context_t *context,
                                    uint64_t entry_point,
