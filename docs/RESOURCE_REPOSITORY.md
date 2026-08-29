@@ -33,6 +33,8 @@ IDs and paths are lowercase-safe relative names. `.` and `..` path components ar
 
 `manifest-v1.json` is the signed metadata object. `manifest-v1.sig` is a detached signature over the canonical UTF-8 manifest bytes. The verifier must validate the signature against a built-in trust anchor, reject unknown signing keys, reject malformed or unsupported schema versions, and enforce freshness/rollback policy before the parsed entries are exposed to the resource manager.
 
+The Resource Manager v2 signed initialization contract passes both the exact canonical manifest bytes and the parsed entries to the verifier. A successful verification therefore binds the signature to the bytes from which the parsed manifest was produced instead of trusting an independently supplied in-memory entry array.
+
 ## Publication
 
 A new payload must be uploaded before the manifest references it. The publisher computes SHA-256 and exact byte size from the final immutable payload, updates the manifest, signs the canonical manifest bytes, and publishes the manifest only after every referenced object is available.
@@ -42,7 +44,9 @@ A resource is never replaced in place under an existing SHA-256 object path. New
 ## Client behavior
 
 ```text
-load trusted manifest
+load trusted manifest bytes
+  -> validate canonical bytes and signature
+  -> parse manifest
   -> select resource by stable ID
   -> resolve dependencies
   -> check local hash-addressed cache
