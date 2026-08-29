@@ -105,7 +105,7 @@ static uint64_t syscall_config_get(void) {
     sb_config_store_record_t record;
     if (!sb_config_store_get(&record)) return 0u;
     return 1u | ((uint64_t)record.language << 8) |
-           ((uint64_t)record.generation << 16);
+           ((uint64_t)record.optional_enabled_mask << 16);
 }
 
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
@@ -157,9 +157,9 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_CONFIG_GET:
             return syscall_config_get();
         case SB_SYS_CONFIG_SET:
-            if (arg0 > 3u) return UINT64_MAX;
+            if (arg0 > 3u || arg1 > SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED) return UINT64_MAX;
             if (!sb_storage_ready()) return SB_CONFIG_SET_VOLATILE;
-            return sb_config_store_set((uint8_t)arg0) == 0 ? 0u : UINT64_MAX;
+            return sb_config_store_set((uint8_t)arg0, (uint32_t)arg1) == 0 ? 0u : UINT64_MAX;
         case SB_SYS_YIELD:
             syscall_idle();
             return 0u;
