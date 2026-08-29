@@ -28,8 +28,10 @@ arch_enter_user:
 
 /*
  * rdi = validated sb_user_context_t.
- * The frame is constructed in iretq order while rdi still names the context;
- * general registers are restored only after the frame has been staged.
+ * Offsets intentionally mirror user_context.h exactly:
+ * r15..r8=0..56, rsi=64, rdi=72, rbp=80, rdx=88,
+ * rcx=96, rbx=104, rax=112, rip=120, cs=128,
+ * rflags=136, rsp=144, ss=152.
  */
 arch_enter_user_context:
     testq %rdi, %rdi
@@ -62,6 +64,8 @@ arch_enter_user_context:
     movq 96(%rdi), %rbx
     movq 104(%rdi), %rdi
     movq 112(%rdi), %rax
+    /* rdi must be restored from offset 72; reload the correct value after base use. */
+    movq 72(%rsp), %rdi
     iretq
 1:
     ud2
