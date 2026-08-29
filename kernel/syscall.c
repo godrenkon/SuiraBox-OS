@@ -17,6 +17,7 @@ static void io_out8(uint16_t port, uint8_t value) {
 }
 
 static uint8_t syscall_user_smoke_seen;
+static uint8_t syscall_user_draw_seen;
 
 static void syscall_user_smoke_char(char c) {
     while (1) {
@@ -31,6 +32,13 @@ static void syscall_user_smoke_mark(void) {
     if (syscall_user_smoke_seen != 0u) return;
     syscall_user_smoke_seen = 1u;
     static const char message[] = "Userspace: ring3 syscall reached\r\n";
+    for (uint32_t i = 0u; message[i] != '\0'; ++i) syscall_user_smoke_char(message[i]);
+}
+
+static void syscall_user_draw_mark(void) {
+    if (syscall_user_draw_seen != 0u) return;
+    syscall_user_draw_seen = 1u;
+    static const char message[] = "Userspace: GUI framebuffer draw reached\r\n";
     for (uint32_t i = 0u; message[i] != '\0'; ++i) syscall_user_smoke_char(message[i]);
 }
 
@@ -144,10 +152,12 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_DISPLAY_INFO:
             return syscall_display_info();
         case SB_SYS_DISPLAY_CLEAR:
+            syscall_user_draw_mark();
             return sb_framebuffer_clear((uint8_t)((arg0 >> 16) & 0xFFu),
                                         (uint8_t)((arg0 >> 8) & 0xFFu),
                                         (uint8_t)(arg0 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
         case SB_SYS_DISPLAY_RECT:
+            syscall_user_draw_mark();
             if (arg0 > UINT32_MAX || arg1 > UINT32_MAX || arg2 > UINT32_MAX || arg3 > UINT32_MAX || arg4 > UINT32_MAX)
                 return UINT64_MAX;
             return sb_framebuffer_fill_rect((uint32_t)arg0, (uint32_t)arg1,
@@ -158,6 +168,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_INPUT_KEY:
             return syscall_input_key();
         case SB_SYS_DISPLAY_GLYPH:
+            syscall_user_draw_mark();
             if (arg0 > UINT32_MAX - 7u || arg1 > UINT32_MAX - 7u || arg3 > UINT32_MAX)
                 return UINT64_MAX;
             return sb_framebuffer_draw_glyph8((uint32_t)arg0, (uint32_t)arg1, arg2,
@@ -165,6 +176,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                                               (uint8_t)((arg3 >> 8) & 0xFFu),
                                               (uint8_t)(arg3 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
         case SB_SYS_DISPLAY_GLYPH_PAIR:
+            syscall_user_draw_mark();
             if (arg0 > UINT32_MAX - 17u || arg1 > UINT32_MAX - 7u || arg4 > UINT32_MAX)
                 return UINT64_MAX;
             if (sb_framebuffer_draw_glyph8((uint32_t)arg0, (uint32_t)arg1, arg2,
@@ -208,4 +220,4 @@ uint64_t sb_syscall_dispatch_entry(uint64_t number, uint64_t arg0, uint64_t arg1
 void syscall_init(void) {
     (void)sb_storage_init();
     mouse_init();
-} 
+}
