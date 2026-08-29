@@ -164,7 +164,8 @@ uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr) {
 
         current_thread->state = SB_PROCESS_CREATED;
         next_thread->state = SB_PROCESS_RUNNING;
-        current_process->state = SB_PROCESS_RUNNING;
+        if (current_process != next_process)
+            current_process->state = SB_PROCESS_CREATED;
         next_process->state = SB_PROCESS_RUNNING;
         current_index = candidate;
         quantum_ticks = 0u;
