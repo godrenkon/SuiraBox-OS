@@ -3,8 +3,11 @@ set -eu
 
 max_bytes=$((512 * 1024))
 status=0
+paths=$(mktemp)
+trap 'rm -f "$paths"' EXIT HUP INT TERM
 
-git ls-files | while IFS= read -r path; do
+git ls-files > "$paths"
+while IFS= read -r path; do
     case "$path" in
         .git/*|build/*) continue ;;
     esac
@@ -21,6 +24,6 @@ git ls-files | while IFS= read -r path; do
         printf 'large tracked file exceeds base-source budget (%s bytes): %s\n' "$size" "$path" >&2
         status=1
     fi
-done
+done < "$paths"
 
 exit "$status"
