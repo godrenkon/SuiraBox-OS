@@ -84,6 +84,7 @@ static uint64_t syscall_input_mouse(void) {
     }
     status = io_in8(0x64u);
     if ((status & 0x01u) == 0u || (status & 0x20u) == 0u) {
+        if ((status & 0x01u) != 0u && (status & 0x20u) == 0u) return 0u;
         syscall_idle();
         return 0u;
     }
