@@ -48,16 +48,22 @@ sb_syscall_int80_stub:
      *   56: original r10 / arg3
      *   64: original r11
      */
+    movq 0(%rsp), %rdi
+    movq 8(%rsp), %rsi
+    movq 16(%rsp), %rdx
+    movq 24(%rsp), %rcx
+    movq 56(%rsp), %r8
+    movq 40(%rsp), %r9
+
+    /*
+     * At this point the saved frame is 16-byte aligned for the user entry
+     * path.  Shift by eight bytes so the C call observes the SysV ABI's
+     * required 8 mod 16 %rsp before CALL.
+     */
     subq $8, %rsp
-    movq 8(%rsp), %rdi
-    movq 16(%rsp), %rsi
-    movq 24(%rsp), %rdx
-    movq 32(%rsp), %rcx
-    movq 64(%rsp), %r8
-    movq 48(%rsp), %r9
     call sb_syscall_dispatch_entry
 
-    /* Save the return value over the original RAX before restoring GPRs. */
+    /* Store the result in the reserved RAX slot, then restore all GPRs. */
     movq %rax, 8(%rsp)
     addq $8, %rsp
     popq %rax
