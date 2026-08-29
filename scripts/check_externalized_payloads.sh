@@ -4,7 +4,7 @@ set -eu
 max_bytes=$((512 * 1024))
 status=0
 
-while IFS= read -r -d '' path; do
+git ls-files | while IFS= read -r path; do
     case "$path" in
         .git/*|build/*) continue ;;
     esac
@@ -21,8 +21,6 @@ while IFS= read -r -d '' path; do
         printf 'large tracked file exceeds base-source budget (%s bytes): %s\n' "$size" "$path" >&2
         status=1
     fi
-done <<EOF
-$(git ls-files -z | tr '\0' '\n')
-EOF
+done
 
 exit "$status"
