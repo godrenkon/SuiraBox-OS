@@ -59,7 +59,8 @@ int elf64_validate(const void *image, uint64_t size,
 
         if (ph->align != 0u) {
             if (!power_of_two(ph->align) ||
-                ((ph->virtual_address - ph->offset) & (ph->align - 1u)) != 0u)
+                (ph->virtual_address & (ph->align - 1u)) !=
+                (ph->offset & (ph->align - 1u)))
                 return -1;
         }
 
