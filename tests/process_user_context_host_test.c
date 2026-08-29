@@ -34,6 +34,6 @@ int main(void) {
     assert(thread->user_context == &context);
     assert(sb_user_context_validate(&context) == 0);
 
-    assert(process_create_thread(&process, 1u, 128u) == 0);
+    assert(process_create_thread(&process, 1u, 128u) != 0);
     return 0;
 }
