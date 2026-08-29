@@ -7,7 +7,10 @@ static sb_fat32_t g_fat32;
 static uint8_t g_ready;
 
 int sb_storage_init(void) {
-    sb_block_device_t *device = sb_ata_pio_device();
+    sb_block_device_t *device;
+    if (g_ready != 0u) return 1;
+
+    device = sb_ata_pio_device();
     if (device == 0) {
         g_ready = 0u;
         return 0;
