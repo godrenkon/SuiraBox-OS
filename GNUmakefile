@@ -4,6 +4,8 @@ include Makefile
 
 LAUNCHER_OBJ := $(BUILD)/launcher.o
 DESKTOP_SHELL_OBJ := $(BUILD)/desktop_shell.o
+STORAGE_OBJ := $(BUILD)/storage.o
+CONFIG_STORE_OBJ := $(BUILD)/config_store.o
 LAUNCHER_HOST_TEST := $(BUILD)/launcher-host-test
 
 .PHONY: host-launcher-test
@@ -19,6 +21,19 @@ $(LAUNCHER_HOST_TEST): tests/launcher_host_test.c userspace/launcher.c userspace
 
 host-launcher-test: $(LAUNCHER_HOST_TEST)
 	$(LAUNCHER_HOST_TEST)
+
+$(STORAGE_OBJ): kernel/storage.c kernel/storage.h kernel/ata_pio.h kernel/vfs.h kernel/block.h kernel/fs/fat32.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
+
+$(CONFIG_STORE_OBJ): kernel/config_store.c kernel/config_store.h kernel/storage.h kernel/fs/fat32.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
+
+$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/timer.h kernel/scheduler.h kernel/framebuffer.h kernel/storage.h kernel/config_store.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
+
+$(KERNEL): $(STORAGE_OBJ) $(CONFIG_STORE_OBJ)
+$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
 $(DESKTOP_ELF): $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ)
 $(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ) userspace/user.ld
