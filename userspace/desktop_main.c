@@ -183,24 +183,33 @@ void sb_desktop_main(void) {
         if (key != 0u && (key & 0x80u) == 0u) {
             sb_gui_event_t event = {SB_GUI_EVENT_KEY, g_cursor_x, g_cursor_y, 0, 0, 0, (uint8_t)key};
             if (sb_gui_event_queue_push(&events, &event) == 0) {
-                while (sb_gui_event_queue_pop(&events, &event) == 0 && first_boot != 0u) {
-                    if (event.key == 0x39u) {
-                        dropdown_open = dropdown_open == 0u ? 1u : 0u;
-                        draw_first_boot(width, height, selection, dropdown_open);
-                    } else if (dropdown_open != 0u && event.key == 0x48u && selection > 0u) {
-                        --selection; (void)commit_language(&config, selection); draw_first_boot(width, height, selection, dropdown_open);
-                    } else if (dropdown_open != 0u && event.key == 0x50u && selection < 3u) {
-                        ++selection; (void)commit_language(&config, selection); draw_first_boot(width, height, selection, dropdown_open);
-                    } else if (event.key == 0x1Cu) {
-                        if (dropdown_open != 0u) {
-                            dropdown_open = 0u; draw_first_boot(width, height, selection, dropdown_open);
-                        } else if (persist_language(&config, selection) == 0) {
-                            first_boot = 0u; main_window->visible = 1u; sb_surface_damage_all(&surface);
-                            present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
+                while (sb_gui_event_queue_pop(&events, &event) == 0) {
+                    if (first_boot != 0u) {
+                        if (event.key == 0x39u) {
+                            dropdown_open = dropdown_open == 0u ? 1u : 0u;
+                            draw_first_boot(width, height, selection, dropdown_open);
+                        } else if (dropdown_open != 0u && event.key == 0x48u && selection > 0u) {
+                            --selection;
+                            (void)commit_language(&config, selection);
+                            draw_first_boot(width, height, selection, dropdown_open);
+                        } else if (dropdown_open != 0u && event.key == 0x50u && selection < 3u) {
+                            ++selection;
+                            (void)commit_language(&config, selection);
+                            draw_first_boot(width, height, selection, dropdown_open);
+                        } else if (event.key == 0x1Cu) {
+                            if (dropdown_open != 0u) {
+                                dropdown_open = 0u;
+                                draw_first_boot(width, height, selection, dropdown_open);
+                            } else if (persist_language(&config, selection) == 0) {
+                                first_boot = 0u;
+                                main_window->visible = 1u;
+                                sb_surface_damage_all(&surface);
+                                present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
+                            }
                         }
+                        continue;
                     }
-                }
-                if (first_boot == 0u && sb_gui_event_queue_pop(&events, &event) == 0) {
+
                     if (event.key == 0x48u || event.key == 0x50u) {
                         (void)sb_desktop_shell_key(&shell, event.key);
                         sb_surface_damage_all(&surface);
