@@ -7,7 +7,7 @@
 #define SB_SETTINGS_RUNTIME_X 120u
 #define SB_SETTINGS_RUNTIME_Y 108u
 #define SB_SETTINGS_RUNTIME_W 560u
-#define SB_SETTINGS_RUNTIME_H 420u
+#define SB_SETTINGS_RUNTIME_HEIGHT 420u
 
 typedef struct {
     sb_settings_view_t view;
