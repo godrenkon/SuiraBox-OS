@@ -17,6 +17,7 @@
 #define SB_SYS_YIELD           11u
 #define SB_SYS_DISPLAY_GLYPH_PAIR 12u
 #define SB_CONFIG_SET_VOLATILE 1u
+#define SB_CONFIG_SET_KEEP_OPTIONS 0xFFFFFFFFu
 
 #ifdef SB_HOST_TEST
 uint64_t sb_syscall0(uint64_t number);
@@ -36,7 +37,7 @@ uint64_t sb_display_glyph_pair(uint32_t x, uint32_t y, uint64_t bitmap_a, uint64
 uint64_t sb_config_get(void);
 uint64_t sb_config_set_with_options(uint32_t language, uint32_t optional_enabled_mask);
 static inline uint64_t sb_config_set(uint32_t language) {
-    return sb_config_set_with_options(language, 0u);
+    return sb_config_set_with_options(language, SB_CONFIG_SET_KEEP_OPTIONS);
 }
 uint64_t sb_yield(void);
 #else
@@ -107,7 +108,7 @@ static inline uint64_t sb_display_glyph_pair(uint32_t x, uint32_t y, uint64_t bi
     register uint64_t rdx __asm__("rdx") = bitmap_a;
     register uint64_t r10 __asm__("r10") = bitmap_b;
     register uint64_t r8 __asm__("r8") = rgb;
-    __asm__ volatile ("int $0x80" : "=a"(result) : "a"(SB_SYS_DISPLAY_GLYPH_PAIR), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r"(r8) : "memory");
+    __asm__ volatile ("int $0x80" : "=a"(result) : "a"(SB_SYS_DISPLAY_GLYPH_PAIR), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r8"(r8) : "memory");
     return result;
 }
 static inline uint64_t sb_config_get(void) { return sb_syscall0(SB_SYS_CONFIG_GET); }
@@ -115,7 +116,7 @@ static inline uint64_t sb_config_set_with_options(uint32_t language, uint32_t op
     return sb_syscall2(SB_SYS_CONFIG_SET, language, optional_enabled_mask);
 }
 static inline uint64_t sb_config_set(uint32_t language) {
-    return sb_config_set_with_options(language, 0u);
+    return sb_config_set_with_options(language, SB_CONFIG_SET_KEEP_OPTIONS);
 }
 static inline uint64_t sb_yield(void) { return sb_syscall0(SB_SYS_YIELD); }
 #endif
