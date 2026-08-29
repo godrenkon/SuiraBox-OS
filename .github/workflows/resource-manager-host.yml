@@ -1,0 +1,22 @@
+name: SuiraBox Resource Manager Host Test
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+
+jobs:
+  resource-manager-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile resource manager host test
+        run: |
+          mkdir -p build
+          gcc -std=c11 -Wall -Wextra -Werror -pedantic \
+            -Iuserspace \
+            tests/resource_manager_host_test.c userspace/resource_manager.c \
+            -o build/resource-manager-host-test
+      - name: Run resource manager host test
+        run: build/resource-manager-host-test
