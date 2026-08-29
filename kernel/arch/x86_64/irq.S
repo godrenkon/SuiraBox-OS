@@ -34,11 +34,27 @@ sb_timer_irq_stub:
     pushq %r15
 
     serial_mark 0x45
-    /* Preserve SysV x86-64 stack alignment before entering C. */
+    /*
+     * The hardware frame is immediately above the saved GPRs.  A CPL3 IRQ
+     * has a five-word frame, so with a 16-byte-aligned TSS stack top the saved
+     * GPR pointer is already correctly aligned for the SysV C call.  A CPL0
+     * IRQ has only a three-word frame and therefore needs an eight-byte shift.
+     */
+    movq 128(%rsp), %rax
+    testb $3, %al
+    jnz .Ltimer_user_call
+
     subq $8, %rsp
     leaq 8(%rsp), %rdi
     call sb_timer_irq_dispatch
     addq $8, %rsp
+    jmp .Ltimer_dispatch_done
+
+.Ltimer_user_call:
+    movq %rsp, %rdi
+    call sb_timer_irq_dispatch
+
+.Ltimer_dispatch_done:
     movq %rax, %rsi
     serial_mark 0x54
 
