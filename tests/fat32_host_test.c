@@ -32,6 +32,13 @@ static uint32_t get_le32(const uint8_t *p) {
            ((uint32_t)p[3] << 24);
 }
 
+static int all_zero(const uint8_t *buffer, uint32_t length) {
+    for (uint32_t i = 0u; i < length; ++i) {
+        if (buffer[i] != 0u) return 0;
+    }
+    return 1;
+}
+
 static sb_block_status_t disk_read(sb_block_device_t *device, uint64_t lba,
                                    uint32_t count, void *buffer) {
     if (device == 0 || buffer == 0 || count == 0 || lba >= device->sector_count ||
@@ -175,9 +182,8 @@ int main(void) {
     if (!expect(sb_fat32_read_file(&fs, &created, 0u,
                                    (uint32_t)(sizeof(created_contents) - 1u), buffer) != 0,
                 "created root file read failed")) return 1;
-    if (!expect(memcmp(buffer, "", 0u) == 0 &&
-                memcmp(buffer, created_contents, sizeof(created_contents) - 1u) != 0,
-                "new file unexpectedly contained non-zero data")) return 1;
+    if (!expect(all_zero((const uint8_t *)buffer, (uint32_t)(sizeof(created_contents) - 1u)),
+                "new file was not zero-initialized")) return 1;
     if (!expect(sb_fat32_write_file(&fs, &created, 0u,
                                     (uint32_t)(sizeof(created_contents) - 1u),
                                     created_contents) != 0,
@@ -190,7 +196,7 @@ int main(void) {
                 "created root file contents are wrong")) return 1;
     if (!expect(sb_fat32_create_root_file(&fs, "CONFIG.BIN", 32u, &found) == 0,
                 "duplicate root file was unexpectedly created")) return 1;
-    if (!expect(sb_fat32_create_root_file(&fs, "TOO-LONG.TXT", 4u, &found) == 0,
+    if (!expect(sb_fat32_create_root_file(&fs, "TOO-LONG9.TXT", 4u, &found) == 0,
                 "invalid 8.3 filename was unexpectedly accepted")) return 1;
     return 0;
 }
