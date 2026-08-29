@@ -5,7 +5,7 @@ int sb_user_context_from_timer_frame(sb_user_context_t *context,
                                      const sb_x86_64_user_iret_frame_t *iret) {
     if (context == 0 || gpr == 0 || iret == 0) return -1;
 
-    *context = (sb_user_context_t){
+    sb_user_context_t next = {
         .r15 = gpr->r15,
         .r14 = gpr->r14,
         .r13 = gpr->r13,
@@ -27,5 +27,8 @@ int sb_user_context_from_timer_frame(sb_user_context_t *context,
         .rsp = iret->rsp,
         .ss = iret->ss
     };
-    return sb_user_context_validate(context);
+
+    if (sb_user_context_validate(&next) != 0) return -1;
+    *context = next;
+    return 0;
 }
