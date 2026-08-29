@@ -66,6 +66,10 @@ int main(void) {
     assert(user_scheduler_timer_dispatch(gpr) == t2.kernel_resume_stack_pointer);
     assert(user_scheduler_current_thread() == &t2);
     assert(user_scheduler_current_process() == &p2);
+    assert(p1.state == SB_PROCESS_CREATED);
+    assert(p2.state == SB_PROCESS_RUNNING);
+    assert(t1.state == SB_PROCESS_CREATED);
+    assert(t2.state == SB_PROCESS_RUNNING);
     assert(c1.rip == 0x400000u && c1.cs == 0x23u && c1.rsp == 0x7FFFF000u);
     assert(process_activate_calls == 1 && gdt_calls == 1);
 
@@ -88,6 +92,10 @@ int main(void) {
         assert(user_scheduler_timer_dispatch(gpr) == (uintptr_t)gpr);
     assert(user_scheduler_current_thread() == &t1);
     assert(user_scheduler_current_process() == &p1);
+    assert(p1.state == SB_PROCESS_RUNNING);
+    assert(p2.state == SB_PROCESS_RUNNING);
+    assert(t1.state == SB_PROCESS_RUNNING);
+    assert(t2.state == SB_PROCESS_RUNNING);
     assert(process_activate_calls == 2);
     assert(gdt_calls == 1);
 
