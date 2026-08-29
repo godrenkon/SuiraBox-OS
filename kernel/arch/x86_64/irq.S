@@ -35,27 +35,23 @@ sb_timer_irq_stub:
 
     serial_mark 0x45
     /*
-     * The hardware frame is immediately above the saved GPRs.  A CPL3 IRQ
-     * has a five-word frame; a CPL0 IRQ has only a three-word frame.
-     * With a 16-byte-aligned kernel stack top, this makes the two paths
-     * differ by eight bytes at the C-call boundary.
+     * The hardware frame is immediately above the saved GPRs.
+     * RSP0 is 16-byte aligned. Both CPL0 and CPL3 interrupt frames have an
+     * even number of eight-byte words (3 and 5 respectively), and the stub
+     * saves 15 words, so RSP is 16-byte aligned before the C call in either
+     * path. The scheduler receives the original GPR-save address.
      */
     movq 128(%rsp), %rax
     testb $3, %al
     jnz .Ltimer_user_call
 
-    subq $8, %rsp
-    leaq 8(%rsp), %rdi
+    movq %rsp, %rdi
     call sb_timer_irq_dispatch
-    addq $8, %rsp
     jmp .Ltimer_dispatch_done
 
 .Ltimer_user_call:
-    /* CPL3 path also needs the SysV pre-call 8 mod 16 alignment. */
-    subq $8, %rsp
-    leaq 8(%rsp), %rdi
+    movq %rsp, %rdi
     call sb_timer_irq_dispatch
-    addq $8, %rsp
 
 .Ltimer_dispatch_done:
     movq %rax, %rsi
@@ -94,5 +90,7 @@ sb_timer_irq_stub:
 .Ltimer_fault_halt:
     hlt
     jmp .Ltimer_fault_halt
+
+.size sb_timer_irq_stub, .-sb_timer_irq_stub
 
 .section .note.GNU-stack,"",@progbits
