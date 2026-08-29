@@ -23,8 +23,8 @@
  *   r8  = arg3
  *   r9  = arg4
  *
- * Nine registers are saved before entering C. The offsets below deliberately
- * map the original userspace registers, not the save-order positions.
+ * Preserve every userspace GPR except RAX, which carries the syscall result.
+ * Keep the C-call stack aligned according to the SysV x86-64 ABI.
  */
 sb_syscall_int80_stub:
     pushq %r11
@@ -48,15 +48,27 @@ sb_syscall_int80_stub:
      *   56: original r10 / arg3
      *   64: original r11
      */
-    movq 0(%rsp), %rdi
-    movq 8(%rsp), %rsi
-    movq 16(%rsp), %rdx
-    movq 24(%rsp), %rcx
-    movq 56(%rsp), %r8
-    movq 40(%rsp), %r9
+    subq $8, %rsp
+    movq 8(%rsp), %rdi
+    movq 16(%rsp), %rsi
+    movq 24(%rsp), %rdx
+    movq 32(%rsp), %rcx
+    movq 64(%rsp), %r8
+    movq 48(%rsp), %r9
     call sb_syscall_dispatch_entry
 
-    addq $72, %rsp
+    /* Save the return value over the original RAX before restoring GPRs. */
+    movq %rax, 8(%rsp)
+    addq $8, %rsp
+    popq %rax
+    popq %rdi
+    popq %rsi
+    popq %rdx
+    popq %rcx
+    popq %r8
+    popq %r9
+    popq %r10
+    popq %r11
     iretq
 
 .size sb_syscall_int80_stub, .-sb_syscall_int80_stub
