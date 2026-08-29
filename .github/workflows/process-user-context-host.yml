@@ -15,6 +15,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Compile process/user-context contract
-        run: gcc -Wall -Wextra -Werror -std=c11 -ffreestanding -fno-builtin -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 tests/process_user_context_host_test.c kernel/process.c kernel/arch/x86_64/user_context.c -o process-user-context-host-test
+        run: gcc -Wall -Wextra -Werror -std=c11 -ffreestanding -fno-builtin -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 tests/process_user_context_host_test.c kernel/process.c kernel/user_scheduler.c kernel/arch/x86_64/user_context.c -o process-user-context-host-test
       - name: Run process/user-context contract test
         run: ./process-user-context-host-test
