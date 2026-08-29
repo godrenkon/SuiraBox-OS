@@ -56,7 +56,7 @@ jobs:
           grep -F "Scheduler: task table/round-robin selection OK" qemu.log
           grep -F "Process/Syscall: model and dispatch OK" qemu.log
           grep -F "Syscall: int 0x80 user gate ready" qemu.log
-          grep -F "Userspace: SB Desktop ELF + address-space + stack preparation OK" qemu.log
+          grep -F "Userspace: SB Desktop ELF + address-space + user thread preparation OK" qemu.log
           grep -F "Timer: IRQ0 enabled" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
           grep -F "Userspace: entering SB Desktop ring3" qemu.log
