@@ -4,15 +4,18 @@
 #include <stdint.h>
 #include "resource.h"
 
-#define SB_RESOURCE_MANAGER_ABI_VERSION 1u
+#define SB_RESOURCE_MANAGER_ABI_VERSION 2u
 #define SB_RESOURCE_MANAGER_MAX_MANIFEST 64u
 #define SB_RESOURCE_MANAGER_MAX_DEPTH 16u
+#define SB_RESOURCE_MANAGER_MAX_MANIFEST_BYTES (256u * 1024u)
 #define SB_RESOURCE_MANAGER_CACHE_PREFIX "/cache/suirabox/objects/sha256/"
 #define SB_RESOURCE_MANAGER_CACHE_PATH_MAX 96u
 #define SB_RESOURCE_MANAGER_SHA256_BYTES 32u
 #define SB_RESOURCE_MANAGER_SHA256_HEX 65u
 
 typedef int (*sb_resource_manifest_verify_fn)(void *user,
+                                              const uint8_t *canonical_manifest,
+                                              uint32_t canonical_manifest_size,
                                               const sb_resource_ref_t *manifest,
                                               uint32_t manifest_count);
 typedef int (*sb_resource_cache_lookup_fn)(void *user,
@@ -53,6 +56,8 @@ typedef struct {
     const sb_resource_ref_t *manifest;
     uint32_t manifest_count;
     uint32_t running_api;
+    const uint8_t *canonical_manifest;
+    uint32_t canonical_manifest_size;
     sb_resource_manager_io_t io;
 } sb_resource_manager_t;
 
@@ -62,6 +67,13 @@ int sb_resource_manager_init(sb_resource_manager_t *manager,
                              uint32_t manifest_count,
                              uint32_t running_api,
                              const sb_resource_manager_io_t *io);
+int sb_resource_manager_init_signed(sb_resource_manager_t *manager,
+                                    const uint8_t *canonical_manifest,
+                                    uint32_t canonical_manifest_size,
+                                    const sb_resource_ref_t *manifest,
+                                    uint32_t manifest_count,
+                                    uint32_t running_api,
+                                    const sb_resource_manager_io_t *io);
 int sb_resource_manager_cache_path(const char *sha256,
                                    char *out,
                                    uint32_t out_size);
