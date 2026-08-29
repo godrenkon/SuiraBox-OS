@@ -1,0 +1,20 @@
+name: SuiraBox Resource Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  resource-host:
+    name: Resource contract host test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile resource host test
+        run: gcc -Wall -Wextra -Werror -std=c11 -Iuserspace tests/resource_host_test.c userspace/resource.c -o resource-host-test
+      - name: Run resource host test
+        run: ./resource-host-test
