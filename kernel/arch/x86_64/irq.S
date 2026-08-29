@@ -21,6 +21,12 @@ sb_timer_irq_stub:
     pushq %r9
     pushq %r10
     pushq %r11
+    pushq %rbx
+    pushq %rbp
+    pushq %r12
+    pushq %r13
+    pushq %r14
+    pushq %r15
 
     serial_mark 0x45
     call sb_timer_tick
@@ -31,6 +37,12 @@ sb_timer_irq_stub:
     outb %al, %dx
     serial_mark 0x4F
 
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %rbp
+    popq %rbx
     popq %r11
     popq %r10
     popq %r9
