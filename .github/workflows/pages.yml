@@ -1,9 +1,6 @@
 name: Deploy SuiraBox official site
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
 
 permissions:
