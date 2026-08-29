@@ -19,7 +19,7 @@ while IFS= read -r path; do
             ;;
     esac
 
-    size=$(wc -c < "$path")
+    size=$(git cat-file -s ":$path")
     if [ "$size" -gt "$max_bytes" ]; then
         printf 'large tracked file exceeds base-source budget (%s bytes): %s\n' "$size" "$path" >&2
         status=1
