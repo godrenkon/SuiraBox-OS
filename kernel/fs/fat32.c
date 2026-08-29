@@ -4,6 +4,7 @@
 #define SB_FAT32_EOC_VALUE 0x0FFFFFFFu
 #define SB_FAT32_ENTRY_SIZE 32u
 #define SB_FAT32_SECTOR_BYTES 512u
+#define SB_FAT32_NUM_FATS 2u
 #define SB_FAT32_MAX_ROOT_LOOKUP_ENTRIES 4096u
 
 static uint16_t le16(const uint8_t *p) {
@@ -83,7 +84,7 @@ static int fat_write_entry_copy(sb_fat32_t *fs, uint32_t fat_number,
     if (fs == 0 || !valid_cluster(fs, cluster) || cluster > UINT32_MAX / 4u) return 0;
     fat_offset = cluster * 4u;
     fat_span = fs->fat_size_sectors;
-    if (fat_number >= 2u || fat_span == 0u) return 0;
+    if (fat_number >= SB_FAT32_NUM_FATS || fat_span == 0u) return 0;
     first_fat_sector = fs->reserved_sectors + fat_number * fat_span;
     fat_sector = first_fat_sector + fat_offset / fs->bytes_per_sector;
     fat_index = fat_offset % fs->bytes_per_sector;
@@ -103,8 +104,7 @@ static int fat_write_entry(sb_fat32_t *fs, uint32_t cluster, uint32_t value) {
 }
 
 static int fat_next_cluster(sb_fat32_t *fs, uint32_t cluster, uint32_t *next) {
-    if (next == 0 || !fat_read_entry(fs, cluster, next)) return 0;
-    return 1;
+    return next != 0 && fat_read_entry(fs, cluster, next);
 }
 
 static int zero_cluster(sb_fat32_t *fs, uint32_t cluster) {
@@ -289,7 +289,8 @@ int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs) {
 
     if (mount == 0 || fs == 0 || mount->sector_size < SB_FAT32_SECTOR_BYTES ||
         !read_sector(&(sb_fat32_t){.mount = mount}, 0u, boot)) return 0;
-    if (le16(&boot[510]) != 0xAA55u || le16(&boot[11]) != SB_FAT32_SECTOR_BYTES) return 0;
+    if (le16(&boot[510]) != 0xAA55u || le16(&boot[11]) != SB_FAT32_SECTOR_BYTES ||
+        boot[16] != SB_FAT32_NUM_FATS) return 0;
 
     fs->mount = mount;
     fs->bytes_per_sector = le16(&boot[11]);
@@ -307,9 +308,9 @@ int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs) {
     if (fs->bytes_per_sector == 0u || fs->sectors_per_cluster == 0u ||
         fs->reserved_sectors == 0u || fat_size == 0u || fs->root_cluster < 2u ||
         total_sectors == 0u) return 0;
-    if (fat_size > (UINT32_MAX - fs->reserved_sectors - root_dir_sectors) / 2u) return 0;
+    if (fat_size > (UINT32_MAX - fs->reserved_sectors - root_dir_sectors) / SB_FAT32_NUM_FATS) return 0;
 
-    first_data = fs->reserved_sectors + 2u * fat_size + root_dir_sectors;
+    first_data = fs->reserved_sectors + SB_FAT32_NUM_FATS * fat_size + root_dir_sectors;
     if ((uint64_t)first_data >= total_sectors) return 0;
     data_sectors = total_sectors - first_data;
     cluster_count = data_sectors / fs->sectors_per_cluster;
@@ -384,8 +385,8 @@ int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name,
 
     cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
     if (cluster_size == 0u) return 0;
-    cluster_count = file_size == 0u ? 0u : (file_size + cluster_size - 1u) / cluster_size;
-    if (file_size != 0u && cluster_count < file_size / cluster_size) return 0;
+    cluster_count = file_size / cluster_size;
+    if (file_size % cluster_size != 0u) ++cluster_count;
     if (cluster_count != 0u && !allocate_cluster_chain(fs, cluster_count, &first_cluster)) return 0;
 
     if (!read_sector(fs, lba, sector)) {
@@ -425,10 +426,10 @@ int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
     if (fs == 0 || entry == 0 || buffer == 0 ||
         (entry->attributes & SB_FAT32_ATTR_DIRECTORY) != 0u ||
         offset > entry->file_size || length > entry->file_size - offset ||
-        !valid_cluster(fs, entry->first_cluster) ||
         fs->bytes_per_sector != SB_FAT32_SECTOR_BYTES ||
         fs->sectors_per_cluster == 0u) return 0;
     if (length == 0u) return 1;
+    if (!valid_cluster(fs, entry->first_cluster)) return 0;
 
     cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
     if (cluster_size == 0u) return 0;
@@ -477,10 +478,10 @@ int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
     if (fs == 0 || entry == 0 || buffer == 0 ||
         (entry->attributes & SB_FAT32_ATTR_DIRECTORY) != 0u ||
         offset > entry->file_size || length > entry->file_size - offset ||
-        !valid_cluster(fs, entry->first_cluster) ||
         fs->bytes_per_sector != SB_FAT32_SECTOR_BYTES ||
         fs->sectors_per_cluster == 0u) return 0;
     if (length == 0u) return 1;
+    if (!valid_cluster(fs, entry->first_cluster)) return 0;
 
     cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
     if (cluster_size == 0u) return 0;
