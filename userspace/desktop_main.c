@@ -92,6 +92,20 @@ static int commit_language(sb_config_record_t *config, uint32_t selection) {
     return sb_config_validate(config);
 }
 
+static int persist_language(sb_config_record_t *config, uint32_t selection) {
+    if (commit_language(config, selection) != 0) return -1;
+    return sb_config_set(selection) == 0u ? 0 : -1;
+}
+
+static int load_persisted_language(sb_config_record_t *config, uint32_t *selection) {
+    const uint64_t persisted = sb_config_get();
+    const uint32_t language = (uint32_t)((persisted >> 8) & 0xFFu);
+    if ((persisted & 1u) == 0u || language > (uint32_t)SB_LANGUAGE_SPANISH) return 0;
+    if (selection == 0 || commit_language(config, language) != 0) return -1;
+    *selection = language;
+    return 1;
+}
+
 static void decode_mouse(uint64_t packet, int32_t *dx, int32_t *dy, uint8_t *buttons) {
     *dx = (int32_t)(int8_t)((packet >> 16) & 0xFFu);
     *dy = (int32_t)(int8_t)((packet >> 24) & 0xFFu);
@@ -164,12 +178,23 @@ void sb_desktop_main(void) {
     main_window = sb_gui_create_window(&wm, 252, 150, 520u, 320u);
     if (main_window == 0) for (;;) { }
     main_window->visible = 0u;
-    if (commit_language(&config, selection) != 0) for (;;) { }
+
+    {
+        const int persisted = load_persisted_language(&config, &selection);
+        if (persisted < 0) for (;;) { }
+        if (persisted > 0) {
+            first_boot = 0u;
+            main_window->visible = 1u;
+        } else if (commit_language(&config, selection) != 0) {
+            for (;;) { }
+        }
+    }
 
     g_cursor_x = (int32_t)(width / 2u);
     g_cursor_y = (int32_t)(height / 2u);
     sb_surface_damage_all(&surface);
-    draw_first_boot(width, height, selection, dropdown_open);
+    if (first_boot != 0u) draw_first_boot(width, height, selection, dropdown_open);
+    else present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
 
     for (;;) {
         const uint64_t key = sb_input_key();
@@ -192,7 +217,7 @@ void sb_desktop_main(void) {
                         if (dropdown_open != 0u) {
                             dropdown_open = 0u;
                             draw_first_boot(width, height, selection, dropdown_open);
-                        } else if (commit_language(&config, selection) == 0) {
+                        } else if (persist_language(&config, selection) == 0) {
                             first_boot = 0u;
                             main_window->visible = 1u;
                             sb_surface_damage_all(&surface);
@@ -254,7 +279,7 @@ void sb_desktop_main(void) {
                                point_inside(g_cursor_x, g_cursor_y,
                                             (int32_t)((width - 240u) / 2u),
                                             (int32_t)(modal_y + 300u), 240u, 44u) &&
-                               commit_language(&config, selection) == 0) {
+                               persist_language(&config, selection) == 0) {
                         first_boot = 0u;
                         main_window->visible = 1u;
                         sb_surface_damage_all(&surface);
