@@ -34,11 +34,15 @@ int elf64_load_image(sb_address_space_t *space,
     if (space == 0 || elf64_validate(image, image_size, &header) != 0) return -1;
 
     uint64_t load_bias = 0u;
+    uint64_t entry_virtual;
     if (header->type == SB_ELF_TYPE_DYN) {
         const uint64_t aligned_entry = align_down(header->entry);
         if (aligned_entry > SB_USER_BASE) return -1;
         load_bias = SB_USER_BASE - aligned_entry;
     }
+    if (range_end(load_bias, header->entry, &entry_virtual) ||
+        entry_virtual >= SB_USER_LIMIT)
+        return -1;
 
     int entry_mapped = 0;
 
@@ -66,6 +70,14 @@ int elf64_load_image(sb_address_space_t *space,
         if ((ph->flags & PF_W) != 0u) flags |= SB_VMM_WRITABLE;
         if ((ph->flags & PF_X) == 0u) flags |= SB_VMM_NX;
 
+        uint64_t segment_file_end;
+        if (range_end(ph->offset, ph->file_size, &segment_file_end) ||
+            segment_file_end > image_size)
+            return -1;
+
+        uint64_t file_virtual_end;
+        if (range_end(virtual_start, ph->file_size, &file_virtual_end)) return -1;
+
         for (uint64_t va = map_start; va < map_end; va += SB_PAGE_SIZE) {
             void *page = pmm_alloc_page();
             if (page == 0) return -1;
@@ -73,27 +85,19 @@ int elf64_load_image(sb_address_space_t *space,
             uint8_t *dst = (uint8_t *)page;
             for (uint32_t j = 0; j < SB_PAGE_SIZE; ++j) dst[j] = 0;
 
-            uint64_t page_file_start = 0;
-            uint64_t page_file_end = 0;
-            uint64_t segment_file_start = 0;
-            uint64_t segment_file_end = 0;
-            if (range_end(ph->offset, ph->file_size, &segment_file_end)) return -1;
-            segment_file_start = ph->offset;
-
             if (va < virtual_end && va + SB_PAGE_SIZE > virtual_start) {
                 uint64_t copy_start = va > virtual_start ? va : virtual_start;
-                uint64_t file_virtual_end;
-                if (range_end(virtual_start, ph->file_size, &file_virtual_end)) return -1;
-                uint64_t copy_end = (va + SB_PAGE_SIZE) < file_virtual_end
-                    ? (va + SB_PAGE_SIZE) : file_virtual_end;
+                uint64_t page_end = va + SB_PAGE_SIZE;
+                uint64_t copy_end = page_end < file_virtual_end ? page_end : file_virtual_end;
                 if (copy_end > copy_start &&
                     copy_start >= virtual_start &&
                     copy_end <= file_virtual_end) {
-                    page_file_start = segment_file_start + (copy_start - virtual_start);
-                    page_file_end = segment_file_start + (copy_end - virtual_start);
-                    if (page_file_start < segment_file_start || page_file_end > segment_file_end ||
-                        page_file_end > image_size) return -1;
-                    uint64_t dst_offset = copy_start - va;
+                    const uint64_t page_file_start = ph->offset + (copy_start - virtual_start);
+                    const uint64_t page_file_end = ph->offset + (copy_end - virtual_start);
+                    if (page_file_start < ph->offset || page_file_end < page_file_start ||
+                        page_file_end > segment_file_end || page_file_end > image_size)
+                        return -1;
+                    const uint64_t dst_offset = copy_start - va;
                     const uint8_t *src = (const uint8_t *)image + page_file_start;
                     for (uint64_t j = 0; j < page_file_end - page_file_start; ++j)
                         dst[dst_offset + j] = src[j];
@@ -107,13 +111,12 @@ int elf64_load_image(sb_address_space_t *space,
                 return -1;
             }
 
-            uint64_t page_end = va + SB_PAGE_SIZE;
-            uint64_t entry_virtual = load_bias + header->entry;
+            const uint64_t page_end = va + SB_PAGE_SIZE;
             if (entry_virtual >= va && entry_virtual < page_end) entry_mapped = 1;
         }
     }
 
     if (!entry_mapped) return -1;
-    if (entry_point != 0) *entry_point = load_bias + header->entry;
+    if (entry_point != 0) *entry_point = entry_virtual;
     return 0;
 }
