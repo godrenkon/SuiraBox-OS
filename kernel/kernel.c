@@ -11,10 +11,10 @@
 #include "scheduler.h"
 #include "process.h"
 #include "process_exec.h"
+#include "user_launch.h"
 #include "syscall.h"
 #include "arch/x86_64/interrupts.h"
 #include "arch/x86_64/gdt.h"
-#include "arch/x86_64/user_mode.h"
 #include "framebuffer.h"
 #include "desktop_bootstrap.h"
 
@@ -22,7 +22,6 @@ extern int scheduler_add_kernel_task(uint64_t id, uint32_t priority);
 extern sb_task_t *scheduler_pick_next(void);
 extern uint32_t scheduler_task_count(void);
 extern void sb_syscall_int80_stub(void);
-extern void arch_enter_user(uint64_t entry_point, uint64_t user_stack);
 extern int sb_storage_selftest(void);
 
 static void serial_init(void) {
@@ -176,16 +175,20 @@ static int process_syscall_selftest(void) {
     return process_count() == 0u;
 }
 
-static sb_process_t *prepare_init_process(uint64_t multiboot_info, sb_process_image_t *image) {
+static sb_process_t *prepare_init_process(uint64_t multiboot_info,
+                                           sb_process_image_t *image,
+                                           sb_user_context_t *context,
+                                           sb_thread_t **thread_out) {
     sb_process_t *process;
-    if (image == 0) return 0;
+    if (image == 0 || context == 0 || thread_out == 0) return 0;
+    *thread_out = 0;
     process = process_create(1u);
     if (process == 0) return 0;
     if (process_prepare_boot_module(process, multiboot_info, "sb-desktop", image) != 0) {
         process_destroy(process);
         return 0;
     }
-    if (process_create_thread(process, 10001u, 128u) == 0) {
+    if (process_prepare_elf_thread(process, 10001u, 128u, context, image, thread_out) != 0) {
         process_destroy(process);
         return 0;
     }
@@ -198,7 +201,9 @@ static void halt_forever(void) {
 
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     sb_process_t *init_process;
+    sb_thread_t *init_thread;
     sb_process_image_t init_image;
+    sb_user_context_t init_context;
 
     serial_init();
     serial_write("================================\r\n        SUIRABOX OS              \r\n================================\r\n");
@@ -303,24 +308,22 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Syscall: int 0x80 user gate ready\r\n");
 
     report_multiboot_modules(multiboot_info);
-    init_process = prepare_init_process(multiboot_info, &init_image);
-    if (init_process == 0) {
-        serial_write("Userspace: SB Desktop ELF + address-space + stack preparation FAILED\r\n");
+    init_process = prepare_init_process(multiboot_info, &init_image, &init_context, &init_thread);
+    if (init_process == 0 || init_thread == 0) {
+        serial_write("Userspace: SB Desktop ELF + address-space + user thread preparation FAILED\r\n");
         halt_forever();
     }
-    serial_write("Userspace: SB Desktop ELF + address-space + stack preparation OK\r\n");
+    serial_write("Userspace: SB Desktop ELF + address-space + user thread preparation OK\r\n");
 
     serial_write("Timer: initializing IRQ0...\r\n");
     timer_init();
     serial_write("Timer: IRQ0 enabled\r\n");
     serial_write("Phase 1 bootstrap complete.\r\n");
-    serial_write("Userspace: entering SB Desktop ring3\r\n");
+    serial_write("Userspace: entering SB Desktop ring3 from prepared user frame\r\n");
 
-    init_process->state = SB_PROCESS_RUNNING;
-    if (process_activate(init_process) != 0) {
-        serial_write("Userspace: process address-space activation FAILED\r\n");
+    if (process_start_user_thread(init_process, init_thread) != 0) {
+        serial_write("Userspace: prepared ring3 transition FAILED\r\n");
         halt_forever();
     }
-    arch_enter_user(init_image.entry_point, init_image.user_stack_top);
     halt_forever();
 }
