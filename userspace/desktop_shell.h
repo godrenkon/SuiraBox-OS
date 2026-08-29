@@ -25,4 +25,7 @@ int sb_desktop_shell_key(sb_desktop_shell_t *shell, uint8_t key);
 int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
                            const char **activated_id);
 
+/* Present the launcher state after compositor repainting so it is not lost on damage updates. */
+void sb_desktop_shell_present_launcher(void);
+
 #endif
