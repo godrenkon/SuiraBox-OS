@@ -222,7 +222,12 @@ void sb_desktop_main(void) {
             const int32_t old_cursor_x = g_cursor_x;
             const int32_t old_cursor_y = g_cursor_y;
             g_cursor_x += mouse.dx; g_cursor_y -= mouse.dy;
-            if (g_cursor_x < 0) g_cursor_x = 0; if (g_cursor_y < 0) g_cursor_y = 0;
+            if (g_cursor_x < 0) {
+                g_cursor_x = 0;
+            }
+            if (g_cursor_y < 0) {
+                g_cursor_y = 0;
+            }
             if (g_cursor_x >= (int32_t)width) g_cursor_x = (int32_t)width - 1;
             if (g_cursor_y >= (int32_t)height) g_cursor_y = (int32_t)height - 1;
             mark_damage(&surface, old_cursor_x, old_cursor_y, 8u, 8u); mark_damage(&surface, g_cursor_x, g_cursor_y, 8u, 8u);
@@ -295,12 +300,22 @@ void sb_desktop_main(void) {
                         uint32_t new_width = focused->width; uint32_t new_height = focused->height;
                         if (resizing == SB_GUI_RESIZE_RIGHT || resizing == SB_GUI_RESIZE_BOTTOM_RIGHT) {
                             int64_t candidate = (int64_t)g_cursor_x - (int64_t)focused->x;
-                            if (candidate < 0) candidate = 0; if (candidate > (int64_t)UINT32_MAX) candidate = (int64_t)UINT32_MAX;
+                            if (candidate < 0) {
+                                candidate = 0;
+                            }
+                            if (candidate > (int64_t)UINT32_MAX) {
+                                candidate = (int64_t)UINT32_MAX;
+                            }
                             new_width = (uint32_t)candidate;
                         }
                         if (resizing == SB_GUI_RESIZE_BOTTOM || resizing == SB_GUI_RESIZE_BOTTOM_RIGHT) {
                             int64_t candidate = (int64_t)g_cursor_y - (int64_t)focused->y;
-                            if (candidate < 0) candidate = 0; if (candidate > (int64_t)UINT32_MAX) candidate = (int64_t)UINT32_MAX;
+                            if (candidate < 0) {
+                                candidate = 0;
+                            }
+                            if (candidate > (int64_t)UINT32_MAX) {
+                                candidate = (int64_t)UINT32_MAX;
+                            }
                             new_height = (uint32_t)candidate;
                         }
                         if (sb_gui_resize_window(&wm, focused->id, new_width, new_height) == 0) {
@@ -310,7 +325,12 @@ void sb_desktop_main(void) {
                         }
                     } else if (dragging && focused->maximized == 0u) {
                         focused->x = g_cursor_x - drag_dx; focused->y = g_cursor_y - drag_dy;
-                        if (focused->x < 0) focused->x = 0; if (focused->y < (int32_t)SB_GUI_TITLEBAR_HEIGHT) focused->y = SB_GUI_TITLEBAR_HEIGHT;
+                        if (focused->x < 0) {
+                            focused->x = 0;
+                        }
+                        if (focused->y < (int32_t)SB_GUI_TITLEBAR_HEIGHT) {
+                            focused->y = SB_GUI_TITLEBAR_HEIGHT;
+                        }
                         mark_damage(&surface, old_x, old_y, old_width, old_height); mark_damage(&surface, focused->x, focused->y, focused->width, focused->height);
                         present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
                     }
