@@ -45,13 +45,10 @@ int sb_resource_descriptor_validate(const sb_resource_descriptor_t *resource) {
         resource->compressed_size > SB_RESOURCE_MAX_PAYLOAD ||
         resource->expanded_size == 0u ||
         resource->expanded_size > SB_RESOURCE_MAX_PAYLOAD ||
-        resource->dependency_count > SB_RESOURCE_MAX_DEPENDENCIES ||
-        resource->expanded_size < resource->compressed_size &&
-        resource->type != SB_RESOURCE_TYPE_WALLPAPER) return 0;
+        resource->dependency_count > SB_RESOURCE_MAX_DEPENDENCIES) return 0;
 
     for (uint32_t i = 0u; i < resource->dependency_count; ++i) {
         if (!sb_resource_id_valid(resource->dependencies[i])) return 0;
-        if (resource->dependencies[i][0] == '\0') return 0;
     }
     return 1;
 }
