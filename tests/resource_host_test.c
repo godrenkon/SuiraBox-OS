@@ -59,8 +59,7 @@ int main(void) {
     ref.expanded_size = 512u;
     ref.sha256 = "bad";
     assert(sb_resource_reference_valid(&ref) == 0);
-    ref.sha256 = hash;
-    ref.sha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789ABCDEFFF";
+    ref.sha256 = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
     assert(sb_resource_reference_valid(&ref) == 1);
     ref.sha256 = hash;
     ref.tier = 9u;
