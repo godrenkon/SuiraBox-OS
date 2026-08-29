@@ -32,6 +32,10 @@ static uint8_t mouse_packet_index;
 static uint8_t mouse_initialized;
 static uint8_t mouse_init_attempted;
 
+static void syscall_idle(void) {
+    __asm__ volatile ("sti\n\thlt\n\tcli" ::: "memory");
+}
+
 static void mouse_init(void) {
     uint8_t response;
     if (mouse_initialized || mouse_init_attempted) return;
@@ -74,9 +78,15 @@ static uint64_t syscall_input_mouse(void) {
     uint32_t packet;
 
     if (!mouse_initialized) mouse_init();
-    if (!mouse_initialized) return 0u;
+    if (!mouse_initialized) {
+        syscall_idle();
+        return 0u;
+    }
     status = io_in8(0x64u);
-    if ((status & 0x01u) == 0u || (status & 0x20u) == 0u) return 0u;
+    if ((status & 0x01u) == 0u || (status & 0x20u) == 0u) {
+        syscall_idle();
+        return 0u;
+    }
     byte = io_in8(0x60u);
 
     if (mouse_packet_index == 0u && (byte & 0x08u) == 0u) return 0u;
@@ -95,10 +105,6 @@ static uint64_t syscall_config_get(void) {
     if (!sb_config_store_get(&record)) return 0u;
     return 1u | ((uint64_t)record.language << 8) |
            ((uint64_t)record.generation << 16);
-}
-
-static void syscall_idle(void) {
-    __asm__ volatile ("sti\n\thlt\n\tcli" ::: "memory");
 }
 
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
