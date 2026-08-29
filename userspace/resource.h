@@ -53,7 +53,7 @@ typedef struct {
     const char *dependencies[SB_RESOURCE_MAX_DEPENDENCIES];
 } sb_resource_ref_t;
 
-int sb_resource_schema_version(void);
+uint32_t sb_resource_schema_version(void);
 const char *sb_resource_repository_url(void);
 int sb_resource_id_valid(const char *id);
 int sb_resource_path_valid(const char *path);
