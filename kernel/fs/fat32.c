@@ -200,13 +200,13 @@ static int build_short_name(const char *name, uint8_t raw[11]) {
 
     if (name == 0 || name[0] == '\0') return 0;
     for (i = 0u; name[i] != '\0'; ++i) {
-        const char c = name[i];
+        unsigned char c = (unsigned char)name[i];
         if (c == '.') {
             if (seen_dot != 0 || base_len == 0u) return 0;
             seen_dot = 1;
             continue;
         }
-        if (c == ' ' || c == '/' || c == '\\' ||
+        if (c < 0x20u || c > 0x7Eu || c == ' ' || c == '/' || c == '\\' ||
             c == ':' || c == '*' || c == '?' || c == '"' || c == '<' || c == '>' || c == '|') return 0;
         if (seen_dot == 0) {
             if (base_len >= 8u) return 0;
@@ -236,6 +236,29 @@ static int build_short_name(const char *name, uint8_t raw[11]) {
     return 1;
 }
 
+static void format_83_name(const uint8_t *raw, char out[13]) {
+    uint32_t pos = 0u;
+    uint32_t i;
+
+    for (i = 0u; i < 8u && raw[i] != ' '; ++i) {
+        if (pos < 12u) out[pos++] = (char)raw[i];
+    }
+    if (raw[8] != ' ' && raw[8] != 0u && pos < 12u) {
+        out[pos++] = '.';
+        for (i = 8u; i < 11u && raw[i] != ' '; ++i) {
+            if (pos < 12u) out[pos++] = (char)raw[i];
+        }
+    }
+    out[pos] = '\0';
+}
+
+static int canonical_name(const char *name, char out[13]) {
+    uint8_t raw[11];
+    if (!build_short_name(name, raw)) return 0;
+    format_83_name(raw, out);
+    return 1;
+}
+
 static int find_free_root_slot(sb_fat32_t *fs, uint32_t *index,
                                uint32_t *lba, uint32_t *entry_offset) {
     uint8_t sector[SB_FAT32_SECTOR_BYTES];
@@ -253,22 +276,6 @@ static int find_free_root_slot(sb_fat32_t *fs, uint32_t *index,
         }
     }
     return 0;
-}
-
-static void format_83_name(const uint8_t *raw, char out[13]) {
-    uint32_t pos = 0u;
-    uint32_t i;
-
-    for (i = 0u; i < 8u && raw[i] != ' '; ++i) {
-        if (pos < 12u) out[pos++] = (char)raw[i];
-    }
-    if (raw[8] != ' ' && raw[8] != 0u && pos < 12u) {
-        out[pos++] = '.';
-        for (i = 8u; i < 11u && raw[i] != ' '; ++i) {
-            if (pos < 12u) out[pos++] = (char)raw[i];
-        }
-    }
-    out[pos] = '\0';
 }
 
 int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs) {
@@ -335,7 +342,8 @@ int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *
 
 int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t *entry) {
     uint8_t sector[SB_FAT32_SECTOR_BYTES];
-    if (fs == 0 || name == 0 || name[0] == '\0' || entry == 0) return 0;
+    char canonical[13];
+    if (fs == 0 || name == 0 || entry == 0 || !canonical_name(name, canonical)) return 0;
     for (uint32_t index = 0u; index < SB_FAT32_MAX_ROOT_LOOKUP_ENTRIES; ++index) {
         uint32_t lba;
         uint32_t entry_offset;
@@ -350,7 +358,7 @@ int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t
         candidate.first_cluster = ((uint32_t)le16(&raw[20]) << 16) | le16(&raw[26]);
         candidate.file_size = le32(&raw[28]);
         candidate.root_index = index;
-        if (str_equal(candidate.name, name)) {
+        if (str_equal(candidate.name, canonical)) {
             *entry = candidate;
             return 1;
         }
