@@ -60,6 +60,7 @@ jobs:
           grep -F "Timer: IRQ0 enabled" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
           grep -F "Userspace: entering SB Desktop ring3" qemu.log
+          grep -F "Userspace: ring3 syscall reached" qemu.log
 
       - name: Framebuffer smoke test
         run: |
