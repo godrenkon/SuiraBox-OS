@@ -21,7 +21,7 @@ static int32_t g_cursor_y;
 
 static void draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rgb) { (void)sb_display_rect(x, y, w, h, rgb); }
 static void draw_glyph(uint32_t x, uint32_t y, uint64_t glyph) { (void)sb_display_glyph(x, y, glyph, 0xE9F2FFu); }
-static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) { draw_glyph(x, y, a); draw_glyph(x + 10u, y, b); }
+static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) { (void)sb_display_glyph_pair(x, y, a, b, 0xE9F2FFu); }
 
 static void draw_first_boot(uint32_t width, uint32_t height, uint32_t selection, uint8_t open) {
     const uint32_t mx = (width - 560u) / 2u;
