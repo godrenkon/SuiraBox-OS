@@ -14,6 +14,7 @@
 #define SB_SYS_INPUT_MOUSE     8u
 #define SB_SYS_CONFIG_GET      9u
 #define SB_SYS_CONFIG_SET      10u
+#define SB_SYS_YIELD           11u
 
 #ifdef SB_HOST_TEST
 uint64_t sb_syscall0(uint64_t number);
@@ -30,6 +31,7 @@ uint64_t sb_input_mouse(void);
 uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap, uint32_t rgb);
 uint64_t sb_config_get(void);
 uint64_t sb_config_set(uint32_t language);
+uint64_t sb_yield(void);
 #else
 static inline uint64_t sb_syscall0(uint64_t number) {
     uint64_t result;
@@ -86,6 +88,7 @@ static inline uint64_t sb_display_glyph(uint32_t x, uint32_t y, uint64_t bitmap,
 }
 static inline uint64_t sb_config_get(void) { return sb_syscall0(SB_SYS_CONFIG_GET); }
 static inline uint64_t sb_config_set(uint32_t language) { return sb_syscall1(SB_SYS_CONFIG_SET, language); }
+static inline uint64_t sb_yield(void) { return sb_syscall0(SB_SYS_YIELD); }
 #endif
 
 #endif
