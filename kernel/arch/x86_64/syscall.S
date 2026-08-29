@@ -23,9 +23,9 @@
  *   r8  = arg3
  *   r9  = arg4
  *
- * The nine saved GPRs are laid out below the hardware iret frame as:
- *   r11=0, r10=8, r9=16, r8=24, rcx=32, rdx=40,
- *   rsi=48, rdi=56, rax=64.
+ * Saved register layout from the lowest stack address is:
+ *   rax=0, rdi=8, rsi=16, rdx=24, rcx=32,
+ *   r8=40, r9=48, r10=56, r11=64.
  *
  * The temporary slot below the saved GPRs holds the original save-frame
  * pointer. RSP is then aligned to 8 mod 16 before CALL so the C callee
@@ -51,12 +51,12 @@ sb_syscall_int80_stub:
     movq %rsi, (%rsp)
 
     /* Translate userspace syscall ABI to the SysV C dispatcher ABI. */
-    movq 64(%rsi), %rdi
-    movq 56(%rsi), %rsi
-    movq 48(%rsi), %rdx
-    movq 40(%rsi), %rcx
-    movq 8(%rsi), %r8
-    movq 24(%rsi), %r9
+    movq 0(%rsi), %rdi
+    movq 8(%rsi), %rsi
+    movq 16(%rsi), %rdx
+    movq 24(%rsi), %rcx
+    movq 56(%rsi), %r8
+    movq 40(%rsi), %r9
 
     call sb_syscall_dispatch_entry
 
