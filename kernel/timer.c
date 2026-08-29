@@ -96,19 +96,14 @@ void timer_init_frequency(uint32_t frequency_hz) {
     timer_debug("[TIMER] STI begin\r\n"); interrupts_enable(); timer_debug("[TIMER] STI returned\r\n");
 }
 
-void timer_init(void) {
-    timer_init_frequency(SB_TIMER_DEFAULT_HZ);
-}
-
+void timer_init(void) { timer_init_frequency(SB_TIMER_DEFAULT_HZ); }
 uint64_t timer_ticks(void) { return ticks; }
 
 uintptr_t sb_timer_irq_dispatch(sb_timer_saved_gpr_t *gpr) {
     ++ticks;
-    scheduler_tick();
-
     const uintptr_t user_resume_rsp = user_scheduler_timer_dispatch(gpr);
     if (user_resume_rsp != 0u) return user_resume_rsp;
-
+    scheduler_tick();
     if ((ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1u)
         (void)scheduler_pick_next();
     return (uintptr_t)gpr;

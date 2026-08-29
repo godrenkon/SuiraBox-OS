@@ -94,20 +94,27 @@ int process_prepare_thread_context(sb_thread_t *thread,
         thread->kernel_stack_base == 0u || thread->kernel_stack_top == 0u) return -1;
     if (sb_user_context_init(context, entry_point, user_stack_top) != 0) return -1;
     thread->user_context = context;
-    return process_prepare_user_resume_frame(thread);
+    if (process_prepare_user_resume_frame(thread) != 0) {
+        thread->user_context = 0;
+        thread->kernel_resume_stack_pointer = 0u;
+        return -1;
+    }
+    return 0;
 }
 
 int process_prepare_user_resume_frame(sb_thread_t *thread) {
     if (thread == 0 || thread->user_context == 0 ||
         thread->kernel_stack_base == 0u || thread->kernel_stack_top == 0u ||
         thread->kernel_stack_top < thread->kernel_stack_base ||
-        thread->kernel_stack_top - thread->kernel_stack_base < SB_USER_RESUME_FRAME_SIZE) {
+        thread->kernel_stack_top - thread->kernel_stack_base < SB_USER_RESUME_FRAME_OFFSET) {
         return -1;
     }
     if (sb_user_context_validate(thread->user_context) != 0) return -1;
 
-    const uint64_t frame_address = thread->kernel_stack_top - SB_USER_RESUME_FRAME_SIZE;
-    if ((frame_address & 0xFu) != 0u) return -1;
+    const uint64_t frame_address = thread->kernel_stack_top - SB_USER_RESUME_FRAME_OFFSET;
+    if (frame_address < thread->kernel_stack_base ||
+        frame_address + SB_USER_RESUME_FRAME_SIZE > thread->kernel_stack_top ||
+        (frame_address & 0xFu) != 0u) return -1;
 
     sb_timer_saved_gpr_t *gpr = (sb_timer_saved_gpr_t *)(uintptr_t)frame_address;
     sb_x86_64_user_iret_frame_t *iret =

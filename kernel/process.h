@@ -9,6 +9,9 @@
 #define SB_MAX_THREADS_PER_PROCESS 16u
 #define SB_USER_KERNEL_STACK_SIZE 4096u
 #define SB_USER_RESUME_FRAME_SIZE 160u
+/* Keep the top 160 bytes available for the live user->kernel timer frame.
+ * The prepared resume frame therefore begins another 160 bytes below it. */
+#define SB_USER_RESUME_FRAME_OFFSET 320u
 
 typedef enum {
     SB_PROCESS_UNUSED = 0,

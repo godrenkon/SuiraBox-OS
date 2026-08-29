@@ -55,7 +55,10 @@ int main(void) {
     assert(context.rsp == SB_USER_STACK_TOP);
     assert(thread->kernel_resume_stack_pointer != 0u);
     assert(thread->kernel_resume_stack_pointer ==
-           thread->kernel_stack_top - SB_USER_RESUME_FRAME_SIZE);
+           thread->kernel_stack_top - SB_USER_RESUME_FRAME_OFFSET);
+    assert(thread->kernel_resume_stack_pointer + SB_USER_RESUME_FRAME_SIZE <=
+           thread->kernel_stack_top - SB_USER_RESUME_FRAME_OFFSET + SB_USER_RESUME_FRAME_SIZE);
+    assert(thread->kernel_resume_stack_pointer + SB_USER_RESUME_FRAME_SIZE <= thread->kernel_stack_top - 160u);
 
     const sb_timer_saved_gpr_t *gpr =
         (const sb_timer_saved_gpr_t *)(uintptr_t)thread->kernel_resume_stack_pointer;

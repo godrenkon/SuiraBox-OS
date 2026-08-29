@@ -19,6 +19,17 @@ static int slot_matches(const sb_user_sched_slot_t *slot,
     return slot != 0 && slot->process == process && slot->thread == thread;
 }
 
+static int thread_runnable(const sb_thread_t *thread) {
+    return thread != 0 && thread->user_context != 0u &&
+           thread->kernel_resume_stack_pointer != 0u &&
+           (thread->state == SB_PROCESS_CREATED || thread->state == SB_PROCESS_RUNNING);
+}
+
+static int process_runnable(const sb_process_t *process) {
+    return process != 0 &&
+           (process->state == SB_PROCESS_CREATED || process->state == SB_PROCESS_RUNNING);
+}
+
 void user_scheduler_init(void) {
     for (uint32_t i = 0u; i < SB_MAX_USER_SCHED_THREADS; ++i) {
         slots[i].process = 0;
@@ -30,12 +41,7 @@ void user_scheduler_init(void) {
 }
 
 int user_scheduler_add(sb_process_t *process, sb_thread_t *thread) {
-    if (process == 0 || thread == 0 || thread->user_context == 0u ||
-        thread->kernel_resume_stack_pointer == 0u ||
-        process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED ||
-        thread->state == SB_PROCESS_UNUSED || thread->state == SB_PROCESS_EXITED) {
-        return -1;
-    }
+    if (!process_runnable(process) || !thread_runnable(thread)) return -1;
     for (uint32_t i = 0u; i < slot_count; ++i) {
         if (slot_matches(&slots[i], process, thread)) return -2;
     }
@@ -47,7 +53,7 @@ int user_scheduler_add(sb_process_t *process, sb_thread_t *thread) {
 }
 
 int user_scheduler_set_current(sb_process_t *process, sb_thread_t *thread) {
-    if (process == 0 || thread == 0) return -1;
+    if (!thread_runnable(thread) || !process_runnable(process)) return -1;
     for (uint32_t i = 0u; i < slot_count; ++i) {
         if (slot_matches(&slots[i], process, thread)) {
             current_index = i;
@@ -67,9 +73,7 @@ sb_process_t *user_scheduler_current_process(void) {
     return slots[current_index].process;
 }
 
-uint32_t user_scheduler_count(void) {
-    return slot_count;
-}
+uint32_t user_scheduler_count(void) { return slot_count; }
 
 static int frame_is_user_mode(const sb_timer_saved_gpr_t *gpr,
                               sb_x86_64_user_iret_frame_t **iret_out) {
@@ -89,38 +93,31 @@ uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr) {
     if (slot_count == 0u || current_index >= slot_count) return (uintptr_t)gpr;
 
     sb_thread_t *current_thread = slots[current_index].thread;
-    if (current_thread == 0 || current_thread->user_context == 0u) return (uintptr_t)gpr;
-    if (sb_user_context_from_timer_frame(current_thread->user_context, gpr, iret) != 0) {
+    sb_process_t *current_process = slots[current_index].process;
+    if (!thread_runnable(current_thread) || !process_runnable(current_process)) return (uintptr_t)gpr;
+    if (sb_user_context_from_timer_frame(current_thread->user_context, gpr, iret) != 0)
         return (uintptr_t)gpr;
-    }
 
     ++quantum_ticks;
-    if (slot_count <= 1u || (quantum_ticks % SB_USER_SCHED_QUANTUM_TICKS) != 0u) {
+    if (slot_count <= 1u || (quantum_ticks % SB_USER_SCHED_QUANTUM_TICKS) != 0u)
         return (uintptr_t)gpr;
-    }
 
     for (uint32_t step = 1u; step <= slot_count; ++step) {
         const uint32_t candidate = (current_index + step) % slot_count;
         sb_process_t *next_process = slots[candidate].process;
         sb_thread_t *next_thread = slots[candidate].thread;
-        if (next_process == 0 || next_thread == 0 ||
-            next_thread->user_context == 0u ||
-            next_thread->kernel_resume_stack_pointer == 0u ||
-            next_thread->state == SB_PROCESS_UNUSED ||
-            next_thread->state == SB_PROCESS_EXITED ||
-            next_process->state == SB_PROCESS_UNUSED ||
-            next_process->state == SB_PROCESS_EXITED) {
-            continue;
-        }
+        if (!thread_runnable(next_thread) || !process_runnable(next_process)) continue;
+        if (next_thread == current_thread) continue;
         if (process_prepare_user_resume_frame(next_thread) != 0) continue;
         if (gdt_try_set_kernel_stack(next_thread->kernel_stack_top) != 0) continue;
         if (process_activate(next_process) != 0) continue;
 
-        current_thread->state = SB_PROCESS_SLEEPING;
+        current_thread->state = SB_PROCESS_CREATED;
         next_thread->state = SB_PROCESS_RUNNING;
-        slots[current_index].process->state = SB_PROCESS_SLEEPING;
+        current_process->state = SB_PROCESS_RUNNING;
         next_process->state = SB_PROCESS_RUNNING;
         current_index = candidate;
+        quantum_ticks = 0u;
         return (uintptr_t)next_thread->kernel_resume_stack_pointer;
     }
 

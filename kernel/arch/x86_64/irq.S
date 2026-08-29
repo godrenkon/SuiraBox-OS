@@ -34,8 +34,11 @@ sb_timer_irq_stub:
     pushq %r15
 
     serial_mark 0x45
-    movq %rsp, %rdi
+    /* Preserve SysV x86-64 stack alignment before entering C. */
+    subq $8, %rsp
+    leaq 8(%rsp), %rdi
     call sb_timer_irq_dispatch
+    addq $8, %rsp
     movq %rax, %rsi
     serial_mark 0x54
 
