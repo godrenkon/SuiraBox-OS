@@ -159,7 +159,9 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_CONFIG_SET: {
             const uint32_t language = (uint32_t)arg0;
             const uint32_t optional_enabled_mask = (uint32_t)arg1;
-            if (language > 3u || optional_enabled_mask > SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED)
+            if (language > 3u ||
+                (optional_enabled_mask != SB_CONFIG_SET_KEEP_OPTIONS &&
+                 optional_enabled_mask > SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED))
                 return UINT64_MAX;
             if (!sb_storage_ready()) return SB_CONFIG_SET_VOLATILE;
             if (sb_config_store_set((uint8_t)language, optional_enabled_mask) != 0)
