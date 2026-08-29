@@ -18,10 +18,10 @@ int sb_user_context_init(sb_user_context_t *context,
     uint64_t initial_rsp;
     if (context == 0 || !user_address_valid(entry_point) ||
         !user_address_valid(user_stack_top) ||
-        user_stack_top < SB_USER_BASE + sizeof(uint64_t)) return -1;
+        user_stack_top < SB_USER_BASE + sizeof(uint64_t) ||
+        (user_stack_top & (SB_USER_RSP_ALIGNMENT - 1u)) != 0u) return -1;
 
-    initial_rsp = user_stack_top - sizeof(uint64_t);
-    if ((initial_rsp & (SB_USER_RSP_ALIGNMENT - 1u)) != 0u) return -1;
+    initial_rsp = user_stack_top;
 
     *context = (sb_user_context_t){0};
     context->rip = entry_point;
