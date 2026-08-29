@@ -63,7 +63,8 @@ static uint64_t syscall_display_info(void) {
 }
 
 static uint64_t syscall_input_key(void) {
-    if ((io_in8(0x64u) & 0x01u) == 0u || (io_in8(0x64u) & 0x20u) != 0u) return 0u;
+    const uint8_t status = io_in8(0x64u);
+    if ((status & 0x01u) == 0u || (status & 0x20u) != 0u) return 0u;
     return (uint64_t)io_in8(0x60u);
 }
 
@@ -87,27 +88,6 @@ static uint64_t syscall_input_mouse(void) {
              ((uint32_t)mouse_packet[1] << 16) |
              ((uint32_t)mouse_packet[2] << 24);
     return packet;
-}
-
-static uint64_t syscall_display_glyph(uint64_t x, uint64_t y, uint64_t bitmap, uint64_t color) {
-    uint32_t px;
-    uint32_t py;
-    uint8_t red = (uint8_t)((color >> 16) & 0xFFu);
-    uint8_t green = (uint8_t)((color >> 8) & 0xFFu);
-    uint8_t blue = (uint8_t)(color & 0xFFu);
-
-    if (x > UINT32_MAX - 7u || y > UINT32_MAX - 7u) return UINT64_MAX;
-    for (py = 0u; py < 8u; ++py) {
-        const uint8_t row = (uint8_t)(bitmap >> (py * 8u));
-        for (px = 0u; px < 8u; ++px) {
-            if ((row & (uint8_t)(1u << (7u - px))) != 0u) {
-                if (sb_framebuffer_draw_pixel((uint32_t)x + px, (uint32_t)y + py,
-                                              red, green, blue) != 0)
-                    return UINT64_MAX;
-            }
-        }
-    }
-    return 0u;
 }
 
 static uint64_t syscall_config_get(void) {
@@ -143,7 +123,12 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_INPUT_KEY:
             return syscall_input_key();
         case SB_SYS_DISPLAY_GLYPH:
-            return syscall_display_glyph(arg0, arg1, arg2, arg3);
+            if (arg0 > UINT32_MAX - 7u || arg1 > UINT32_MAX - 7u || arg3 > UINT32_MAX)
+                return UINT64_MAX;
+            return sb_framebuffer_draw_glyph8((uint32_t)arg0, (uint32_t)arg1, arg2,
+                                              (uint8_t)((arg3 >> 16) & 0xFFu),
+                                              (uint8_t)((arg3 >> 8) & 0xFFu),
+                                              (uint8_t)(arg3 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
         case SB_SYS_INPUT_MOUSE:
             return syscall_input_mouse();
         case SB_SYS_CONFIG_GET:
