@@ -12,6 +12,8 @@
 #define SB_SYS_INPUT_KEY       6u
 #define SB_SYS_DISPLAY_GLYPH   7u
 #define SB_SYS_INPUT_MOUSE     8u
+#define SB_SYS_CONFIG_GET      9u
+#define SB_SYS_CONFIG_SET      10u
 
 void syscall_init(void);
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
