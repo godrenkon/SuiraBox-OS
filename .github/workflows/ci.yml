@@ -81,6 +81,7 @@ jobs:
           grep -F "Memory: VMM map/translate/unmap OK" qemu-gui.log
 
       - name: Upload kernel artifacts
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: suirabox-kernel
@@ -90,3 +91,4 @@ jobs:
             qemu.log
             qemu-gui.log
             qemu-gui-host.log
+          if-no-files-found: warn
