@@ -58,14 +58,12 @@ arch_enter_user_context:
     movq 48(%rdi), %r9
     movq 56(%rdi), %r8
     movq 64(%rdi), %rsi
-    movq 72(%rdi), %rdx
     movq 80(%rdi), %rbp
-    movq 88(%rdi), %rcx
-    movq 96(%rdi), %rbx
-    movq 104(%rdi), %rdi
+    movq 88(%rdi), %rdx
+    movq 96(%rdi), %rcx
+    movq 104(%rdi), %rbx
     movq 112(%rdi), %rax
-    /* rdi must be restored from offset 72; reload the correct value after base use. */
-    movq 72(%rsp), %rdi
+    movq 72(%rdi), %rdi
     iretq
 1:
     ud2
