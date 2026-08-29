@@ -40,6 +40,7 @@ typedef struct __attribute__((packed)) {
 
 static sb_framebuffer_info_t current;
 static int available;
+static int geometry_valid;
 
 static uint64_t align8(uint64_t value) {
     if (value > UINT64_MAX - 7u) return UINT64_MAX;
@@ -76,7 +77,7 @@ static int framebuffer_geometry_ok(void) {
 }
 
 static int framebuffer_target(uint64_t *target_address) {
-    if (target_address == 0 || !available || !framebuffer_geometry_ok()) return -1;
+    if (target_address == 0 || !available || !geometry_valid) return -1;
     if (current.mapped_address != 0u) {
         if (current.mapped_size == 0u) return -2;
         *target_address = current.mapped_address;
@@ -135,6 +136,7 @@ static int draw_glyph8_packed(uint64_t target_address, uint64_t bytes_per_pixel,
 
 int sb_framebuffer_init(uint64_t multiboot_info_address) {
     available = 0;
+    geometry_valid = 0;
     current = (sb_framebuffer_info_t){0};
 
     if (multiboot_info_address == 0u || multiboot_info_address >= 0x40000000ull)
@@ -178,7 +180,8 @@ int sb_framebuffer_init(uint64_t multiboot_info_address) {
                         current.green_mask_size = direct->green_mask_size;
                         current.blue_position = direct->blue_position;
                         current.blue_mask_size = direct->blue_mask_size;
-                        available = framebuffer_geometry_ok();
+                        geometry_valid = framebuffer_geometry_ok();
+                        available = geometry_valid;
                     }
                 }
             }
@@ -203,7 +206,7 @@ const sb_framebuffer_info_t *sb_framebuffer_info(void) {
 int sb_framebuffer_map(void) {
     uint64_t physical_start, physical_end, page_count, virtual_start;
 
-    if (!available || !framebuffer_geometry_ok() || current.mapped_address != 0u)
+    if (!available || !geometry_valid || current.mapped_address != 0u)
         return available && current.mapped_address != 0u;
 
     physical_start = current.address & SB_PAGE_MASK;
