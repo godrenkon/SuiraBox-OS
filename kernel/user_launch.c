@@ -15,7 +15,7 @@ int process_start_user_thread(sb_process_t *process, sb_thread_t *thread) {
     if (!thread_belongs_to_process(process, thread) ||
         process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED ||
         thread->state == SB_PROCESS_UNUSED || thread->state == SB_PROCESS_EXITED ||
-        thread->user_context == 0u || thread->kernel_resume_stack_pointer == 0u ||
+        thread->user_context == 0 || thread->kernel_resume_stack_pointer == 0u ||
         thread->kernel_stack_top == 0u) return -1;
     if (sb_user_context_validate(thread->user_context) != 0) return -1;
 
