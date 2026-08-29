@@ -17,6 +17,7 @@ static uint64_t scheduler_tick_count;
 extern void sb_context_switch(sb_task_context_t *old_context,
                               const sb_task_context_t *new_context);
 
+#ifdef SB_KERNEL_DEBUG
 static void sched_debug_char(char c) {
     while (1) {
         uint8_t status;
@@ -29,6 +30,10 @@ static void sched_debug_char(char c) {
 static void sched_debug(const char *s) {
     while (*s) sched_debug_char(*s++);
 }
+#define SCHED_DEBUG(message) sched_debug(message)
+#else
+#define SCHED_DEBUG(message) do { (void)sizeof(message); } while (0)
+#endif
 
 static void clear_task(volatile sb_task_t *task) {
     task->id = 0u;
@@ -41,19 +46,19 @@ static void clear_task(volatile sb_task_t *task) {
 }
 
 void scheduler_init(void) {
-    sched_debug("[SCHED] init begin\r\n");
+    SCHED_DEBUG("[SCHED] init begin\r\n");
     for (uint32_t i = 0u; i < SB_SCHED_MAX_TASKS; ++i) clear_task(&tasks[i]);
 
     tasks[0].id = SB_BOOTSTRAP_TASK_ID;
     tasks[0].runtime_ticks = 0u;
     tasks[0].priority = SB_BOOTSTRAP_PRIORITY;
     tasks[0].state = SB_TASK_RUNNING;
-    sched_debug("[SCHED] bootstrap task ready\r\n");
+    SCHED_DEBUG("[SCHED] bootstrap task ready\r\n");
 
     task_count = 1u;
     current_index = 0u;
     scheduler_tick_count = 0u;
-    sched_debug("[SCHED] scalar state ready\r\n");
+    SCHED_DEBUG("[SCHED] scalar state ready\r\n");
 }
 
 void scheduler_tick(void) {
