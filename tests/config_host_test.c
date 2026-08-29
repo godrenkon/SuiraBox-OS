@@ -10,8 +10,17 @@ int main(void) {
     assert(sb_config_validate(&record) == 0);
     assert(record.language == SB_LANGUAGE_JAPANESE);
     assert(record.generation == 1u);
+    assert(record.optional_enabled_mask == 0u);
 
     record.language = SB_LANGUAGE_ENGLISH;
+    assert(sb_config_validate(&record) != 0);
+    assert(sb_config_make(&record, SB_LANGUAGE_ENGLISH, 2u) == 0);
+    assert(sb_config_validate(&record) == 0);
+
+    record.optional_enabled_mask = (1u << 1) | (1u << 3);
+    record.checksum = sb_config_checksum(&record);
+    assert(sb_config_validate(&record) == 0);
+    record.optional_enabled_mask = 1u << 5;
     assert(sb_config_validate(&record) != 0);
     assert(sb_config_make(&record, SB_LANGUAGE_ENGLISH, 2u) == 0);
     assert(sb_config_validate(&record) == 0);
