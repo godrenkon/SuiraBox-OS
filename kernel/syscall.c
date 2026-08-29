@@ -15,7 +15,7 @@ static void io_out8(uint16_t port, uint8_t value) {
     __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
 }
 
-#ifdef SB_KERNEL_DEBUG
+#if SB_KERNEL_DEBUG
 static uint8_t syscall_user_smoke_seen;
 static void syscall_debug_char(char c) {
     while (1) {
@@ -130,9 +130,7 @@ static uint64_t syscall_config_get(void) {
 
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                           uint64_t arg2, uint64_t arg3, uint64_t arg4) {
-#ifdef SB_KERNEL_DEBUG
     syscall_debug_user_smoke();
-#endif
     switch (number) {
         case SB_SYS_GET_TICKS:
             return timer_ticks();
