@@ -29,7 +29,7 @@ int sb_settings_runtime_save(sb_settings_runtime_t *runtime) {
     uint64_t result;
     if (runtime == 0 || runtime->visible == 0u) return -1;
     result = sb_config_set_with_options(runtime->view.policy.language,
-                                         sb_settings_view_mask(runtime));
+                                         sb_settings_view_mask(&runtime->view));
     if (result == 0u) runtime->dirty = 0u;
     return result == 0u ? 0 : -1;
 }
@@ -42,7 +42,7 @@ int sb_settings_runtime_close(sb_settings_runtime_t *runtime) {
 }
 
 uint32_t sb_settings_runtime_mask(const sb_settings_runtime_t *runtime) {
-    return runtime == 0 ? 0u : sb_settings_view_mask(runtime);
+    return runtime == 0 ? 0u : sb_settings_view_mask(&runtime->view);
 }
 
 uint8_t sb_settings_runtime_visible(const sb_settings_runtime_t *runtime) {
