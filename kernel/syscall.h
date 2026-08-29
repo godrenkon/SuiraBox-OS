@@ -14,6 +14,7 @@
 #define SB_SYS_INPUT_MOUSE     8u
 #define SB_SYS_CONFIG_GET      9u
 #define SB_SYS_CONFIG_SET      10u
+#define SB_SYS_YIELD           11u
 #define SB_CONFIG_SET_VOLATILE 1u
 
 void syscall_init(void);
