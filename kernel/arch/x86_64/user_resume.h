@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-/* Never returns: consumes a prepared kernel-stack frame and executes iretq. */
-__attribute__((noreturn)) void sb_resume_user_from_kernel_stack(void);
+/* Never returns: switches RSP to a prepared kernel-stack frame and executes iretq. */
+__attribute__((noreturn)) void sb_resume_user_from_kernel_stack(uintptr_t resume_stack_pointer);
 
 #endif
