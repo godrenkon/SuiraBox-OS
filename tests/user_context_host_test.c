@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include "../kernel/arch/x86_64/user_context.h"
+#include "../kernel/mm/address_space.h"
 
 int main(void) {
     sb_user_context_t context;
@@ -19,6 +20,8 @@ int main(void) {
     context.rflags |= (1ull << 17u);
     assert(sb_user_context_validate(&context) != 0);
     context.rflags &= ~(1ull << 17u);
+    context.cs = SB_USER_CODE_SELECTOR;
+    assert(sb_user_context_validate(&context) == 0);
     context.cs = 0x1Bu;
     assert(sb_user_context_validate(&context) != 0);
 
