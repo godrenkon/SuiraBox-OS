@@ -7,6 +7,10 @@
 #define ENTRY_ADDR_MASK 0x000FFFFFFFFFF000ull
 #define BOOTSTRAP_TEST_PML4_INDEX 1u
 
+#ifndef SB_KERNEL_DEBUG
+#define SB_KERNEL_DEBUG 1
+#endif
+
 extern uint64_t pml4[PT_ENTRIES];
 extern uint64_t pdpt[PT_ENTRIES];
 extern uint64_t pd[PT_ENTRIES];
@@ -16,6 +20,7 @@ static uint64_t bootstrap_pt[PT_ENTRIES] __attribute__((aligned(4096)));
 static uint64_t bootstrap_high_pdpt[PT_ENTRIES] __attribute__((aligned(4096)));
 static int bootstrap_ready;
 
+#if SB_KERNEL_DEBUG
 static void debug_write_char(char c) {
     while (1) {
         uint8_t status;
@@ -38,6 +43,10 @@ static void debug_write_u64(uint64_t value) {
     }
     while (pos > 0u) debug_write_char(buffer[--pos]);
 }
+#else
+static inline void debug_write(const char *s) { (void)s; }
+static inline void debug_write_u64(uint64_t value) { (void)value; }
+#endif
 
 static uint64_t *table_from_entry(uint64_t entry) {
     return (uint64_t *)(uintptr_t)(entry & ENTRY_ADDR_MASK);
