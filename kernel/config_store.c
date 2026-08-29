@@ -3,7 +3,8 @@
 #include "fs/fat32.h"
 #include <stdint.h>
 
-#define SB_CONFIG_FILE_NAME "SBCFG.BIN"
+#define SB_CONFIG_FILE_A "SBCFG.BIN"
+#define SB_CONFIG_FILE_B "SBCF2.BIN"
 
 static uint32_t fnv1a(const uint8_t *bytes, uint32_t count) {
     uint32_t hash = 2166136261u;
@@ -30,41 +31,84 @@ static int validate(const sb_config_store_record_t *record) {
     return 1;
 }
 
+static int load_slot(sb_fat32_t *fs, const char *name,
+                     sb_config_store_record_t *record, sb_fat32_dirent_t *entry) {
+    if (fs == 0 || name == 0 || record == 0 || entry == 0) return 0;
+    if (!sb_fat32_find_root_entry(fs, name, entry) ||
+        entry->file_size != SB_CONFIG_STORE_RECORD_SIZE ||
+        !sb_fat32_read_file(fs, entry, 0u, SB_CONFIG_STORE_RECORD_SIZE, record)) return 0;
+    return validate(record);
+}
+
 int sb_config_store_get(sb_config_store_record_t *record) {
     sb_fat32_t *fs;
-    sb_fat32_dirent_t entry;
-    if (record == 0) return 0;
+    sb_config_store_record_t a;
+    sb_config_store_record_t b;
+    sb_fat32_dirent_t entry_a;
+    sb_fat32_dirent_t entry_b;
+    const int valid_a = load_slot(sb_storage_fat32(), SB_CONFIG_FILE_A, &a, &entry_a);
+    const int valid_b = load_slot(sb_storage_fat32(), SB_CONFIG_FILE_B, &b, &entry_b);
+
     fs = sb_storage_fat32();
-    if (fs == 0 || !sb_fat32_find_root_entry(fs, SB_CONFIG_FILE_NAME, &entry) ||
-        entry.file_size != SB_CONFIG_STORE_RECORD_SIZE ||
-        !sb_fat32_read_file(fs, &entry, 0u, SB_CONFIG_STORE_RECORD_SIZE, record)) return 0;
-    return validate(record);
+    (void)fs;
+    if (record == 0 || (valid_a == 0 && valid_b == 0)) return 0;
+    if (valid_a != 0 && (valid_b == 0 || a.generation >= b.generation)) *record = a;
+    else *record = b;
+    return 1;
+}
+
+static int ensure_slot(sb_fat32_t *fs, const char *name,
+                       sb_fat32_dirent_t *entry) {
+    if (sb_fat32_find_root_entry(fs, name, entry))
+        return entry->file_size == SB_CONFIG_STORE_RECORD_SIZE ? 0 : -1;
+    return sb_fat32_create_root_file(fs, name, SB_CONFIG_STORE_RECORD_SIZE, entry) ? 1 : -1;
 }
 
 int sb_config_store_set(uint8_t language) {
     sb_fat32_t *fs;
-    sb_fat32_dirent_t entry;
-    sb_config_store_record_t current;
-    sb_config_store_record_t next = {0};
+    sb_config_store_record_t current_a = {0};
+    sb_config_store_record_t current_b = {0};
+    sb_fat32_dirent_t entry_a = {0};
+    sb_fat32_dirent_t entry_b = {0};
+    const int valid_a = load_slot(sb_storage_fat32(), SB_CONFIG_FILE_A, &current_a, &entry_a);
+    const int valid_b = load_slot(sb_storage_fat32(), SB_CONFIG_FILE_B, &current_b, &entry_b);
+    sb_fat32_dirent_t *target_entry;
+    const char *target_name;
     uint32_t generation = 1u;
+    sb_config_store_record_t next = {0};
+    int ensure_result;
 
     if (language > 3u) return -1;
     fs = sb_storage_fat32();
     if (fs == 0) return -1;
 
-    if (sb_config_store_get(&current)) {
-        if (current.generation == UINT32_MAX) return -1;
-        generation = current.generation + 1u;
-        if (!sb_fat32_find_root_entry(fs, SB_CONFIG_FILE_NAME, &entry) ||
-            entry.file_size != SB_CONFIG_STORE_RECORD_SIZE) return -1;
-    } else {
-        if (sb_fat32_find_root_entry(fs, SB_CONFIG_FILE_NAME, &entry)) {
-            if (entry.file_size != SB_CONFIG_STORE_RECORD_SIZE) return -1;
-        } else if (!sb_fat32_create_root_file(fs, SB_CONFIG_FILE_NAME,
-                                               SB_CONFIG_STORE_RECORD_SIZE, &entry)) {
-            return -1;
-        }
+    if (valid_a != 0 || valid_b != 0) {
+        const sb_config_store_record_t *latest =
+            (valid_a != 0 && (valid_b == 0 || current_a.generation >= current_b.generation))
+                ? &current_a : &current_b;
+        if (latest->generation == UINT32_MAX) return -1;
+        generation = latest->generation + 1u;
     }
+
+    if (valid_a == 0) {
+        target_name = SB_CONFIG_FILE_A;
+        target_entry = &entry_a;
+        ensure_result = ensure_slot(fs, target_name, target_entry);
+    } else if (valid_b == 0) {
+        target_name = SB_CONFIG_FILE_B;
+        target_entry = &entry_b;
+        ensure_result = ensure_slot(fs, target_name, target_entry);
+    } else if (current_a.generation <= current_b.generation) {
+        target_name = SB_CONFIG_FILE_A;
+        target_entry = &entry_a;
+        ensure_result = 0;
+    } else {
+        target_name = SB_CONFIG_FILE_B;
+        target_entry = &entry_b;
+        ensure_result = 0;
+    }
+    (void)target_name;
+    if (ensure_result < 0) return -1;
 
     next.magic = SB_CONFIG_STORE_MAGIC;
     next.version = SB_CONFIG_STORE_VERSION;
@@ -72,7 +116,6 @@ int sb_config_store_set(uint8_t language) {
     next.completed = SB_CONFIG_STORE_COMPLETED;
     next.generation = generation;
     next.checksum = checksum(&next);
-    if (!sb_fat32_write_file(fs, &entry, 0u, SB_CONFIG_STORE_RECORD_SIZE, &next)) return -1;
-
-    return 0;
+    return sb_fat32_write_file(fs, target_entry, 0u,
+                               SB_CONFIG_STORE_RECORD_SIZE, &next) ? 0 : -1;
 }
