@@ -30,6 +30,10 @@ int address_space_activate(const sb_address_space_t *space) {
     return space != 0 && space->pml4_physical != 0u ? 0 : -1;
 }
 
+int gdt_try_set_kernel_stack(uint64_t stack_pointer) {
+    return stack_pointer != 0u ? 0 : -1;
+}
+
 int main(void) {
     sb_process_t process = {0};
     sb_user_context_t context = {0};
