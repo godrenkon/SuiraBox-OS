@@ -140,6 +140,18 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                                               (uint8_t)((arg3 >> 16) & 0xFFu),
                                               (uint8_t)((arg3 >> 8) & 0xFFu),
                                               (uint8_t)(arg3 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
+        case SB_SYS_DISPLAY_GLYPH_PAIR:
+            if (arg0 > UINT32_MAX - 17u || arg1 > UINT32_MAX - 7u || arg4 > UINT32_MAX)
+                return UINT64_MAX;
+            if (sb_framebuffer_draw_glyph8((uint32_t)arg0, (uint32_t)arg1, arg2,
+                                           (uint8_t)((arg4 >> 16) & 0xFFu),
+                                           (uint8_t)((arg4 >> 8) & 0xFFu),
+                                           (uint8_t)(arg4 & 0xFFu)) != 0)
+                return UINT64_MAX;
+            return sb_framebuffer_draw_glyph8((uint32_t)arg0 + 10u, (uint32_t)arg1, arg3,
+                                              (uint8_t)((arg4 >> 16) & 0xFFu),
+                                              (uint8_t)((arg4 >> 8) & 0xFFu),
+                                              (uint8_t)(arg4 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
         case SB_SYS_INPUT_MOUSE:
             return syscall_input_mouse();
         case SB_SYS_CONFIG_GET:
