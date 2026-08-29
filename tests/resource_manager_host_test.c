@@ -14,7 +14,15 @@ typedef struct {
     uint32_t activate_count;
     uint32_t commit_count;
     uint32_t begin_count;
+    uint32_t manifest_verify_count;
 } fake_store_t;
+
+static int verify_manifest(void *user, const sb_resource_ref_t *manifest, uint32_t manifest_count) {
+    fake_store_t *store = (fake_store_t *)user;
+    if (store == 0 || manifest == 0 || manifest_count == 0u) return -1;
+    ++store->manifest_verify_count;
+    return 0;
+}
 
 static int cache_lookup(void *user, const char *sha256) {
     fake_store_t *store = (fake_store_t *)user;
@@ -101,6 +109,7 @@ int main(void) {
     sb_resource_ref_t locale = make_ref("locale/en-us", SB_RESOURCE_TIER_REMOTE, hello_hash, 5u);
     const sb_resource_ref_t manifest[] = {core, locale};
     const sb_resource_manager_io_t io = {
+        .verify_manifest = verify_manifest,
         .cache_lookup = cache_lookup,
         .cache_begin = cache_begin,
         .cache_write = cache_write,
@@ -118,6 +127,7 @@ int main(void) {
     assert(cache_path[0] == '/');
     assert(sb_resource_manager_cache_path("bad", cache_path, sizeof(cache_path)) != 0);
     assert(sb_resource_manager_init(&manager, manifest, 2u, 1u, &io) == 0);
+    assert(store.manifest_verify_count == 1u);
     assert(sb_resource_manager_find(&manager, "locale/en-us") == &manifest[1]);
     assert(sb_resource_manager_find(&manager, "../locale/en-us") == 0);
 
@@ -144,6 +154,10 @@ int main(void) {
     assert(bad_store.fetch_count == 1u);
     assert(bad_store.aborted == 1u);
     assert(bad_store.present == 0u);
+
+    sb_resource_manager_io_t unsigned_io = io;
+    unsigned_io.verify_manifest = 0;
+    assert(sb_resource_manager_init(&manager, manifest, 2u, 1u, &unsigned_io) != 0);
 
     sb_resource_ref_t cycle_a = make_ref("cycle/a", SB_RESOURCE_TIER_REMOTE, hello_hash, 5u);
     sb_resource_ref_t cycle_b = make_ref("cycle/b", SB_RESOURCE_TIER_REMOTE, hello_hash, 5u);
