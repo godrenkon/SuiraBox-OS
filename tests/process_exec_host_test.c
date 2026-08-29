@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include "../kernel/process_exec.h"
 #include "../kernel/arch/x86_64/irq_frame.h"
+#include "../kernel/mm/multiboot_modules.h"
 
 int address_space_create(sb_address_space_t *space) {
     if (space == 0) return -1;
