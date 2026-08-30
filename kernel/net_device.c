@@ -46,12 +46,22 @@ typedef struct {
     uint8_t status;
     uint8_t errors;
     uint16_t special;
-} __attribute__((packed)) e1000_desc_t;
+} __attribute__((packed)) e1000_rx_desc_t;
+
+typedef struct {
+    uint64_t address;
+    uint16_t length;
+    uint8_t cso;
+    uint8_t command;
+    uint8_t status;
+    uint8_t css;
+    uint16_t special;
+} __attribute__((packed)) e1000_tx_desc_t;
 
 typedef struct {
     volatile uint8_t *mmio;
-    e1000_desc_t *rx;
-    e1000_desc_t *tx;
+    e1000_rx_desc_t *rx;
+    e1000_tx_desc_t *tx;
     void *rx_ring_page;
     void *tx_ring_page;
     void *rx_buffer_pages[E1000_RX_COUNT];
@@ -131,8 +141,8 @@ static int e1000_activate(uint32_t index, sb_device_t *device) {
             return -1;
         }
     }
-    ctx->rx = (e1000_desc_t *)ctx->rx_ring_page;
-    ctx->tx = (e1000_desc_t *)ctx->tx_ring_page;
+    ctx->rx = (e1000_rx_desc_t *)ctx->rx_ring_page;
+    ctx->tx = (e1000_tx_desc_t *)ctx->tx_ring_page;
 
     mmio_write32(ctx->mmio, E1000_REG_IMC, 0xFFFFFFFFu);
     (void)mmio_read32(ctx->mmio, E1000_REG_STATUS);
@@ -154,27 +164,26 @@ static int e1000_activate(uint32_t index, sb_device_t *device) {
     net_devices[index].mac[4] = (uint8_t)rah;
     net_devices[index].mac[5] = (uint8_t)(rah >> 8);
 
-    for (uint32_t i = 0u; i < E1000_RX_COUNT; ++i) {
-        ctx->rx[i] = (e1000_desc_t){
+    for (uint32_t i = 0u; i < E1000_RX_COUNT; ++i)
+        ctx->rx[i] = (e1000_rx_desc_t){
             .address = (uint64_t)(uintptr_t)ctx->rx_buffer_pages[i],
             .status = 0u
         };
-    }
     for (uint32_t i = 0u; i < E1000_TX_COUNT; ++i)
-        ctx->tx[i] = (e1000_desc_t){.status = E1000_TXD_STAT_DD};
+        ctx->tx[i] = (e1000_tx_desc_t){.status = E1000_TXD_STAT_DD};
 
     const uintptr_t rx_phys = (uintptr_t)ctx->rx_ring_page;
     const uintptr_t tx_phys = (uintptr_t)ctx->tx_ring_page;
     mmio_write32(ctx->mmio, E1000_REG_RDBAL, (uint32_t)rx_phys);
     mmio_write32(ctx->mmio, E1000_REG_RDBAH, (uint32_t)(rx_phys >> 32));
-    mmio_write32(ctx->mmio, E1000_REG_RDLEN, E1000_RX_COUNT * sizeof(e1000_desc_t));
+    mmio_write32(ctx->mmio, E1000_REG_RDLEN, E1000_RX_COUNT * sizeof(e1000_rx_desc_t));
     mmio_write32(ctx->mmio, E1000_REG_RDH, 0u);
     mmio_write32(ctx->mmio, E1000_REG_RDT, E1000_RX_COUNT - 1u);
     mmio_write32(ctx->mmio, E1000_REG_RCTL, E1000_RCTL_EN | E1000_RCTL_BAM | E1000_RCTL_SECRC);
 
     mmio_write32(ctx->mmio, E1000_REG_TDBAL, (uint32_t)tx_phys);
     mmio_write32(ctx->mmio, E1000_REG_TDBAH, (uint32_t)(tx_phys >> 32));
-    mmio_write32(ctx->mmio, E1000_REG_TDLEN, E1000_TX_COUNT * sizeof(e1000_desc_t));
+    mmio_write32(ctx->mmio, E1000_REG_TDLEN, E1000_TX_COUNT * sizeof(e1000_tx_desc_t));
     mmio_write32(ctx->mmio, E1000_REG_TDH, 0u);
     mmio_write32(ctx->mmio, E1000_REG_TDT, 0u);
     mmio_write32(ctx->mmio, E1000_REG_TCTL,
@@ -237,17 +246,17 @@ int sb_net_device_send(uint32_t index, const uint8_t *frame, uint16_t length) {
     if (index >= net_device_count_value || frame == 0 || length < 14u || length > E1000_BUFFER_SIZE ||
         net_devices[index].state != SB_NET_READY || e1000[index].ready == 0u) return -1;
     e1000_context_t *ctx = &e1000[index];
-    e1000_desc_t *descriptor = &ctx->tx[ctx->tx_tail];
+    e1000_tx_desc_t *descriptor = &ctx->tx[ctx->tx_tail];
     if ((descriptor->status & E1000_TXD_STAT_DD) == 0u) return 1;
     for (uint32_t i = 0u; i < length; ++i)
         ((uint8_t *)ctx->tx_buffer_pages[ctx->tx_tail])[i] = frame[i];
     descriptor->address = (uint64_t)(uintptr_t)ctx->tx_buffer_pages[ctx->tx_tail];
     descriptor->length = length;
-    descriptor->checksum = 0u;
+    descriptor->cso = 0u;
+    descriptor->command = E1000_TXD_CMD_EOP | E1000_TXD_CMD_IFCS | E1000_TXD_CMD_RS;
     descriptor->status = 0u;
-    descriptor->errors = 0u;
+    descriptor->css = 0u;
     descriptor->special = 0u;
-    descriptor->checksum = E1000_TXD_CMD_EOP | E1000_TXD_CMD_IFCS | E1000_TXD_CMD_RS;
     ctx->tx_tail = (ctx->tx_tail + 1u) % E1000_TX_COUNT;
     mmio_write32(ctx->mmio, E1000_REG_TDT, ctx->tx_tail);
     return 0;
@@ -257,7 +266,7 @@ int sb_net_device_receive(uint32_t index, uint8_t *frame, uint16_t capacity, uin
     if (index >= net_device_count_value || frame == 0 || length == 0 || capacity == 0u ||
         net_devices[index].state != SB_NET_READY || e1000[index].ready == 0u) return -1;
     e1000_context_t *ctx = &e1000[index];
-    e1000_desc_t *descriptor = &ctx->rx[ctx->rx_head];
+    e1000_rx_desc_t *descriptor = &ctx->rx[ctx->rx_head];
     if ((descriptor->status & E1000_RXD_STAT_DD) == 0u) return 1;
     if (descriptor->errors != 0u) {
         descriptor->status = 0u;
