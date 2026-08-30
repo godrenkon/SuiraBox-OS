@@ -4,6 +4,10 @@
 .global sb_syscall_int80_stub
 .type sb_syscall_int80_stub, @function
 .extern sb_syscall_dispatch_entry
+.extern user_scheduler_exit_dispatch
+.extern sb_resume_user_from_kernel_stack
+
+.set SB_SYSCALL_EXIT_SWITCH, -2
 
 /*
  * Compatibility syscall entry through IDT vector 0x80.
@@ -60,6 +64,16 @@ sb_syscall_int80_stub:
 
     call sb_syscall_dispatch_entry
 
+    /* A successful exit syscall never returns to the exiting userspace thread. */
+    cmpq $SB_SYSCALL_EXIT_SWITCH, %rax
+    jne .Lsyscall_normal_return
+    call user_scheduler_exit_dispatch
+    testq %rax, %rax
+    jz .Lsyscall_fault
+    movq %rax, %rdi
+    jmp sb_resume_user_from_kernel_stack
+
+.Lsyscall_normal_return:
     /* Keep dispatcher result in RAX while recovering the saved-GPR base. */
     movq (%rsp), %rsi
     movq %rsi, %rsp
@@ -74,6 +88,12 @@ sb_syscall_int80_stub:
     popq %r10
     popq %r11
     iretq
+
+.Lsyscall_fault:
+    cli
+.Lsyscall_fault_halt:
+    hlt
+    jmp .Lsyscall_fault_halt
 
 .size sb_syscall_int80_stub, .-sb_syscall_int80_stub
 
