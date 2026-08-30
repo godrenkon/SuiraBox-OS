@@ -65,11 +65,26 @@ sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t
 }
 
 int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
+    uint32_t index = process != 0 ? process->thread_count : 0u;
     if (process == 0 || thread == 0 || process->thread_count == 0u) return -1;
-    if (&process->threads[process->thread_count - 1u] != thread) return -1;
+    for (uint32_t i = 0u; i < process->thread_count; ++i) {
+        if (&process->threads[i] == thread) {
+            index = i;
+            break;
+        }
+    }
+    if (index >= process->thread_count) return -1;
+
     (void)user_scheduler_remove(process, thread);
-    if (thread->kernel_stack_base != 0u) pmm_free_page((void *)(uintptr_t)thread->kernel_stack_base);
-    *thread = (sb_thread_t){0};
+    const uint32_t last_index = process->thread_count - 1u;
+    if (index != last_index) {
+        sb_thread_t *last_thread = &process->threads[last_index];
+        (void)user_scheduler_rebind_thread(process, last_thread, &process->threads[index]);
+        process->threads[index] = *last_thread;
+    }
+    if (process->threads[last_index].kernel_stack_base != 0u)
+        pmm_free_page((void *)(uintptr_t)process->threads[last_index].kernel_stack_base);
+    process->threads[last_index] = (sb_thread_t){0};
     --process->thread_count;
     return 0;
 }
