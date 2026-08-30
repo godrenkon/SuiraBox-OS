@@ -10,7 +10,7 @@ int main(void) {
         .rdx = 0x0500u, .rcx = 0x0400u, .rax = 0x0100u
     };
     sb_x86_64_user_iret_frame_t iret = {
-        .rip = 0x00400000u,
+        .rip = SB_USER_BASE,
         .cs = SB_USER_CODE_SELECTOR,
         .rflags = SB_USER_RFLAGS_RESERVED | SB_USER_RFLAGS_INTERRUPT,
         .rsp = SB_USER_STACK_TOP,
