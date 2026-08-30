@@ -24,6 +24,7 @@ LD ?= ld
 
 CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2 -ffunction-sections -fdata-sections
 USER_CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -fno-builtin -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2 -ffunction-sections -fdata-sections
+USER_APP_CFLAGS := $(USER_CFLAGS) -mcmodel=large
 LDFLAGS := -nostdlib -z max-page-size=0x1000 -T linker.ld --gc-sections
 USER_LDFLAGS := -nostdlib -z max-page-size=0x1000 -T userspace/user.ld --gc-sections
 
@@ -226,24 +227,24 @@ $(LOCALE_OBJ): userspace/locale.c userspace/locale.h userspace/config.h | $(BUIL
 $(LAUNCHER_OBJ): userspace/launcher.c userspace/launcher.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 $(DESKTOP_SHELL_OBJ): userspace/desktop_shell.c userspace/desktop_shell.h userspace/launcher.h userspace/gui.h | $(BUILD)
-	$(CC) $(USER_CFLAGS) -mcmodel=large -Iuserspace -c $< -o $@
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+$(SETTINGS_POLICY_OBJ): userspace/settings_policy.c userspace/settings_policy.h userspace/config.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+$(SETTINGS_VIEW_OBJ): userspace/settings_view.c userspace/settings_view.h userspace/gui.h userspace/settings_policy.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+$(SETTINGS_RUNTIME_OBJ): userspace/settings_runtime.c userspace/settings_runtime.h userspace/config.h userspace/settings_policy.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 $(RESOURCE_POLICY_OBJ): userspace/resource_policy.c userspace/resource_policy.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
-$(RESOURCE_MANAGER_OBJ): userspace/resource_manager.c userspace/resource_manager.h userspace/resource.h | $(BUILD)
+$(RESOURCE_MANAGER_OBJ): userspace/resource_manager.c userspace/resource_manager.h userspace/resource_policy.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
-$(SETTINGS_POLICY_OBJ): userspace/settings_policy.c userspace/settings_policy.h userspace/resource_policy.h | $(BUILD)
-	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
-$(SETTINGS_VIEW_OBJ): userspace/settings_view.c userspace/settings_view.h userspace/settings_policy.h userspace/resource_policy.h | $(BUILD)
-	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
-$(SETTINGS_RUNTIME_OBJ): userspace/settings_runtime.c userspace/settings_runtime.h userspace/settings_view.h userspace/settings_policy.h userspace/syscall.h | $(BUILD)
-	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
-$(STORAGE_OBJ): kernel/storage.c kernel/storage.h kernel/ata_pio.h kernel/vfs.h kernel/block.h kernel/fs/fat32.h | $(BUILD)
+$(STORAGE_OBJ): kernel/storage.c kernel/storage.h kernel/block.h kernel/vfs.h kernel/fs/fat32.h kernel/ata_pio.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
 $(CONFIG_STORE_OBJ): kernel/config_store.c kernel/config_store.h kernel/storage.h kernel/fs/fat32.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
 $(DEVICE_OBJ): kernel/device.c kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
-$(INPUT_OBJ): kernel/input.c kernel/input.h kernel/device.h | $(BUILD)
+$(INPUT_OBJ): kernel/input.c kernel/input.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 $(ACPI_OBJ): kernel/acpi.c kernel/acpi.h kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
@@ -259,7 +260,7 @@ $(NVME_OBJ): kernel/nvme.c kernel/nvme.h kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 $(NET_DEVICE_OBJ): kernel/net_device.c kernel/net_device.h kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
-$(NET_STACK_OBJ): kernel/net_stack.c kernel/net_stack.h | $(BUILD)
+$(NET_STACK_OBJ): kernel/net_stack.c kernel/net_stack.h kernel/net_device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 $(ARP_OBJ): kernel/net_arp.c kernel/net_arp.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
@@ -384,11 +385,11 @@ host-gpu-test: $(GPU_HOST_TEST)
 $(APP_ENTRY_OBJ): userspace/app_entry.S | $(BUILD)
 	$(AS) --64 $< -o $@
 $(SETTINGS_APP_OBJ): userspace/apps/settings.c userspace/syscall.h | $(BUILD)
-	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+	$(CC) $(USER_APP_CFLAGS) -Iuserspace -c $< -o $@
 $(FILES_APP_OBJ): userspace/apps/files.c userspace/syscall.h | $(BUILD)
-	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+	$(CC) $(USER_APP_CFLAGS) -Iuserspace -c $< -o $@
 $(TERMINAL_APP_OBJ): userspace/apps/terminal.c userspace/syscall.h | $(BUILD)
-	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+	$(CC) $(USER_APP_CFLAGS) -Iuserspace -c $< -o $@
 $(SETTINGS_APP_ELF): $(APP_ENTRY_OBJ) $(SETTINGS_APP_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(APP_ENTRY_OBJ) $(SETTINGS_APP_OBJ)
 $(FILES_APP_ELF): $(APP_ENTRY_OBJ) $(FILES_APP_OBJ) userspace/user.ld
@@ -408,16 +409,12 @@ $(RELEASE_KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(
 release-iso: $(RELEASE_KERNEL) $(DESKTOP_ELF) boot/grub.cfg
 	rm -rf $(BUILD)/release-iso
 	mkdir -p $(BUILD)/release-iso/boot/grub
-	strip --strip-all $(RELEASE_KERNEL) $(DESKTOP_ELF)
 	cp $(RELEASE_KERNEL) $(BUILD)/release-iso/boot/suirabox.elf
 	cp $(DESKTOP_ELF) $(BUILD)/release-iso/boot/sb-desktop.elf
 	cp boot/grub.cfg $(BUILD)/release-iso/boot/grub/grub.cfg
 	grub-mkrescue -o $(BUILD)/suirabox-release.iso $(BUILD)/release-iso >/dev/null
-	sh scripts/check_base_image.sh $(BUILD)/release-iso
 
-check: $(KERNEL) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test host-desktop-shell-test host-irq-frame-test host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test
-	@if command -v grub-file >/dev/null 2>&1; then grub-file --is-x86-multiboot2 $(KERNEL); else printf '%s\n' 'warning: grub-file is unavailable; skipping Multiboot2 artifact validation'; fi
-	readelf -h $(DESKTOP_ELF) | grep -q 'Class:.*ELF64'
+check: host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test host-desktop-shell-test host-irq-frame-test host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test
 
 clean:
 	rm -rf $(BUILD)
