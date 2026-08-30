@@ -24,6 +24,7 @@ jobs:
 
       - name: Prepare persistent FAT32 test disk
         run: |
+          mkdir -p build
           truncate -s 64M build/test-disk.img
           mformat -F -i build/test-disk.img ::
 
