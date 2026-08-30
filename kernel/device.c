@@ -39,6 +39,9 @@ sb_device_t *sb_device_register(sb_device_bus_t bus, sb_device_class_t class_id,
     device->state = SB_DEVICE_DISCOVERED;
     device->vendor_id = vendor_id;
     device->device_id = device_id;
+    device->bus_number = SB_DEVICE_LOCATION_UNKNOWN;
+    device->device_number = SB_DEVICE_LOCATION_UNKNOWN;
+    device->function_number = SB_DEVICE_LOCATION_UNKNOWN;
     copy_name(device->name, name);
     ++device_count_value;
     return device;
@@ -46,7 +49,7 @@ sb_device_t *sb_device_register(sb_device_bus_t bus, sb_device_class_t class_id,
 
 int sb_device_set_resource(sb_device_t *device, uint8_t slot,
                            uint64_t base, uint64_t size, uint32_t flags) {
-    if (device == 0 || slot >= 6u || device->state == SB_DEVICE_DETACHED) return -1;
+    if (device == 0 || slot >= SB_DEVICE_MAX_RESOURCES || device->state == SB_DEVICE_DETACHED) return -1;
     if (size != SB_DEVICE_RESOURCE_SIZE_UNKNOWN && base > UINT64_MAX - size) return -1;
     device->resources[slot] = (sb_device_resource_t){ .base = base, .size = size, .flags = flags };
     if (slot >= device->resource_count) device->resource_count = (uint8_t)(slot + 1u);
