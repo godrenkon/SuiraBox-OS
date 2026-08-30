@@ -9,8 +9,7 @@ static void halt_forever(void) { for (;;) __asm__ volatile ("cli\n\thlt" ::: "me
 
 void sb_power_init(void) {
     capabilities = SB_POWER_REBOOT | SB_POWER_SHUTDOWN;
-    if (!sb_acpi_available() || !sb_acpi_info()->power_control_valid) return;
-    capabilities |= (1u << 8); /* Native ACPI S5 path available. */
+    if (sb_acpi_available() && sb_acpi_info()->power_control_valid) capabilities |= SB_POWER_ACPI_S5;
 }
 
 uint32_t sb_power_capabilities(void) { return capabilities; }
@@ -25,7 +24,7 @@ int sb_power_reboot(void) {
 
 int sb_power_shutdown(void) {
     if ((capabilities & SB_POWER_SHUTDOWN) == 0u) return -1;
-    if ((capabilities & (1u << 8)) != 0u && sb_acpi_poweroff() == 0) halt_forever();
+    if ((capabilities & SB_POWER_ACPI_S5) != 0u && sb_acpi_poweroff() == 0) halt_forever();
     __asm__ volatile ("outw %0, %1" : : "a"((uint16_t)0x2000u), "Nd"((uint16_t)0x604u));
     __asm__ volatile ("outw %0, %1" : : "a"((uint16_t)0x3400u), "Nd"((uint16_t)0x4004u));
     __asm__ volatile ("outw %0, %1" : : "a"((uint16_t)0x2000u), "Nd"((uint16_t)0xB004u));
