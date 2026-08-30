@@ -21,6 +21,7 @@ typedef struct {
 } sb_input_event_t;
 
 void sb_input_init(void);
+void sb_input_poll_hardware(void);
 uint64_t sb_input_read_key(void);
 uint64_t sb_input_read_mouse(void);
 int sb_input_poll_event(sb_input_event_t *event);
