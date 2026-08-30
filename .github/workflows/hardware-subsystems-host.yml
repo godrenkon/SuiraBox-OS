@@ -1,0 +1,41 @@
+name: SuiraBox Hardware Subsystems Host Test
+
+on:
+  push:
+    paths:
+      - 'kernel/device.c'
+      - 'kernel/device.h'
+      - 'kernel/usb.c'
+      - 'kernel/usb.h'
+      - 'kernel/nvme.c'
+      - 'kernel/nvme.h'
+      - 'kernel/net_device.c'
+      - 'kernel/net_device.h'
+      - 'kernel/audio.c'
+      - 'kernel/audio.h'
+      - 'tests/hardware_subsystems_host_test.c'
+      - 'GNUmakefile'
+      - '.github/workflows/hardware-subsystems-host.yml'
+  pull_request:
+    paths:
+      - 'kernel/device.c'
+      - 'kernel/device.h'
+      - 'kernel/usb.c'
+      - 'kernel/usb.h'
+      - 'kernel/nvme.c'
+      - 'kernel/nvme.h'
+      - 'kernel/net_device.c'
+      - 'kernel/net_device.h'
+      - 'kernel/audio.c'
+      - 'kernel/audio.h'
+      - 'tests/hardware_subsystems_host_test.c'
+      - 'GNUmakefile'
+      - '.github/workflows/hardware-subsystems-host.yml'
+
+jobs:
+  hardware-subsystems-host-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run hardware subsystem host test
+        run: make host-hardware-subsystems-test
