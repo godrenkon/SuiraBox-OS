@@ -1,0 +1,31 @@
+name: SuiraBox Device Host Test
+
+on:
+  push:
+    paths:
+      - 'kernel/device.c'
+      - 'kernel/device.h'
+      - 'kernel/pci.c'
+      - 'kernel/pci.h'
+      - 'kernel/ata_pio.c'
+      - 'tests/device_host_test.c'
+      - 'GNUmakefile'
+      - '.github/workflows/device-host.yml'
+  pull_request:
+    paths:
+      - 'kernel/device.c'
+      - 'kernel/device.h'
+      - 'kernel/pci.c'
+      - 'kernel/pci.h'
+      - 'kernel/ata_pio.c'
+      - 'tests/device_host_test.c'
+      - 'GNUmakefile'
+      - '.github/workflows/device-host.yml'
+
+jobs:
+  device-host-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run device host test
+        run: make host-device-test
