@@ -2,15 +2,19 @@
 #include "acpi.h"
 #include "audio.h"
 #include "device.h"
+#include "gpu.h"
 #include "net_device.h"
 #include "nvme.h"
 #include "power.h"
 #include "usb.h"
+#include "usb_class.h"
 
 void sb_hardware_init(uint64_t multiboot_info) {
     (void)sb_acpi_init_from_multiboot(multiboot_info);
     sb_power_init();
+    sb_usb_class_init();
     sb_usb_init();
+    sb_gpu_init();
     sb_nvme_init();
     sb_net_device_init();
     sb_audio_init();
