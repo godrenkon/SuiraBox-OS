@@ -13,6 +13,9 @@ static int resource_id_equal(const char *a, const char *b) {
 int sb_resource_manager_prefetch(sb_resource_manager_t *manager,
                                  const char *const *resource_ids,
                                  uint32_t resource_count) {
+    const char *unique_ids[SB_RESOURCE_MANAGER_MAX_MANIFEST];
+    uint32_t unique_count = 0u;
+
     if (manager == 0 || resource_ids == 0 || resource_count == 0u ||
         resource_count > SB_RESOURCE_MANAGER_MAX_MANIFEST) return -1;
 
@@ -20,17 +23,17 @@ int sb_resource_manager_prefetch(sb_resource_manager_t *manager,
         const char *resource_id = resource_ids[i];
         if (!sb_resource_id_valid(resource_id)) return -2;
         if (sb_resource_manager_find(manager, resource_id) == 0) return -3;
-
-        uint8_t duplicate = 0u;
-        for (uint32_t j = 0u; j < i; ++j) {
-            if (resource_id_equal(resource_id, resource_ids[j])) {
-                duplicate = 1u;
+        for (uint32_t j = 0u; j < unique_count; ++j) {
+            if (resource_id_equal(resource_id, unique_ids[j])) {
+                resource_id = 0;
                 break;
             }
         }
-        if (duplicate != 0u) continue;
+        if (resource_id != 0) unique_ids[unique_count++] = resource_id;
+    }
 
-        if (sb_resource_manager_acquire(manager, resource_id) != 0) return -4;
+    for (uint32_t i = 0u; i < unique_count; ++i) {
+        if (sb_resource_manager_acquire(manager, unique_ids[i]) != 0) return -4;
     }
     return 0;
 }
