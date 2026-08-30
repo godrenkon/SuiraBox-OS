@@ -23,6 +23,10 @@ int address_space_map_user(sb_address_space_t *space,
 int address_space_translate_user(const sb_address_space_t *space,
                                  uint64_t virtual_address,
                                  uint64_t *physical_address);
+int address_space_validate_user_range(const sb_address_space_t *space,
+                                      uint64_t virtual_address,
+                                      uint64_t size,
+                                      uint8_t write_access);
 int address_space_activate(const sb_address_space_t *space);
 void address_space_destroy(sb_address_space_t *space);
 

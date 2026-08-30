@@ -7,6 +7,7 @@
 #include "config_store.h"
 #include "input.h"
 #include "app_manager.h"
+#include "fs_syscall.h"
 
 static uint8_t syscall_user_smoke_seen;
 static uint8_t syscall_user_draw_seen;
@@ -155,6 +156,10 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_APP_LAUNCH:
             if (arg0 > UINT32_MAX) return UINT64_MAX;
             return sb_app_launch((uint32_t)arg0) == 0 ? 0u : UINT64_MAX;
+        case SB_SYS_FS_LIST_ROOT:
+        case SB_SYS_FS_STAT_ROOT:
+        case SB_SYS_FS_READ_ROOT:
+            return sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
         default:
             return UINT64_MAX;
     }
