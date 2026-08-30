@@ -82,6 +82,21 @@ static int syscall_exit_current(uint64_t exit_code) {
     return 0;
 }
 
+static uint64_t syscall_wait_child(uint64_t child_pid, uint64_t user_exit_code) {
+    sb_process_t *parent = user_scheduler_current_process();
+    uint64_t exit_code = 0u;
+    uint64_t result;
+    if (parent == 0) return UINT64_MAX;
+    if (user_exit_code != 0u && address_space_validate_user_range(&parent->address_space,
+                                                                  user_exit_code,
+                                                                  sizeof(uint64_t), 1u) != 0)
+        return UINT64_MAX;
+    result = process_wait_child(parent, child_pid, &exit_code);
+    if (result == 0u || result == UINT64_MAX) return result;
+    if (user_exit_code != 0u) *(uint64_t *)(uintptr_t)user_exit_code = exit_code;
+    return result;
+}
+
 static void syscall_idle(void) {
     __asm__ volatile ("sti\n\thlt\n\tcli" ::: "memory");
 }
@@ -135,6 +150,8 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_FS_CREATE_ROOT:
         case SB_SYS_FS_WRITE_ROOT:
             return sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
+        case SB_SYS_WAIT_CHILD:
+            return syscall_wait_child(arg0, arg1);
         default: return UINT64_MAX;
     }
 }
