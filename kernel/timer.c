@@ -3,6 +3,7 @@
 #include "arch/x86_64/irq_frame.h"
 #include "scheduler.h"
 #include "user_scheduler.h"
+#include "net_stack.h"
 #include <stdint.h>
 
 #define PIT_COMMAND 0x43u
@@ -10,6 +11,7 @@
 #define PIT_BASE_HZ 1193182u
 #define SB_TIMER_DEFAULT_HZ 100u
 #define SB_SCHED_QUANTUM_TICKS 10u
+#define SB_NET_POLL_INTERVAL 2u
 
 extern void sb_timer_irq_stub(void);
 
@@ -69,7 +71,7 @@ static void pic_remap(void) {
     outb(0x21u, 0x04u);
     outb(0xA1u, 0x02u);
     outb(0x21u, 0x01u);
-    outb(0xA0u, 0x01u);
+    outb(0xA1u, 0x01u);
     outb(0x21u, 0xFEu);
     outb(0xA1u, 0xFFu);
 }
@@ -101,18 +103,12 @@ uint64_t timer_ticks(void) { return ticks; }
 
 uintptr_t sb_timer_irq_dispatch(sb_timer_saved_gpr_t *gpr) {
     ++ticks;
-
-    /*
-     * A CPL0 interrupt frame contains only RIP/CS/RFLAGS. A CPL3 frame adds
-     * user RSP/SS. user_scheduler_timer_dispatch() requires the latter, so
-     * never interpret a kernel-mode frame as a userspace frame.
-     */
+    if ((ticks % SB_NET_POLL_INTERVAL) == 0u) (void)sb_net_poll();
     const uint64_t interrupted_cs = *((const uint64_t *)((uintptr_t)gpr + sizeof(*gpr) + sizeof(uint64_t)));
     if ((interrupted_cs & 3u) == 3u) {
         const uintptr_t user_resume_rsp = user_scheduler_timer_dispatch(gpr);
         if (user_resume_rsp != 0u) return user_resume_rsp;
     }
-
     scheduler_tick();
     if ((ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1u)
         (void)scheduler_pick_next();
@@ -121,6 +117,7 @@ uintptr_t sb_timer_irq_dispatch(sb_timer_saved_gpr_t *gpr) {
 
 void sb_timer_tick(void) {
     ++ticks;
+    if ((ticks % SB_NET_POLL_INTERVAL) == 0u) (void)sb_net_poll();
     scheduler_tick();
     if ((ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1u)
         (void)scheduler_pick_next();
