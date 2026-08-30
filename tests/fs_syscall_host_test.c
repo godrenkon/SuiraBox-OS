@@ -14,6 +14,9 @@ static sb_fat32_t fake_fs;
 static sb_fat32_dirent_t fake_entry;
 static uintptr_t user_base = 0x8000000000ull;
 static size_t user_size = 0x20000u;
+static uint8_t fake_file[128];
+static uint32_t fake_created_size;
+static char fake_created_name[13];
 
 sb_process_t *user_scheduler_current_process(void) { return &process; }
 int address_space_validate_user_range(const sb_address_space_t *space, uint64_t address, uint64_t size, uint8_t write_access) {
@@ -23,8 +26,7 @@ int address_space_validate_user_range(const sb_address_space_t *space, uint64_t 
 }
 sb_fat32_t *sb_storage_fat32(void) { return &fake_fs; }
 int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *entry) {
-    if (fs != &fake_fs || entry == 0) return 0;
-    if (index != 0u) return 0;
+    if (fs != &fake_fs || entry == 0 || index != 0u) return 0;
     *entry = fake_entry;
     return 1;
 }
@@ -33,10 +35,26 @@ int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t
     *entry = fake_entry;
     return 1;
 }
+int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name, uint32_t file_size, sb_fat32_dirent_t *entry) {
+    if (fs != &fake_fs || name == 0 || entry == 0 || strcmp(name, "NEW.TXT") != 0) return 0;
+    fake_created_size = file_size;
+    strcpy(fake_created_name, name);
+    memset(entry, 0, sizeof(*entry));
+    strcpy(entry->name, name);
+    entry->file_size = file_size;
+    entry->attributes = 0x20u;
+    entry->first_cluster = 2u;
+    return 1;
+}
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry, uint32_t offset, uint32_t size, void *buffer) {
     static const char payload[] = "hello";
     if (fs != &fake_fs || entry == 0 || buffer == 0 || offset > 5u || size > 5u - offset) return 0;
     memcpy(buffer, payload + offset, size);
+    return 1;
+}
+int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry, uint32_t offset, uint32_t size, const void *buffer) {
+    if (fs != &fake_fs || entry == 0 || buffer == 0 || offset > sizeof(fake_file) || size > sizeof(fake_file) - offset) return 0;
+    memcpy(fake_file + offset, buffer, size);
     return 1;
 }
 
@@ -54,6 +72,7 @@ static void *map_user(void) {
 
 int main(void) {
     char *buffer;
+    char *payload;
     void *mapped = map_user();
     assert(mapped == (void *)user_base);
     process.address_space.pml4_physical = 1u;
@@ -63,6 +82,7 @@ int main(void) {
     fake_entry.attributes = 0x20u;
 
     buffer = (char *)user_base + 0x1000u;
+    payload = buffer + 0x200u;
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST_ROOT, (uint64_t)(uintptr_t)buffer, 64u, 0u, 0u, 0u) == 10u);
     assert(strcmp(buffer, "HELLO.TXT") == 0);
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_STAT_ROOT, (uint64_t)(uintptr_t)buffer, 9u, 0u, 0u, 0u) == ((uint64_t)5u << 32 | 0x20u));
@@ -70,10 +90,24 @@ int main(void) {
                                    (uint64_t)(uintptr_t)(buffer + 0x100u), 5u, 0u) == 5u);
     assert(memcmp(buffer + 0x100u, "hello", 5u) == 0);
 
-    assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST_ROOT, 1u, 64u, 0u, 0u, 0u) == UINT64_MAX);
-    assert(sb_fs_syscall_dispatch(SB_SYS_FS_STAT_ROOT, 1u, 9u, 0u, 0u, 0u) == UINT64_MAX);
-    assert(sb_fs_syscall_dispatch(SB_SYS_FS_READ_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+    memcpy(buffer, "NEW.TXT", 7u);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_CREATE_ROOT, (uint64_t)(uintptr_t)buffer, 7u, 16u, 0u, 0u) == 0u);
+    assert(fake_created_size == 16u);
+    assert(strcmp(fake_created_name, "NEW.TXT") == 0);
+
+    memcpy(buffer, "HELLO.TXT", 9u);
+    memcpy(payload, "world", 5u);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   (uint64_t)(uintptr_t)payload, 5u, 0u) == 5u);
+    assert(memcmp(fake_file, "world", 5u) == 0);
+
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_CREATE_ROOT, 1u, 7u, 16u, 0u, 0u) == UINT64_MAX);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
                                    1u, 5u, 0u) == UINT64_MAX);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   (uint64_t)(uintptr_t)payload, 6u, 0u) == UINT64_MAX);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   (uint64_t)(uintptr_t)payload, 1u, 5u) == UINT64_MAX);
 
     munmap(mapped, user_size);
     return 0;
