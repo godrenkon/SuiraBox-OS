@@ -11,6 +11,7 @@ SURFACE_HOST_TEST := $(BUILD)/surface-host-test
 EVENT_QUEUE_HOST_TEST := $(BUILD)/event-queue-host-test
 LOCALE_HOST_TEST := $(BUILD)/locale-host-test
 USER_SCHED_HOST_TEST := $(BUILD)/user-scheduler-host-test
+DESKTOP_SHELL_HOST_TEST := $(BUILD)/desktop-shell-host-test
 
 CC ?= gcc
 AS ?= as
@@ -65,8 +66,10 @@ CONFIG_OBJ := $(BUILD)/config.o
 SURFACE_OBJ := $(BUILD)/surface.o
 EVENT_QUEUE_OBJ := $(BUILD)/event_queue.o
 LOCALE_OBJ := $(BUILD)/locale.o
+DESKTOP_SHELL_OBJ := $(BUILD)/desktop_shell.o
+LAUNCHER_OBJ := $(BUILD)/launcher.o
 
-.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test
+.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test host-desktop-shell-test
 
 all: iso userspace
 
@@ -147,7 +150,7 @@ $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h |
 	$(CC) $(CFLAGS) -Ikernel/mm -c $< -o $@
 $(DESKTOP_ENTRY_OBJ): userspace/sb_desktop_entry.S | $(BUILD)
 	$(AS) --64 $< -o $@
-$(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.h userspace/config.h userspace/compositor.h userspace/surface.h userspace/event_queue.h userspace/locale.h | $(BUILD)
+$(DESKTOP_MAIN_OBJ): userspace/desktop_main.c userspace/gui.h userspace/syscall.h userspace/config.h userspace/compositor.h userspace/surface.h userspace/event_queue.h userspace/locale.h userspace/desktop_shell.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 $(GUI_OBJ): userspace/gui.c userspace/gui.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
@@ -161,8 +164,12 @@ $(EVENT_QUEUE_OBJ): userspace/event_queue.c userspace/event_queue.h userspace/gu
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 $(LOCALE_OBJ): userspace/locale.c userspace/locale.h userspace/config.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
-$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LOCALE_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LOCALE_OBJ)
+$(LAUNCHER_OBJ): userspace/launcher.c userspace/launcher.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+$(DESKTOP_SHELL_OBJ): userspace/desktop_shell.c userspace/desktop_shell.h userspace/launcher.h userspace/gui.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+$(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LOCALE_OBJ) $(DESKTOP_SHELL_OBJ) $(LAUNCHER_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LOCALE_OBJ) $(DESKTOP_SHELL_OBJ) $(LAUNCHER_OBJ)
 userspace: $(DESKTOP_ELF)
 $(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ)
@@ -208,7 +215,11 @@ $(USER_SCHED_HOST_TEST): tests/user_scheduler_host_test.c kernel/user_scheduler.
 	$(CC) -Wall -Wextra -Werror -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 tests/user_scheduler_host_test.c kernel/user_scheduler.c -o $@
 host-user-scheduler-test: $(USER_SCHED_HOST_TEST)
 	$(USER_SCHED_HOST_TEST)
-check: $(KERNEL) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test
+$(DESKTOP_SHELL_HOST_TEST): tests/desktop_shell_host_test.c userspace/desktop_shell.c userspace/desktop_shell.h userspace/launcher.c userspace/launcher.h userspace/gui.c userspace/gui.h | $(BUILD)
+	$(CC) -std=c11 -Wall -Wextra -Werror -Iuserspace tests/desktop_shell_host_test.c userspace/desktop_shell.c userspace/launcher.c userspace/gui.c -o $@
+host-desktop-shell-test: $(DESKTOP_SHELL_HOST_TEST)
+	$(DESKTOP_SHELL_HOST_TEST)
+check: $(KERNEL) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test host-desktop-shell-test
 	@if command -v grub-file >/dev/null 2>&1; then grub-file --is-x86-multiboot2 $(KERNEL); else printf '%s\n' 'warning: grub-file is unavailable; skipping Multiboot2 artifact validation'; fi
 	readelf -h $(DESKTOP_ELF) | grep -q 'Class:.*ELF64'
 clean:
