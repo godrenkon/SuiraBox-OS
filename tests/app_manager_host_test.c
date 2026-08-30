@@ -31,8 +31,8 @@ int process_prepare_boot_module(sb_process_t *process, uint64_t multiboot_info,
     ++prepare_calls;
     if (fail_prepare != 0 || process == 0 || module_name == 0 || image == 0) return -1;
     image->entry_point = 0x400000u;
-    image->image_base = 0x200000u;
-    image->image_size = 0x1000u;
+    image->user_stack_top = 0x800000u;
+    image->user_stack_bottom = 0x7FC000u;
     return 0;
 }
 
@@ -59,6 +59,15 @@ int process_prepare_elf_thread(sb_process_t *process, uint64_t tid, uint32_t pri
 int user_scheduler_add(sb_process_t *process, sb_thread_t *thread) {
     ++scheduler_calls;
     return fail_scheduler != 0 || process == 0 || thread == 0 ? -1 : 0;
+}
+
+sb_process_t *user_scheduler_current_process(void) { return 0; }
+sb_thread_t *user_scheduler_current_thread(void) { return 0; }
+
+int user_scheduler_remove(sb_process_t *process, sb_thread_t *thread) {
+    (void)process;
+    (void)thread;
+    return 0;
 }
 
 int main(void) {
@@ -88,6 +97,12 @@ int main(void) {
     assert(sb_app_count() == 3u);
 
     assert(sb_app_launch(SB_APP_TERMINAL) != 0);
+    assert(sb_app_count() == 3u);
+
+    processes[0].state = SB_PROCESS_EXITED;
+    assert(sb_app_reap_exited() == 1u);
+    assert(sb_app_count() == 2u);
+    assert(sb_app_launch(SB_APP_SETTINGS) == 0);
     assert(sb_app_count() == 3u);
 
     return 0;
