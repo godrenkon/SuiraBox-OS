@@ -28,6 +28,20 @@ uint16_t pci_config_read16(uint8_t bus, uint8_t device, uint8_t function, uint8_
     const uint32_t value = pci_config_read32(bus, device, function, offset & 0xFCu);
     return (uint16_t)((value >> ((offset & 2u) * 8u)) & 0xFFFFu);
 }
+int pci_find_capability(uint8_t bus, uint8_t device, uint8_t function, uint8_t capability_id, uint8_t *offset_out) {
+    if (offset_out == 0 || device >= PCI_MAX_DEVICES || function >= PCI_MAX_FUNCTIONS ||
+        (pci_status(bus, device, function) & PCI_STATUS_CAP_LIST) == 0u) return -1;
+    uint8_t pointer = (uint8_t)(pci_cap_ptr(bus, device, function) & PCI_CAP_PTR_MASK);
+    for (uint32_t count = 0u; pointer >= 0x40u && pointer < 0xFCu && count < PCI_CAPABILITY_LIMIT; ++count) {
+        const uint32_t header = pci_config_read32(bus, device, function, pointer);
+        const uint8_t id = (uint8_t)(header & PCI_CAP_ID_MASK);
+        if (id == capability_id) { *offset_out = pointer; return 0; }
+        const uint8_t next = (uint8_t)((header >> 8) & PCI_CAP_PTR_MASK);
+        if (id == 0u || next == pointer) break;
+        pointer = next;
+    }
+    return -1;
+}
 static uint8_t pci_class(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 24); }
 static uint8_t pci_subclass(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 16); }
 static uint8_t pci_prog_if(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 8); }
@@ -63,7 +77,6 @@ static void serial_char(char c) {
 static void serial_write(const char *s) { while (s != 0 && *s != '\0') serial_char(*s++); }
 static void serial_hex16(uint16_t value) { static const char digits[] = "0123456789ABCDEF"; for (int shift = 12; shift >= 0; shift -= 4) serial_char(digits[(value >> shift) & 0xFu]); }
 static void serial_hex8(uint8_t value) { static const char digits[] = "0123456789ABCDEF"; serial_char(digits[(value >> 4) & 0xFu]); serial_char(digits[value & 0xFu]); }
-
 static void pci_register_bars(sb_device_t *device, uint8_t bus, uint8_t slot, uint8_t function) {
     if (device == 0 || (pci_header_type(bus, slot, function) & 0x7Fu) != 0u) return;
     uint8_t resource_slot = 0u;
@@ -81,7 +94,6 @@ static void pci_register_bars(sb_device_t *device, uint8_t bus, uint8_t slot, ui
         if (sb_device_set_resource(device, resource_slot, base, SB_DEVICE_RESOURCE_SIZE_UNKNOWN, flags) == 0) ++resource_slot;
     }
 }
-
 static void pci_register_capabilities(sb_device_t *device, uint8_t bus, uint8_t slot, uint8_t function) {
     if (device == 0 || (pci_status(bus, slot, function) & PCI_STATUS_CAP_LIST) == 0u) return;
     uint8_t pointer = (uint8_t)(pci_cap_ptr(bus, slot, function) & PCI_CAP_PTR_MASK);
@@ -95,7 +107,6 @@ static void pci_register_capabilities(sb_device_t *device, uint8_t bus, uint8_t 
         pointer = next;
     }
 }
-
 void pci_enumerate(void) {
     serial_write("PCI: scanning bus/device/function space...\r\n");
     unsigned int found = 0u;
