@@ -293,6 +293,13 @@ userspace: $(DESKTOP_ELF)
 $(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(USB_TRANSFER_OBJ) $(USB_CLASS_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(NET_STACK_OBJ) $(ARP_OBJ) $(NET_ROUTE_OBJ) $(TCP_OBJ) $(UDP_OBJ) $(DHCP_OBJ) $(DNS_OBJ) $(NET_MANAGER_OBJ) $(NET_FIREWALL_OBJ) $(SOCKET_OBJ) $(AUDIO_OBJ) $(GPU_OBJ) $(HARDWARE_OBJ) $(APP_MANAGER_OBJ) $(USER_CONTEXT_OBJ) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(USB_TRANSFER_OBJ) $(USB_CLASS_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(NET_STACK_OBJ) $(ARP_OBJ) $(NET_ROUTE_OBJ) $(TCP_OBJ) $(UDP_OBJ) $(DHCP_OBJ) $(DNS_OBJ) $(NET_MANAGER_OBJ) $(NET_FIREWALL_OBJ) $(SOCKET_OBJ) $(AUDIO_OBJ) $(GPU_OBJ) $(HARDWARE_OBJ) $(APP_MANAGER_OBJ) linker.ld
 
+iso: $(KERNEL) $(DESKTOP_ELF) desktop-apps boot/grub.cfg
+	mkdir -p $(BUILD)/iso/boot/grub
+	cp $(KERNEL) $(BUILD)/iso/boot/suirabox.elf
+	cp $(DESKTOP_ELF) $(BUILD)/iso/boot/sb-desktop.elf
+	cp boot/grub.cfg $(BUILD)/iso/boot/grub/grub.cfg
+	grub-mkrescue -o $(ISO) $(BUILD)/iso >/dev/null
+
 $(PMM_HOST_TEST): tests/pmm_host_test.c kernel/mm/pmm.c kernel/mm/pmm.h | $(BUILD)
 	$(CC) -Wall -Wextra -Werror -Ikernel/mm tests/pmm_host_test.c kernel/mm/pmm.c -o $@
 host-pmm-test: $(PMM_HOST_TEST)
@@ -400,9 +407,9 @@ release-iso: $(RELEASE_KERNEL) $(DESKTOP_ELF) boot/grub.cfg
 	grub-mkrescue -o $(BUILD)/suirabox-release.iso $(BUILD)/release-iso >/dev/null
 	sh scripts/check_base_image.sh $(BUILD)/release-iso
 
-iso: desktop-apps
 check: $(KERNEL) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test host-desktop-shell-test host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test
 	@if command -v grub-file >/dev/null 2>&1; then grub-file --is-x86-multiboot2 $(KERNEL); else printf '%s\n' 'warning: grub-file is unavailable; skipping Multiboot2 artifact validation'; fi
 	readelf -h $(DESKTOP_ELF) | grep -q 'Class:.*ELF64'
+
 clean:
 	rm -rf $(BUILD)
