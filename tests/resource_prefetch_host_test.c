@@ -115,22 +115,29 @@ int main(void) {
     assert(store.fetch_count == 1u);
     assert(store.begin_count == 1u);
     assert(store.commit_count == 1u);
-    assert(store.activate_count == 4u);
+    assert(store.activate_count == 2u);
     assert(store.abort_count == 0u);
 
     store.cache_present = 0u;
     store.fetch_count = 0u;
+    store.begin_count = 0u;
+    store.commit_count = 0u;
+    store.activate_count = 0u;
+    {
+        const char *invalid_ids[] = {"../locale/first", "locale/second"};
+        assert(sb_resource_manager_prefetch(&manager, invalid_ids, 2u) != 0);
+    }
+    assert(store.fetch_count == 0u);
+    assert(store.activate_count == 0u);
     assert(sb_resource_manager_prefetch(&manager, 0, 1u) != 0);
     assert(sb_resource_manager_prefetch(&manager, prefetch_ids, 0u) != 0);
     assert(sb_resource_manager_prefetch(&manager, prefetch_ids, SB_RESOURCE_MANAGER_MAX_MANIFEST + 1u) != 0);
 
     {
-        const char *invalid_ids[] = {"../locale/first"};
-        assert(sb_resource_manager_prefetch(&manager, invalid_ids, 1u) != 0);
+        const char *unknown_ids[] = {"locale/missing", "locale/first"};
+        assert(sb_resource_manager_prefetch(&manager, unknown_ids, 2u) != 0);
     }
-    {
-        const char *unknown_ids[] = {"locale/missing"};
-        assert(sb_resource_manager_prefetch(&manager, unknown_ids, 1u) != 0);
-    }
+    assert(store.fetch_count == 0u);
+    assert(store.activate_count == 0u);
     return 0;
 }
