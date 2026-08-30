@@ -81,7 +81,7 @@ static void serial_hex8(uint8_t value) { static const char digits[] = "012345678
 static void pci_register_bars(sb_device_t *device, uint8_t bus, uint8_t slot, uint8_t function) {
     if (device == 0 || (pci_header_type(bus, slot, function) & 0x7Fu) != 0u) return;
     uint8_t resource_slot = 0u;
-    for (uint8_t bar = 0u; bar < PCI_BAR_COUNT && resource_slot < 6u; ++bar) {
+    for (uint8_t bar = 0u; bar < PCI_BAR_COUNT && resource_slot < SB_DEVICE_MAX_RESOURCES; ++bar) {
         const uint8_t offset = (uint8_t)(PCI_BAR_OFFSET + bar * 4u);
         const uint32_t low = pci_config_read32(bus, slot, function, offset);
         if (low == 0u || low == 0xFFFFFFFFu) continue;
@@ -120,9 +120,14 @@ void pci_enumerate(void) {
                 const uint8_t class_code = pci_class((uint8_t)bus, device, function);
                 const uint8_t subclass = pci_subclass((uint8_t)bus, device, function);
                 const uint8_t prog_if = pci_prog_if((uint8_t)bus, device, function);
+                const uint8_t header_type = pci_header_type((uint8_t)bus, device, function);
                 sb_device_t *registered = sb_device_register(SB_DEVICE_BUS_PCI, pci_device_class(class_code, subclass), vendor, id, pci_class_name(class_code, subclass));
                 if (registered != 0) {
                     registered->state = SB_DEVICE_IDENTIFIED;
+                    registered->bus_number = (uint8_t)bus;
+                    registered->device_number = device;
+                    registered->function_number = function;
+                    registered->header_type = header_type;
                     registered->class_code = class_code;
                     registered->subclass = subclass;
                     registered->revision = (uint8_t)pci_config_read32((uint8_t)bus, device, function, 0x08u);
@@ -138,7 +143,7 @@ void pci_enumerate(void) {
                 serial_write(" class=0x"); serial_hex8(class_code); serial_write("/0x"); serial_hex8(subclass);
                 serial_write(" prog=0x"); serial_hex8(prog_if); serial_write(" ("); serial_write(pci_class_name(class_code, subclass)); serial_write(")\r\n");
                 ++found;
-                if (function == 0u && (pci_header_type((uint8_t)bus, device, function) & 0x80u) == 0u) break;
+                if (function == 0u && (header_type & 0x80u) == 0u) break;
             }
         }
     }
