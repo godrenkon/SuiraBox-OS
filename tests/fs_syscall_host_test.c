@@ -25,6 +25,7 @@ int address_space_validate_user_range(const sb_address_space_t *space, uint64_t 
     return 0;
 }
 sb_fat32_t *sb_storage_fat32(void) { return &fake_fs; }
+int sb_storage_sync(void) { return 0; }
 int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *entry) {
     if (fs != &fake_fs || entry == 0 || index != 0u) return 0;
     *entry = fake_entry;
@@ -48,7 +49,9 @@ int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name, uint32_t file_si
 }
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry, uint32_t offset, uint32_t size, void *buffer) {
     static const char payload[] = "hello";
+    const uintptr_t address = (uintptr_t)buffer;
     if (fs != &fake_fs || entry == 0 || buffer == 0 || offset > 5u || size > 5u - offset) return 0;
+    assert(address < user_base || address >= user_base + user_size);
     memcpy(buffer, payload + offset, size);
     return 1;
 }
