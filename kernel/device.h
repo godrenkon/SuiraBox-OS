@@ -39,7 +39,7 @@ typedef enum {
 
 typedef struct {
     uint64_t base;
-    uint64_t size; /* SB_DEVICE_RESOURCE_SIZE_UNKNOWN means base is known but size is not yet probed. */
+    uint64_t size;
     uint32_t flags;
 } sb_device_resource_t;
 
@@ -61,6 +61,8 @@ struct sb_device {
     sb_device_state_t state;
     uint16_t vendor_id;
     uint16_t device_id;
+    uint8_t class_code;
+    uint8_t subclass;
     uint8_t revision;
     uint8_t programming_interface;
     uint8_t irq_line;
