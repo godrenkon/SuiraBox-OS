@@ -7,14 +7,8 @@
 #define PCI_HEADER_TYPE_OFFSET 0x0Cu
 #define PCI_BAR_OFFSET 0x10u
 
-static inline void outl(uint16_t port, uint32_t value) {
-    __asm__ volatile ("outl %0, %1" : : "a"(value), "Nd"(port));
-}
-static inline uint32_t inl(uint16_t port) {
-    uint32_t value;
-    __asm__ volatile ("inl %1, %0" : "=a"(value) : "Nd"(port));
-    return value;
-}
+static inline void outl(uint16_t port, uint32_t value) { __asm__ volatile ("outl %0, %1" : : "a"(value), "Nd"(port)); }
+static inline uint32_t inl(uint16_t port) { uint32_t value; __asm__ volatile ("inl %1, %0" : "=a"(value) : "Nd"(port)); return value; }
 static uint32_t pci_config_address(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset) {
     return 0x80000000u | ((uint32_t)bus << 16) | ((uint32_t)device << 11) |
            ((uint32_t)function << 8) | ((uint32_t)(offset & 0xFCu));
@@ -28,60 +22,44 @@ uint16_t pci_config_read16(uint8_t bus, uint8_t device, uint8_t function, uint8_
     const uint32_t value = pci_config_read32(bus, device, function, offset & 0xFCu);
     return (uint16_t)((value >> ((offset & 2u) * 8u)) & 0xFFFFu);
 }
-static uint8_t pci_class(uint8_t bus, uint8_t device, uint8_t function) {
-    return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 24);
-}
-static uint8_t pci_subclass(uint8_t bus, uint8_t device, uint8_t function) {
-    return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 16);
-}
-static uint8_t pci_prog_if(uint8_t bus, uint8_t device, uint8_t function) {
-    return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 8);
-}
-static uint8_t pci_header_type(uint8_t bus, uint8_t device, uint8_t function) {
-    return (uint8_t)(pci_config_read32(bus, device, function, PCI_HEADER_TYPE_OFFSET) >> 16);
-}
+static uint8_t pci_class(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 24); }
+static uint8_t pci_subclass(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 16); }
+static uint8_t pci_prog_if(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 8); }
+static uint8_t pci_header_type(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, PCI_HEADER_TYPE_OFFSET) >> 16); }
 static sb_device_class_t pci_device_class(uint8_t class_code, uint8_t subclass) {
     switch (class_code) {
         case PCI_CLASS_MASS_STORAGE: return SB_DEVICE_CLASS_STORAGE;
-        case PCI_CLASS_NETWORK:      return SB_DEVICE_CLASS_NETWORK;
-        case PCI_CLASS_DISPLAY:      return SB_DEVICE_CLASS_DISPLAY;
-        case PCI_CLASS_MULTIMEDIA:   return SB_DEVICE_CLASS_AUDIO;
-        case 0x0Cu:                  return subclass == 0x03u ? SB_DEVICE_CLASS_USB_HOST : SB_DEVICE_CLASS_OTHER;
-        case PCI_CLASS_BRIDGE:       return SB_DEVICE_CLASS_BRIDGE;
-        default:                     return SB_DEVICE_CLASS_OTHER;
+        case PCI_CLASS_NETWORK: return SB_DEVICE_CLASS_NETWORK;
+        case PCI_CLASS_DISPLAY: return SB_DEVICE_CLASS_DISPLAY;
+        case PCI_CLASS_MULTIMEDIA: return SB_DEVICE_CLASS_AUDIO;
+        case 0x0Cu: return subclass == 0x03u ? SB_DEVICE_CLASS_USB_HOST : SB_DEVICE_CLASS_OTHER;
+        case PCI_CLASS_BRIDGE: return SB_DEVICE_CLASS_BRIDGE;
+        default: return SB_DEVICE_CLASS_OTHER;
     }
 }
 static const char *pci_class_name(uint8_t class_code, uint8_t subclass) {
     if (class_code == 0x0Cu && subclass == 0x03u) return "usb-host";
     switch (class_code) {
         case PCI_CLASS_MASS_STORAGE: return "mass-storage";
-        case PCI_CLASS_NETWORK:      return "network";
-        case PCI_CLASS_DISPLAY:      return "display";
-        case PCI_CLASS_MULTIMEDIA:   return "multimedia";
-        case PCI_CLASS_BRIDGE:       return "bridge";
-        default:                     return "other";
+        case PCI_CLASS_NETWORK: return "network";
+        case PCI_CLASS_DISPLAY: return "display";
+        case PCI_CLASS_MULTIMEDIA: return "multimedia";
+        case PCI_CLASS_BRIDGE: return "bridge";
+        default: return "other";
     }
 }
 static void serial_char(char c) {
-    while (1) {
-        uint8_t status;
-        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
-        if (status & 0x20u) break;
-    }
+    while (1) { uint8_t status; __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD)); if (status & 0x20u) break; }
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
 }
 static void serial_write(const char *s) { while (s != 0 && *s != '\0') serial_char(*s++); }
-static void serial_hex16(uint16_t value) {
-    static const char digits[] = "0123456789ABCDEF";
-    for (int shift = 12; shift >= 0; shift -= 4) serial_char(digits[(value >> shift) & 0xFu]);
-}
-static void serial_hex8(uint8_t value) {
-    static const char digits[] = "0123456789ABCDEF";
-    serial_char(digits[(value >> 4) & 0xFu]); serial_char(digits[value & 0xFu]);
-}
+static void serial_hex16(uint16_t value) { static const char digits[] = "0123456789ABCDEF"; for (int shift = 12; shift >= 0; shift -= 4) serial_char(digits[(value >> shift) & 0xFu]); }
+static void serial_hex8(uint8_t value) { static const char digits[] = "0123456789ABCDEF"; serial_char(digits[(value >> 4) & 0xFu]); serial_char(digits[value & 0xFu]); }
+
 static void pci_register_bars(sb_device_t *device, uint8_t bus, uint8_t slot, uint8_t function) {
     if (device == 0 || (pci_header_type(bus, slot, function) & 0x7Fu) != 0u) return;
-    for (uint8_t bar = 0u; bar < PCI_BAR_COUNT && bar < 6u; ++bar) {
+    uint8_t resource_slot = 0u;
+    for (uint8_t bar = 0u; bar < PCI_BAR_COUNT && resource_slot < 6u; ++bar) {
         const uint8_t offset = (uint8_t)(PCI_BAR_OFFSET + bar * 4u);
         const uint32_t low = pci_config_read32(bus, slot, function, offset);
         if (low == 0u || low == 0xFFFFFFFFu) continue;
@@ -92,8 +70,8 @@ static void pci_register_bars(sb_device_t *device, uint8_t bus, uint8_t slot, ui
             base |= (uint64_t)high << 32;
             ++bar;
         }
-        (void)sb_device_set_resource(device, (uint8_t)(bar), base,
-                                      SB_DEVICE_RESOURCE_SIZE_UNKNOWN, flags);
+        if (sb_device_set_resource(device, resource_slot, base, SB_DEVICE_RESOURCE_SIZE_UNKNOWN, flags) == 0)
+            ++resource_slot;
     }
 }
 
@@ -114,6 +92,8 @@ void pci_enumerate(void) {
                                                               pci_class_name(class_code, subclass));
                 if (registered != 0) {
                     registered->state = SB_DEVICE_IDENTIFIED;
+                    registered->class_code = class_code;
+                    registered->subclass = subclass;
                     registered->revision = (uint8_t)pci_config_read32((uint8_t)bus, device, function, 0x08u);
                     registered->programming_interface = prog_if;
                     registered->irq_line = (uint8_t)(pci_config_read32((uint8_t)bus, device, function, 0x3Cu) & 0xFFu);
