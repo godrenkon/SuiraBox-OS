@@ -22,6 +22,12 @@ int sb_storage_init(void) {
         g_ready = 0u;
         return 0;
     }
+    g_mount.filesystem = &g_fat32;
+    if (sb_vfs_register_mount(&g_mount, "/") != SB_VFS_OK) {
+        g_mount.filesystem = 0;
+        g_ready = 0u;
+        return 0;
+    }
     g_ready = 1u;
     return 1;
 }
