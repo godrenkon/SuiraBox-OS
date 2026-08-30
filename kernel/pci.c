@@ -6,6 +6,12 @@
 #define PCI_BAR_MEM_MASK 0xFull
 #define PCI_HEADER_TYPE_OFFSET 0x0Cu
 #define PCI_BAR_OFFSET 0x10u
+#define PCI_STATUS_OFFSET 0x04u
+#define PCI_STATUS_CAP_LIST 0x10u
+#define PCI_CAP_PTR_OFFSET 0x34u
+#define PCI_CAP_ID_MASK 0xFFu
+#define PCI_CAP_PTR_MASK 0xFCu
+#define PCI_CAPABILITY_LIMIT 48u
 
 static inline void outl(uint16_t port, uint32_t value) { __asm__ volatile ("outl %0, %1" : : "a"(value), "Nd"(port)); }
 static inline uint32_t inl(uint16_t port) { uint32_t value; __asm__ volatile ("inl %1, %0" : "=a"(value) : "Nd"(port)); return value; }
@@ -26,6 +32,8 @@ static uint8_t pci_class(uint8_t bus, uint8_t device, uint8_t function) { return
 static uint8_t pci_subclass(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 16); }
 static uint8_t pci_prog_if(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 8); }
 static uint8_t pci_header_type(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, PCI_HEADER_TYPE_OFFSET) >> 16); }
+static uint16_t pci_status(uint8_t bus, uint8_t device, uint8_t function) { return (uint16_t)(pci_config_read32(bus, device, function, PCI_STATUS_OFFSET) >> 16); }
+static uint8_t pci_cap_ptr(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, PCI_CAP_PTR_OFFSET) & 0xFFu); }
 static sb_device_class_t pci_device_class(uint8_t class_code, uint8_t subclass) {
     switch (class_code) {
         case PCI_CLASS_MASS_STORAGE: return SB_DEVICE_CLASS_STORAGE;
@@ -70,8 +78,21 @@ static void pci_register_bars(sb_device_t *device, uint8_t bus, uint8_t slot, ui
             base |= (uint64_t)high << 32;
             ++bar;
         }
-        if (sb_device_set_resource(device, resource_slot, base, SB_DEVICE_RESOURCE_SIZE_UNKNOWN, flags) == 0)
-            ++resource_slot;
+        if (sb_device_set_resource(device, resource_slot, base, SB_DEVICE_RESOURCE_SIZE_UNKNOWN, flags) == 0) ++resource_slot;
+    }
+}
+
+static void pci_register_capabilities(sb_device_t *device, uint8_t bus, uint8_t slot, uint8_t function) {
+    if (device == 0 || (pci_status(bus, slot, function) & PCI_STATUS_CAP_LIST) == 0u) return;
+    uint8_t pointer = (uint8_t)(pci_cap_ptr(bus, slot, function) & PCI_CAP_PTR_MASK);
+    device->first_capability = pointer;
+    for (uint32_t count = 0u; pointer >= 0x40u && pointer < 0xFCu && count < PCI_CAPABILITY_LIMIT; ++count) {
+        const uint32_t header = pci_config_read32(bus, slot, function, pointer);
+        const uint8_t id = (uint8_t)(header & PCI_CAP_ID_MASK);
+        const uint8_t next = (uint8_t)((header >> 8) & PCI_CAP_PTR_MASK);
+        if (device->capability_count < SB_DEVICE_MAX_CAPABILITIES) device->capabilities[device->capability_count++] = id;
+        if (id == 0u || next == pointer) break;
+        pointer = next;
     }
 }
 
@@ -87,9 +108,7 @@ void pci_enumerate(void) {
                 const uint8_t class_code = pci_class((uint8_t)bus, device, function);
                 const uint8_t subclass = pci_subclass((uint8_t)bus, device, function);
                 const uint8_t prog_if = pci_prog_if((uint8_t)bus, device, function);
-                sb_device_t *registered = sb_device_register(SB_DEVICE_BUS_PCI,
-                                                              pci_device_class(class_code, subclass), vendor, id,
-                                                              pci_class_name(class_code, subclass));
+                sb_device_t *registered = sb_device_register(SB_DEVICE_BUS_PCI, pci_device_class(class_code, subclass), vendor, id, pci_class_name(class_code, subclass));
                 if (registered != 0) {
                     registered->state = SB_DEVICE_IDENTIFIED;
                     registered->class_code = class_code;
@@ -99,13 +118,13 @@ void pci_enumerate(void) {
                     registered->irq_line = (uint8_t)(pci_config_read32((uint8_t)bus, device, function, 0x3Cu) & 0xFFu);
                     registered->driver_data = (void *)(uintptr_t)(((uint64_t)bus << 16) | ((uint64_t)device << 8) | function);
                     pci_register_bars(registered, (uint8_t)bus, device, function);
+                    pci_register_capabilities(registered, (uint8_t)bus, device, function);
                 }
                 serial_char('0'); serial_char('0'); serial_char(':'); serial_hex8((uint8_t)bus);
                 serial_char('.'); serial_hex8(device); serial_char('.'); serial_char('0' + function);
                 serial_write(" vendor=0x"); serial_hex16(vendor); serial_write(" device=0x"); serial_hex16(id);
                 serial_write(" class=0x"); serial_hex8(class_code); serial_write("/0x"); serial_hex8(subclass);
-                serial_write(" prog=0x"); serial_hex8(prog_if); serial_write(" (");
-                serial_write(pci_class_name(class_code, subclass)); serial_write(")\r\n");
+                serial_write(" prog=0x"); serial_hex8(prog_if); serial_write(" ("); serial_write(pci_class_name(class_code, subclass)); serial_write(")\r\n");
                 ++found;
                 if (function == 0u && (pci_header_type((uint8_t)bus, device, function) & 0x80u) == 0u) break;
             }
