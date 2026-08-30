@@ -7,7 +7,6 @@
 #include "config_store.h"
 #include "input.h"
 #include "app_manager.h"
-#include "app_manager.c"
 
 static uint8_t syscall_user_smoke_seen;
 static uint8_t syscall_user_draw_seen;
