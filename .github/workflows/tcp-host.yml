@@ -1,0 +1,19 @@
+name: SuiraBox TCP Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  tcp-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile TCP host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/tcp_host_test.c kernel/tcp.c -o /tmp/tcp-host-test
+      - name: Run TCP host test
+        run: /tmp/tcp-host-test
