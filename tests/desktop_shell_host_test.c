@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <limits.h>
 #include "../userspace/desktop_shell.h"
+#include "../userspace/gui.h"
 
 int main(void) {
     sb_desktop_shell_t shell;
