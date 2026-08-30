@@ -28,6 +28,15 @@ uint16_t pci_config_read16(uint8_t bus, uint8_t device, uint8_t function, uint8_
     const uint32_t value = pci_config_read32(bus, device, function, offset & 0xFCu);
     return (uint16_t)((value >> ((offset & 2u) * 8u)) & 0xFFFFu);
 }
+void pci_config_write16(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint16_t value) {
+    if (device >= PCI_MAX_DEVICES || function >= PCI_MAX_FUNCTIONS || offset >= 0x100u) return;
+    const uint32_t address = pci_config_address(bus, device, function, offset);
+    const uint32_t current = pci_config_read32(bus, device, function, offset & 0xFCu);
+    const uint32_t shift = (uint32_t)((offset & 2u) * 8u);
+    const uint32_t updated = (current & ~(0xFFFFu << shift)) | ((uint32_t)value << shift);
+    outl(PCI_CONFIG_ADDRESS, address);
+    outl(PCI_CONFIG_DATA, updated);
+}
 static uint16_t pci_status(uint8_t bus, uint8_t device, uint8_t function) { return (uint16_t)(pci_config_read32(bus, device, function, PCI_STATUS_OFFSET) >> 16); }
 static uint8_t pci_cap_ptr(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, PCI_CAP_PTR_OFFSET) & 0xFFu); }
 
@@ -136,6 +145,10 @@ void pci_enumerate(void) {
                     registered->driver_data = (void *)(uintptr_t)(((uint64_t)bus << 16) | ((uint64_t)device << 8) | function);
                     pci_register_bars(registered, (uint8_t)bus, device, function);
                     pci_register_capabilities(registered, (uint8_t)bus, device, function);
+                    if (class_code == PCI_CLASS_NETWORK)
+                        pci_config_write16((uint8_t)bus, device, function, 0x04u,
+                                           (uint16_t)(pci_config_read16((uint8_t)bus, device, function, 0x04u) |
+                                                      PCI_COMMAND_IO_SPACE | PCI_COMMAND_MEMORY_SPACE | PCI_COMMAND_BUS_MASTER));
                 }
                 serial_char('0'); serial_char('0'); serial_char(':'); serial_hex8((uint8_t)bus);
                 serial_char('.'); serial_hex8(device); serial_char('.'); serial_char('0' + function);
