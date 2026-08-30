@@ -80,8 +80,9 @@ int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
     const uint32_t last_index = process->thread_count - 1u;
     if (index != last_index) {
         sb_thread_t *last_thread = &process->threads[last_index];
-        (void)user_scheduler_rebind_thread(process, last_thread, &process->threads[index]);
         process->threads[index] = *last_thread;
+        /* Keep the old slot intact until rebind has consumed its identity. */
+        (void)user_scheduler_rebind_thread(process, last_thread, &process->threads[index]);
     }
     process->threads[last_index] = (sb_thread_t){0};
     if (removed_stack != 0u) pmm_free_page((void *)(uintptr_t)removed_stack);
