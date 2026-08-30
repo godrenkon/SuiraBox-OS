@@ -98,7 +98,6 @@ int sb_net_manager_add_route(sb_net_manager_t *manager, uint32_t destination,
                              uint32_t netmask, uint32_t gateway, uint32_t metric) {
     if (manager == 0 || manager->route_count >= SB_NET_MANAGER_MAX_ROUTES || !valid_mask(netmask)) return -1;
     const uint32_t network = destination & netmask;
-    if (gateway != 0u && (gateway & netmask) != network) return -1;
     sb_net_manager_route_t *route = &manager->routes[manager->route_count++];
     *route = (sb_net_manager_route_t){
         .destination = network,
