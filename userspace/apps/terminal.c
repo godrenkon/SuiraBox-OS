@@ -18,7 +18,6 @@ static const uint64_t G_8 = 0x003C42423C42423CULL;
 static const uint64_t G_9 = 0x003C42427E020438ULL;
 static const uint64_t G_A = 0x003C42427E424242ULL;
 static const uint64_t G_B = 0x007C42427C42427CULL;
-static const uint64_t G_C = 0x003C42404040423CULL;
 static const uint64_t G_D = 0x0078424242424278ULL;
 static const uint64_t G_E = 0x007E40407C40407EULL;
 static const uint64_t G_F = 0x007E40407C404040ULL;
@@ -59,24 +58,24 @@ uint64_t sb_app_main(void) {
             continue;
         }
         switch ((uint8_t)key) {
-            case 0x23u: /* H */
+            case 0x23u:
                 draw_menu();
                 break;
-            case 0x14u: /* T */
+            case 0x14u:
                 (void)sb_display_rect(260u, 108u, 160u, 40u, 0x172033u);
                 draw_hex_u64(268u, 124u, sb_get_ticks());
                 break;
-            case 0x19u: /* P */
+            case 0x19u:
                 (void)sb_display_rect(260u, 148u, 160u, 40u, 0x172033u);
                 draw_hex_u64(268u, 164u, sb_process_id());
                 break;
-            case 0x2Eu: /* C */
+            case 0x2Eu:
                 (void)sb_display_clear(0x10151Bu);
                 (void)sb_display_glyph(32u, 32u, TERMINAL_ICON, 0xE9F2FFu);
                 draw_menu();
                 break;
-            case 0x10u: /* Q */
-            case 0x01u: /* ESC */
+            case 0x10u:
+            case 0x01u:
                 return 0u;
             default:
                 break;
