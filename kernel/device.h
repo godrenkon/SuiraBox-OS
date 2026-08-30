@@ -61,6 +61,7 @@ struct sb_device {
     uint16_t vendor_id;
     uint16_t device_id;
     uint8_t revision;
+    uint8_t programming_interface;
     uint8_t irq_line;
     uint8_t resource_count;
     char name[SB_DEVICE_NAME_MAX + 1u];
