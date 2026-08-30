@@ -11,7 +11,13 @@
 #define SB_USER_RESUME_FRAME_SIZE 160u
 #define SB_USER_RESUME_FRAME_OFFSET 320u
 
-typedef enum { SB_PROCESS_UNUSED = 0, SB_PROCESS_CREATED, SB_PROCESS_RUNNING, SB_PROCESS_SLEEPING, SB_PROCESS_EXITED } sb_process_state_t;
+typedef enum {
+    SB_PROCESS_UNUSED = 0,
+    SB_PROCESS_CREATED,
+    SB_PROCESS_RUNNING,
+    SB_PROCESS_SLEEPING,
+    SB_PROCESS_EXITED
+} sb_process_state_t;
 
 typedef struct {
     uint64_t tid;
@@ -26,6 +32,7 @@ typedef struct {
 
 typedef struct {
     uint64_t pid;
+    uint64_t parent_pid;
     uint64_t exit_code;
     sb_process_state_t state;
     uint32_t thread_count;
@@ -37,6 +44,7 @@ typedef struct {
 
 void process_init(void);
 sb_process_t *process_create(uint64_t pid);
+sb_process_t *process_create_child(sb_process_t *parent, uint64_t pid);
 sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t priority);
 int process_destroy_thread(sb_process_t *process, sb_thread_t *thread);
 int process_prepare_thread_context(sb_thread_t *thread, sb_user_context_t *context, uint64_t entry_point, uint64_t user_stack_top);
@@ -46,6 +54,7 @@ uint32_t process_count(void);
 int process_activate(sb_process_t *process);
 int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exit_code);
 int process_terminate(sb_process_t *process, uint64_t exit_code);
+int process_wait_child(sb_process_t *parent, uint64_t child_pid, uint64_t *exit_code);
 void process_destroy(sb_process_t *process);
 
 #endif
