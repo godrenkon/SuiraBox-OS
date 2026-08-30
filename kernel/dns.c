@@ -51,20 +51,22 @@ static int skip_name(const uint8_t *packet, uint32_t length, uint32_t offset,
                      uint32_t *next) {
     if (packet == 0 || next == 0 || offset >= length) return -1;
     uint32_t cursor = offset;
+    uint32_t original_next = 0u;
     uint32_t jumps = 0u;
     for (;;) {
         if (cursor >= length || ++jumps > 128u) return -1;
         const uint8_t label = packet[cursor];
         if (label == 0u) {
-            *next = cursor + 1u;
+            *next = original_next != 0u ? original_next : cursor + 1u;
             return 0;
         }
         if ((label & 0xC0u) == 0xC0u) {
             if (cursor + 1u >= length) return -1;
             const uint32_t target = ((uint32_t)(label & 0x3Fu) << 8) | packet[cursor + 1u];
             if (target >= length) return -1;
-            *next = cursor + 2u;
-            return 0;
+            if (original_next == 0u) original_next = cursor + 2u;
+            cursor = target;
+            continue;
         }
         if ((label & 0xC0u) != 0u || label > 63u || cursor + 1u + label > length) return -1;
         cursor += 1u + label;
