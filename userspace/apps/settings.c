@@ -15,13 +15,11 @@ static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b, uint32_t r
 
 static void draw_language(uint32_t index, uint32_t y, uint32_t selected) {
     const uint32_t rgb = index == selected ? 0xFFFFFFu : 0xB8C4D4u;
+    (void)sb_display_rect(48u, y - 8u, 192u, 40u, index == selected ? 0x536F8Au : 0x27313Eu);
     if (index == 0u) draw_pair(72u, y, G_J, G_P, rgb);
     else if (index == 1u) draw_pair(72u, y, G_E, G_N, rgb);
     else if (index == 2u) draw_pair(72u, y, G_Z, G_H, rgb);
     else draw_pair(72u, y, G_E, G_S, rgb);
-    (void)sb_display_rect(48u, y - 8u, 192u, 40u, index == selected ? 0x536F8Au : 0x27313Eu);
-    if (index == selected) draw_pair(72u, y, index == 0u ? G_J : index == 1u ? G_E : index == 2u ? G_Z : G_E,
-                                     index == 0u ? G_P : index == 1u ? G_N : index == 2u ? G_H : G_S, 0xFFFFFFu);
 }
 
 static uint32_t current_language(void) {
@@ -30,13 +28,17 @@ static uint32_t current_language(void) {
     return language <= 3u ? language : 1u;
 }
 
+static void draw_languages(uint32_t selected) {
+    (void)sb_display_rect(48u, 96u, 192u, 176u, 0x202A38u);
+    for (uint32_t i = 0u; i < 4u; ++i) draw_language(i, 120u + i * 40u, selected);
+}
+
 uint64_t sb_app_main(void) {
     uint32_t selected = current_language();
 
     (void)sb_display_clear(0x18202Au);
     (void)sb_display_glyph(32u, 24u, SETTINGS_ICON, 0xE9F2FFu);
-    (void)sb_display_rect(48u, 96u, 192u, 176u, 0x202A38u);
-    for (uint32_t i = 0u; i < 4u; ++i) draw_language(i, 120u + i * 40u, selected);
+    draw_languages(selected);
 
     for (;;) {
         const uint64_t key = sb_input_key();
@@ -60,7 +62,6 @@ uint64_t sb_app_main(void) {
             return 0u;
         }
 
-        (void)sb_display_rect(48u, 96u, 192u, 176u, 0x202A38u);
-        for (uint32_t i = 0u; i < 4u; ++i) draw_language(i, 120u + i * 40u, selected);
+        draw_languages(selected);
     }
 }
