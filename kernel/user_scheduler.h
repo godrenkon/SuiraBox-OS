@@ -17,6 +17,7 @@ int user_scheduler_request_exit(sb_process_t *process, sb_thread_t *thread);
 sb_thread_t *user_scheduler_current_thread(void);
 sb_process_t *user_scheduler_current_process(void);
 uint32_t user_scheduler_count(void);
+uintptr_t user_scheduler_exit_dispatch(void);
 uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr);
 
 #endif
