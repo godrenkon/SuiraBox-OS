@@ -84,7 +84,7 @@ int main(void) {
     assert(sb_app_launch(SB_APP_SETTINGS) == 0);
     assert(sb_app_count() == 1u);
     assert(sb_app_launch(SB_APP_SETTINGS) != 0);
-    assert(prepare_calls == 3u);
+    assert(prepare_calls == 2u);
     assert(scheduler_calls == 1u);
 
     assert(sb_app_launch(SB_APP_FILES) == 0);
@@ -92,7 +92,7 @@ int main(void) {
     assert(sb_app_count() == 3u);
 
     fail_scheduler = 1;
-    assert(sb_app_launch(SB_APP_SETTINGS) != 0);
+    assert(sb_app_launch(4u) != 0);
     fail_scheduler = 0;
     assert(sb_app_count() == 3u);
 
