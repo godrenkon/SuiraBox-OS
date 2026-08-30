@@ -23,12 +23,14 @@ typedef struct sb_block_device {
                                uint64_t lba,
                                uint32_t count,
                                const void *buffer);
+    sb_block_status_t (*flush)(struct sb_block_device *device);
     void *driver_data;
 } sb_block_device_t;
 
 sb_block_status_t sb_block_register(sb_block_device_t *device);
 sb_block_device_t *sb_block_get(uint32_t index);
 uint32_t sb_block_count(void);
+sb_block_status_t sb_block_flush_all(void);
 sb_block_status_t sb_block_selftest(void);
 
 #endif
