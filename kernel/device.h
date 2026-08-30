@@ -21,6 +21,7 @@ typedef enum {
     SB_DEVICE_CLASS_AUDIO,
     SB_DEVICE_CLASS_POWER,
     SB_DEVICE_CLASS_BRIDGE,
+    SB_DEVICE_CLASS_USB_HOST,
     SB_DEVICE_CLASS_OTHER
 } sb_device_class_t;
 
