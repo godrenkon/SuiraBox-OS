@@ -15,6 +15,9 @@
 #include "process_exec.h"
 #include "user_launch.h"
 #include "syscall.h"
+#include "app_manager.h"
+#include "net_device.h"
+#include "net_stack.h"
 #include "arch/x86_64/interrupts.h"
 #include "arch/x86_64/gdt.h"
 #include "framebuffer.h"
@@ -209,6 +212,8 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     sb_device_init();
     serial_write("Device: common registry ready\r\n");
     pci_enumerate();
+    sb_net_device_init();
+    serial_write("Network: PCI devices discovered\r\n");
     sb_hardware_init(multiboot_info);
     serial_write("Hardware: ACPI/power/USB/network/audio foundations initialized\r\n");
 
@@ -245,6 +250,11 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     vmm_init();
     serial_write(vmm_selftest() ? "Memory: VMM map/translate/unmap OK\r\n" : "Memory: VMM map/translate/unmap FAILED\r\n");
 
+    if (sb_net_device_activate() > 0) serial_write("Network: E1000 MMIO/DMA activation OK\r\n");
+    else serial_write("Network: no supported E1000 NIC activated\r\n");
+    sb_net_stack_init();
+    serial_write("Network: IPv4/UDP/DHCP stack initialized\r\n");
+
     if (sb_framebuffer_available()) {
         serial_write("Display: mapping framebuffer into kernel virtual memory...\r\n");
         if (sb_framebuffer_map()) {
@@ -270,6 +280,8 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     syscall_init();
     interrupts_set_user_handler(0x80u, (uintptr_t)sb_syscall_int80_stub);
     serial_write("Syscall: int 0x80 user gate ready\r\n");
+    sb_app_manager_init(multiboot_info);
+    serial_write("Applications: manager initialized\r\n");
     report_multiboot_modules(multiboot_info);
     init_process = prepare_init_process(multiboot_info, &init_image, &init_context, &init_thread);
     if (init_process == 0 || init_thread == 0) { serial_write("Userspace: SB Desktop ELF + address-space + user thread preparation FAILED\r\n"); halt_forever(); }
