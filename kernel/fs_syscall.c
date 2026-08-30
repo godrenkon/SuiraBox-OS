@@ -49,7 +49,7 @@ static uint64_t list_root(char *user_buffer, uint32_t capacity) {
         if (!sb_fat32_read_root_entry(fs, index, &entry)) continue;
         uint32_t length = 0u;
         while (length < SB_FS_NAME_MAX && entry.name[length] != '\0') ++length;
-        if (length == 0u || length + 1u > capacity - written) return UINT64_MAX;
+        if (length == 0u || length + 1u > capacity - written) { if (length != 0u) return UINT64_MAX; continue; }
         for (uint32_t i = 0u; i < length; ++i) temp[i] = entry.name[i];
         temp[length] = '\0';
         if (copy_to_user(user_buffer + written, temp, length + 1u) != 0) return UINT64_MAX;
@@ -75,8 +75,7 @@ static uint64_t read_root(const char *user_name, uint32_t name_length,
     char name[SB_FS_NAME_MAX + 1u];
     if (fs == 0 || user_buffer == 0 || capacity == 0u || copy_user_name(user_name, name_length, name) != 0) return UINT64_MAX;
     if (validate_user(user_buffer, capacity, 1u) != 0) return UINT64_MAX;
-    if (!sb_fat32_find_root_entry(fs, name, &entry)) return UINT64_MAX;
-    if (offset > entry.file_size) return UINT64_MAX;
+    if (!sb_fat32_find_root_entry(fs, name, &entry) || offset > entry.file_size) return UINT64_MAX;
     if (capacity > entry.file_size - offset) capacity = entry.file_size - offset;
     if (capacity == 0u) return 0u;
     return sb_fat32_read_file(fs, &entry, offset, capacity, user_buffer) ? capacity : UINT64_MAX;
@@ -87,7 +86,9 @@ static uint64_t create_root(const char *user_name, uint32_t name_length, uint32_
     sb_fat32_dirent_t entry;
     char name[SB_FS_NAME_MAX + 1u];
     if (fs == 0 || copy_user_name(user_name, name_length, name) != 0) return UINT64_MAX;
-    return sb_fat32_create_root_file(fs, name, file_size, &entry) ? 0u : UINT64_MAX;
+    if (sb_fat32_find_root_entry(fs, name, &entry)) return UINT64_MAX;
+    if (!sb_fat32_create_root_file(fs, name, file_size, &entry)) return UINT64_MAX;
+    return sb_storage_sync() == SB_BLOCK_OK ? 0u : UINT64_MAX;
 }
 
 static uint64_t write_root(const char *user_name, uint32_t name_length,
@@ -112,7 +113,7 @@ static uint64_t write_root(const char *user_name, uint32_t name_length,
         current_offset += count;
         remaining -= count;
     }
-    return (uint64_t)length;
+    return sb_storage_sync() == SB_BLOCK_OK ? (uint64_t)length : UINT64_MAX;
 }
 
 uint64_t sb_fs_syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
