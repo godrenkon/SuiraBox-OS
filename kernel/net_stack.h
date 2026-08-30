@@ -8,12 +8,11 @@
 #define SB_NET_UDP_HEADER 8u
 #define SB_NET_MAX_INTERFACES 16u
 #define SB_NET_IFACE_NAME_MAX 15u
-
 #define SB_NET_IPV4_PROTO_UDP 17u
 #define SB_NET_IPV4_PROTO_TCP 6u
 
 typedef enum {
-    SB_NET_IF_DOWN = 0,
+    SB_NET_IF_DOWN = 0u,
     SB_NET_IF_UP,
     SB_NET_IF_LOOPBACK
 } sb_net_iface_state_t;
@@ -75,5 +74,7 @@ int sb_net_validate_udp_checksum_ipv4(uint32_t source, uint32_t destination,
                                       const uint8_t *udp, uint32_t length);
 uint32_t sb_net_ipv4_make(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
 int sb_net_ipv4_is_valid(uint32_t address);
+int sb_net_dhcp_start(uint32_t interface_index, uint32_t transaction_id);
+uint32_t sb_net_poll(void);
 
 #endif
