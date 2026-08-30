@@ -37,9 +37,9 @@ static int launcher_menu_top(const sb_desktop_shell_t *shell, int32_t *top) {
     const uint32_t menu_height = launcher_menu_height(shell);
     uint32_t taskbar_top;
     if (shell == 0 || top == 0 || menu_height == 0u ||
-        shell->screen_height < SB_GUI_TASKBAR_HEIGHT) return -1;
+        shell->screen_height < SB_GUI_TASKBAR_HEIGHT || shell->screen_height > (uint32_t)INT32_MAX) return -1;
     taskbar_top = shell->screen_height - SB_GUI_TASKBAR_HEIGHT;
-    if (taskbar_top < menu_height || taskbar_top > (uint32_t)INT32_MAX + menu_height) return -1;
+    if (taskbar_top < menu_height) return -1;
     *top = (int32_t)(taskbar_top - menu_height);
     return 0;
 }
