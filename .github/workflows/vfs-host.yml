@@ -1,0 +1,27 @@
+name: SuiraBox VFS Host Test
+
+on:
+  push:
+    paths:
+      - 'kernel/vfs.c'
+      - 'kernel/vfs.h'
+      - 'kernel/block.h'
+      - 'tests/vfs_host_test.c'
+      - '.github/workflows/vfs-host.yml'
+  pull_request:
+    paths:
+      - 'kernel/vfs.c'
+      - 'kernel/vfs.h'
+      - 'kernel/block.h'
+      - 'tests/vfs_host_test.c'
+      - '.github/workflows/vfs-host.yml'
+
+jobs:
+  vfs-host-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build VFS host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/vfs_host_test.c kernel/vfs.c -o vfs-host-test
+      - name: Run VFS host test
+        run: ./vfs-host-test
