@@ -29,7 +29,7 @@ uint16_t pci_config_read16(uint8_t bus, uint8_t device, uint8_t function, uint8_
     return (uint16_t)((value >> ((offset & 2u) * 8u)) & 0xFFFFu);
 }
 void pci_config_write16(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset, uint16_t value) {
-    if (device >= PCI_MAX_DEVICES || function >= PCI_MAX_FUNCTIONS || offset >= 0x100u) return;
+    if (device >= PCI_MAX_DEVICES || function >= PCI_MAX_FUNCTIONS) return;
     const uint32_t address = pci_config_address(bus, device, function, offset);
     const uint32_t current = pci_config_read32(bus, device, function, offset & 0xFCu);
     const uint32_t shift = (uint32_t)((offset & 2u) * 8u);
