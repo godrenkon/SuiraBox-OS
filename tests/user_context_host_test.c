@@ -32,7 +32,7 @@ int main(void) {
     assert(sb_user_context_validate(&context) != 0);
     context.rflags &= ~(1ull << 17u);
     context.rflags |= (1ull << 14u);
-    assert(sb_user_context_validate(&context) != 0;
+    assert(sb_user_context_validate(&context) != 0);
     context.rflags &= ~(1ull << 14u);
     context.rflags |= (1ull << 19u);
     assert(sb_user_context_validate(&context) != 0);
