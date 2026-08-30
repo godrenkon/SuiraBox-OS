@@ -6,6 +6,8 @@
 #include "storage.h"
 #include "config_store.h"
 #include "input.h"
+#include "app_manager.h"
+#include "app_manager.c"
 
 static uint8_t syscall_user_smoke_seen;
 static uint8_t syscall_user_draw_seen;
@@ -151,6 +153,9 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_YIELD:
             syscall_idle();
             return 0u;
+        case SB_SYS_APP_LAUNCH:
+            if (arg0 > UINT32_MAX) return UINT64_MAX;
+            return sb_app_launch((uint32_t)arg0) == 0 ? 0u : UINT64_MAX;
         default:
             return UINT64_MAX;
     }
