@@ -66,10 +66,6 @@ int sb_user_context_validate(const sb_user_context_t *context) {
     return context != 0 ? 0 : -1;
 }
 
-int process_prepare_user_resume_frame(sb_thread_t *thread) {
-    return thread != 0 ? 0 : -1;
-}
-
 int main(void) {
     sb_process_t process = {0};
     sb_thread_t *first;
@@ -81,12 +77,9 @@ int main(void) {
     middle = process_create_thread(&process, 2u, 2u);
     last = process_create_thread(&process, 3u, 3u);
     assert(first != 0 && middle != 0 && last != 0);
-    first->kernel_stack_base = (uint64_t)(uintptr_t)pages[0];
-    middle->kernel_stack_base = (uint64_t)(uintptr_t)pages[1];
-    last->kernel_stack_base = (uint64_t)(uintptr_t)pages[2];
-    first->kernel_stack_top = first->kernel_stack_base + 4096u;
-    middle->kernel_stack_top = middle->kernel_stack_base + 4096u;
-    last->kernel_stack_top = last->kernel_stack_base + 4096u;
+    assert(first->kernel_stack_base == (uint64_t)(uintptr_t)pages[0]);
+    assert(middle->kernel_stack_base == (uint64_t)(uintptr_t)pages[1]);
+    assert(last->kernel_stack_base == (uint64_t)(uintptr_t)pages[2]);
     assert(process.thread_count == 3u);
 
     rebind_calls = 0;
