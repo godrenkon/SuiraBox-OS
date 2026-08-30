@@ -81,6 +81,7 @@ int main(void) {
     assert(middle->kernel_stack_base == (uint64_t)(uintptr_t)pages[1]);
     assert(last->kernel_stack_base == (uint64_t)(uintptr_t)pages[2]);
     assert(process.thread_count == 3u);
+    assert(process.exit_code == 0u);
 
     rebind_calls = 0;
     assert(process_destroy_thread(&process, middle) == 0);
@@ -105,5 +106,47 @@ int main(void) {
     assert(process.thread_count == 0u);
     assert(page_used[2] == 0u);
     assert(process_destroy_thread(&process, &process.threads[0]) != 0);
+
+    {
+        sb_process_t lifecycle = {0};
+        sb_thread_t *thread_a;
+        sb_thread_t *thread_b;
+        lifecycle.state = SB_PROCESS_CREATED;
+        thread_a = process_create_thread(&lifecycle, 10u, 10u);
+        thread_b = process_create_thread(&lifecycle, 11u, 10u);
+        assert(thread_a != 0 && thread_b != 0);
+        assert(process_exit_thread(&lifecycle, thread_a, 41u) == 0);
+        assert(thread_a->state == SB_PROCESS_EXITED);
+        assert(thread_b->state == SB_PROCESS_CREATED);
+        assert(lifecycle.state == SB_PROCESS_CREATED);
+        assert(lifecycle.exit_code == 0u);
+        assert(process_exit_thread(&lifecycle, thread_b, 42u) == 0);
+        assert(thread_b->state == SB_PROCESS_EXITED);
+        assert(lifecycle.state == SB_PROCESS_EXITED);
+        assert(lifecycle.exit_code == 42u);
+        assert(process_exit_thread(&lifecycle, thread_b, 43u) != 0);
+        assert(process_destroy_thread(&lifecycle, &lifecycle.threads[1]) == 0);
+        assert(process_destroy_thread(&lifecycle, &lifecycle.threads[0]) == 0);
+        assert(lifecycle.thread_count == 0u);
+    }
+
+    {
+        sb_process_t terminated = {0};
+        sb_thread_t *thread_a;
+        sb_thread_t *thread_b;
+        terminated.state = SB_PROCESS_RUNNING;
+        thread_a = process_create_thread(&terminated, 20u, 20u);
+        thread_b = process_create_thread(&terminated, 21u, 20u);
+        assert(thread_a != 0 && thread_b != 0);
+        assert(process_terminate(&terminated, 99u) == 0);
+        assert(terminated.state == SB_PROCESS_EXITED);
+        assert(terminated.exit_code == 99u);
+        assert(thread_a->state == SB_PROCESS_EXITED);
+        assert(thread_b->state == SB_PROCESS_EXITED);
+        assert(process_terminate(&terminated, 100u) != 0);
+        assert(process_destroy_thread(&terminated, &terminated.threads[0]) == 0);
+        assert(process_destroy_thread(&terminated, &terminated.threads[0]) == 0);
+        assert(terminated.thread_count == 0u);
+    }
     return 0;
 }
