@@ -87,81 +87,51 @@ static void syscall_idle(void) {
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                           uint64_t arg2, uint64_t arg3, uint64_t arg4) {
     switch (number) {
-        case SB_SYS_GET_TICKS:
-            return timer_ticks();
-        case SB_SYS_PROCESS_ID:
-            return syscall_process_id();
-        case SB_SYS_EXIT:
-            return syscall_exit_current(arg0) == 0 ? 0u : UINT64_MAX;
-        case SB_SYS_DISPLAY_INFO:
-            return syscall_display_info();
+        case SB_SYS_GET_TICKS: return timer_ticks();
+        case SB_SYS_PROCESS_ID: return syscall_process_id();
+        case SB_SYS_EXIT: return syscall_exit_current(arg0) == 0 ? 0u : UINT64_MAX;
+        case SB_SYS_DISPLAY_INFO: return syscall_display_info();
         case SB_SYS_DISPLAY_CLEAR:
             syscall_user_draw_mark();
-            return sb_framebuffer_clear((uint8_t)((arg0 >> 16) & 0xFFu),
-                                        (uint8_t)((arg0 >> 8) & 0xFFu),
-                                        (uint8_t)(arg0 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
+            return sb_framebuffer_clear((uint8_t)((arg0 >> 16) & 0xFFu), (uint8_t)((arg0 >> 8) & 0xFFu), (uint8_t)(arg0 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
         case SB_SYS_DISPLAY_RECT:
             syscall_user_draw_mark();
-            if (arg0 > UINT32_MAX || arg1 > UINT32_MAX || arg2 > UINT32_MAX ||
-                arg3 > UINT32_MAX || arg4 > UINT32_MAX)
-                return UINT64_MAX;
-            return sb_framebuffer_fill_rect((uint32_t)arg0, (uint32_t)arg1,
-                                            (uint32_t)arg2, (uint32_t)arg3,
-                                            (uint8_t)((arg4 >> 16) & 0xFFu),
-                                            (uint8_t)((arg4 >> 8) & 0xFFu),
-                                            (uint8_t)(arg4 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
-        case SB_SYS_INPUT_KEY:
-            return sb_input_read_key();
+            if (arg0 > UINT32_MAX || arg1 > UINT32_MAX || arg2 > UINT32_MAX || arg3 > UINT32_MAX || arg4 > UINT32_MAX) return UINT64_MAX;
+            return sb_framebuffer_fill_rect((uint32_t)arg0, (uint32_t)arg1, (uint32_t)arg2, (uint32_t)arg3,
+                                            (uint8_t)((arg4 >> 16) & 0xFFu), (uint8_t)((arg4 >> 8) & 0xFFu), (uint8_t)(arg4 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
+        case SB_SYS_INPUT_KEY: return sb_input_read_key();
         case SB_SYS_DISPLAY_GLYPH:
             syscall_user_draw_mark();
-            if (arg0 > UINT32_MAX - 7u || arg1 > UINT32_MAX - 7u || arg3 > UINT32_MAX)
-                return UINT64_MAX;
+            if (arg0 > UINT32_MAX - 7u || arg1 > UINT32_MAX - 7u || arg3 > UINT32_MAX) return UINT64_MAX;
             return sb_framebuffer_draw_glyph8((uint32_t)arg0, (uint32_t)arg1, arg2,
-                                              (uint8_t)((arg3 >> 16) & 0xFFu),
-                                              (uint8_t)((arg3 >> 8) & 0xFFu),
-                                              (uint8_t)(arg3 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
+                                              (uint8_t)((arg3 >> 16) & 0xFFu), (uint8_t)((arg3 >> 8) & 0xFFu), (uint8_t)(arg3 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
         case SB_SYS_DISPLAY_GLYPH_PAIR:
             syscall_user_draw_mark();
-            if (arg0 > UINT32_MAX - 17u || arg1 > UINT32_MAX - 7u || arg4 > UINT32_MAX)
-                return UINT64_MAX;
+            if (arg0 > UINT32_MAX - 17u || arg1 > UINT32_MAX - 7u || arg4 > UINT32_MAX) return UINT64_MAX;
             if (sb_framebuffer_draw_glyph8((uint32_t)arg0, (uint32_t)arg1, arg2,
-                                           (uint8_t)((arg4 >> 16) & 0xFFu),
-                                           (uint8_t)((arg4 >> 8) & 0xFFu),
-                                           (uint8_t)(arg4 & 0xFFu)) != 0)
-                return UINT64_MAX;
+                                           (uint8_t)((arg4 >> 16) & 0xFFu), (uint8_t)((arg4 >> 8) & 0xFFu), (uint8_t)(arg4 & 0xFFu)) != 0) return UINT64_MAX;
             return sb_framebuffer_draw_glyph8((uint32_t)arg0 + 10u, (uint32_t)arg1, arg3,
-                                              (uint8_t)((arg4 >> 16) & 0xFFu),
-                                              (uint8_t)((arg4 >> 8) & 0xFFu),
-                                              (uint8_t)(arg4 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
-        case SB_SYS_INPUT_MOUSE:
-            syscall_user_smoke_mark();
-            return sb_input_read_mouse();
-        case SB_SYS_CONFIG_GET:
-            return syscall_config_get();
+                                              (uint8_t)((arg4 >> 16) & 0xFFu), (uint8_t)((arg4 >> 8) & 0xFFu), (uint8_t)(arg4 & 0xFFu)) == 0 ? 0u : UINT64_MAX;
+        case SB_SYS_INPUT_MOUSE: syscall_user_smoke_mark(); return sb_input_read_mouse();
+        case SB_SYS_CONFIG_GET: return syscall_config_get();
         case SB_SYS_CONFIG_SET: {
             const uint32_t language = (uint32_t)arg0;
             const uint32_t optional_enabled_mask = (uint32_t)arg1;
-            if (language > 3u ||
-                (optional_enabled_mask != SB_CONFIG_SET_KEEP_OPTIONS &&
-                 optional_enabled_mask > SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED))
-                return UINT64_MAX;
+            if (language > 3u || (optional_enabled_mask != SB_CONFIG_SET_KEEP_OPTIONS && optional_enabled_mask > SB_CONFIG_OPTIONAL_MASK_ALL_SUPPORTED)) return UINT64_MAX;
             if (!sb_storage_ready()) return SB_CONFIG_SET_VOLATILE;
-            if (sb_config_store_set((uint8_t)language, optional_enabled_mask) != 0)
-                return UINT64_MAX;
-            return 0u;
+            return sb_config_store_set((uint8_t)language, optional_enabled_mask) == 0 ? 0u : UINT64_MAX;
         }
-        case SB_SYS_YIELD:
-            syscall_idle();
-            return 0u;
+        case SB_SYS_YIELD: syscall_idle(); return 0u;
         case SB_SYS_APP_LAUNCH:
             if (arg0 > UINT32_MAX) return UINT64_MAX;
             return sb_app_launch((uint32_t)arg0) == 0 ? 0u : UINT64_MAX;
         case SB_SYS_FS_LIST_ROOT:
         case SB_SYS_FS_STAT_ROOT:
         case SB_SYS_FS_READ_ROOT:
+        case SB_SYS_FS_CREATE_ROOT:
+        case SB_SYS_FS_WRITE_ROOT:
             return sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
-        default:
-            return UINT64_MAX;
+        default: return UINT64_MAX;
     }
 }
 
