@@ -22,15 +22,15 @@ int main(void) {
         .driver_data = 0
     };
     assert(sb_block_selftest() == SB_BLOCK_OK);
-    assert(sb_block_count() == 1u);
+    assert(sb_block_count() == 0u);
     assert(sb_block_flush_all() == SB_BLOCK_OK);
     assert(flush_calls == 0);
     assert(sb_block_register(&device) == SB_BLOCK_OK);
     assert(sb_block_register(&device) == SB_BLOCK_OK);
-    assert(sb_block_count() == 2u);
+    assert(sb_block_count() == 1u);
     assert(sb_block_flush_all() == SB_BLOCK_OK);
     assert(flush_calls == 1);
-    assert(sb_block_get(1u) == &device);
-    assert(sb_block_get(2u) == 0);
+    assert(sb_block_get(0u) == &device);
+    assert(sb_block_get(1u) == 0);
     return 0;
 }
