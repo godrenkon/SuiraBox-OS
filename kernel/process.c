@@ -81,10 +81,13 @@ int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
     if (index != last_index) {
         sb_thread_t *last_thread = &process->threads[last_index];
         process->threads[index] = *last_thread;
-        /* Keep the old slot intact until rebind has consumed its identity. */
+        /* Keep the former slot intact after rebind: scheduler users may retain
+         * the old pointer until the next scheduling boundary. The slot is
+         * outside thread_count and will be overwritten by a future create. */
         (void)user_scheduler_rebind_thread(process, last_thread, &process->threads[index]);
+    } else {
+        process->threads[last_index] = (sb_thread_t){0};
     }
-    process->threads[last_index] = (sb_thread_t){0};
     if (removed_stack != 0u) pmm_free_page((void *)(uintptr_t)removed_stack);
     --process->thread_count;
     return 0;
