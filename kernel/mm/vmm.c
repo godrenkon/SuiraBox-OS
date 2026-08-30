@@ -1,6 +1,7 @@
 #include "vmm.h"
 #include "pmm.h"
 #include <stdint.h>
+#include "../net_device.h"
 
 #define PT_ENTRIES 512u
 #define PAGE_MASK (~(uint64_t)(SB_PAGE_SIZE - 1u))
@@ -32,9 +33,7 @@ static void debug_write_char(char c) {
     }
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
 }
-
 static void debug_write(const char *s) { while (*s) debug_write_char(*s++); }
-
 static void debug_write_u64(uint64_t value) {
     static const char digits[] = "0123456789ABCDEF";
     char buffer[17];
@@ -62,12 +61,10 @@ static uint64_t *ensure_table(uint64_t *table, uint16_t index, uint64_t flags) {
         table[index] = entry | (flags & (SB_VMM_WRITABLE | SB_VMM_USER));
         return table_from_entry(table[index]);
     }
-
     void *page = pmm_alloc_page();
     if (page == 0) return 0;
     uint64_t *new_table = (uint64_t *)page;
     for (uint32_t i = 0u; i < PT_ENTRIES; ++i) new_table[i] = 0u;
-
     table[index] = ((uint64_t)(uintptr_t)page & ENTRY_ADDR_MASK) |
                    SB_VMM_PRESENT |
                    (flags & (SB_VMM_WRITABLE | SB_VMM_USER));
@@ -80,35 +77,26 @@ static uint16_t pd_index(uint64_t address) { return (uint16_t)((address >> 21) &
 static uint16_t pt_index(uint64_t address) { return (uint16_t)((address >> 12) & 0x1FFu); }
 
 int vmm_map_page(uint64_t virtual_address, uint64_t physical_address, uint64_t flags) {
-    if ((virtual_address & ~PAGE_MASK) != 0u ||
-        (physical_address & ~PAGE_MASK) != 0u) return -1;
-
+    if ((virtual_address & ~PAGE_MASK) != 0u || (physical_address & ~PAGE_MASK) != 0u) return -1;
     const uint16_t i4 = pml4_index(virtual_address);
     const uint16_t i3 = pdpt_index(virtual_address);
     const uint16_t i2 = pd_index(virtual_address);
     const uint16_t i1 = pt_index(virtual_address);
     uint64_t *root = pml4;
-
     debug_write("[VMM] map pml4="); debug_write_u64(i4); debug_write("\r\n");
     uint64_t *pdpt_table = ensure_table(root, i4, flags);
     debug_write("[VMM] map pdpt="); debug_write_u64((uint64_t)(uintptr_t)pdpt_table); debug_write("\r\n");
     if (pdpt_table == 0) return -1;
-
     uint64_t *pd_table = ensure_table(pdpt_table, i3, flags);
     debug_write("[VMM] map pd="); debug_write_u64((uint64_t)(uintptr_t)pd_table); debug_write("\r\n");
     if (pd_table == 0) return -1;
-
     uint64_t *pt_table = ensure_table(pd_table, i2, flags);
     debug_write("[VMM] map pt="); debug_write_u64((uint64_t)(uintptr_t)pt_table); debug_write("\r\n");
     if (pt_table == 0) return -1;
-
     debug_write("[VMM] map write pte idx="); debug_write_u64(i1); debug_write("\r\n");
     if ((pt_table[i1] & SB_VMM_PRESENT) != 0u) return -2;
-    pt_table[i1] = (physical_address & ENTRY_ADDR_MASK) |
-                   SB_VMM_PRESENT |
+    pt_table[i1] = (physical_address & ENTRY_ADDR_MASK) | SB_VMM_PRESENT |
                    (flags & (SB_VMM_WRITABLE | SB_VMM_USER | SB_VMM_NX));
-
-    debug_write("[VMM] map invlpg\r\n");
     __asm__ volatile ("invlpg (%0)" : : "r"((void *)(uintptr_t)virtual_address) : "memory");
     debug_write("[VMM] map done\r\n");
     return 0;
@@ -152,15 +140,17 @@ uint64_t vmm_translate(uint64_t virtual_address) {
 }
 
 int vmm_map_mmio(uint64_t physical_address, uint64_t size, uint64_t *virtual_address_out) {
-    if (virtual_address_out == 0 || physical_address > UINT64_MAX - size || size == 0u) return -1;
+    if (virtual_address_out == 0 || size == 0u || physical_address > UINT64_MAX - size) return -1;
     const uint64_t physical_base = physical_address & PAGE_MASK;
     const uint64_t offset = physical_address - physical_base;
-    const uint64_t span = size > UINT64_MAX - offset ? 0u : offset + size;
-    if (span == 0u) return -1;
+    if (size > UINT64_MAX - offset) return -1;
+    const uint64_t span = offset + size;
+    if (span < size) return -1;
     const uint64_t pages = (span + SB_PAGE_SIZE - 1u) / SB_PAGE_SIZE;
-    if (pages == 0u || pages > (MMIO_WINDOW_LIMIT - MMIO_WINDOW_BASE) / SB_PAGE_SIZE) return -1;
+    const uint64_t window_pages = (MMIO_WINDOW_LIMIT - MMIO_WINDOW_BASE) / SB_PAGE_SIZE;
+    if (pages == 0u || pages > window_pages) return -1;
     const uint64_t virtual_base = (mmio_next + SB_PAGE_SIZE - 1u) & PAGE_MASK;
-    if (virtual_base < MMIO_WINDOW_BASE || virtual_base > MMIO_WINDOW_LIMIT ||
+    if (virtual_base < MMIO_WINDOW_BASE || virtual_base >= MMIO_WINDOW_LIMIT ||
         pages > (MMIO_WINDOW_LIMIT - virtual_base) / SB_PAGE_SIZE) return -1;
     for (uint64_t i = 0u; i < pages; ++i) {
         if (vmm_map_page(virtual_base + i * SB_PAGE_SIZE,
@@ -174,29 +164,21 @@ int vmm_map_mmio(uint64_t physical_address, uint64_t size, uint64_t *virtual_add
 
 void vmm_init(void) {
     if (bootstrap_ready) return;
-
     const uint64_t high_test_virtual = 0x0000008000000000ull;
     const uint16_t high_pdpt_i = pdpt_index(high_test_virtual);
-
     for (uint32_t i = 0u; i < PT_ENTRIES; ++i) {
         bootstrap_pd[i] = 0u;
         bootstrap_pt[i] = 0u;
         bootstrap_high_pdpt[i] = 0u;
     }
-
-    bootstrap_pd[0] = ((uint64_t)(uintptr_t)bootstrap_pt & ENTRY_ADDR_MASK) |
-                      SB_VMM_PRESENT | SB_VMM_WRITABLE;
-    bootstrap_high_pdpt[high_pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
-                                       SB_VMM_PRESENT | SB_VMM_WRITABLE;
-    pml4[BOOTSTRAP_TEST_PML4_INDEX] = ((uint64_t)(uintptr_t)bootstrap_high_pdpt & ENTRY_ADDR_MASK) |
-                                      SB_VMM_PRESENT | SB_VMM_WRITABLE;
-
+    bootstrap_pd[0] = ((uint64_t)(uintptr_t)bootstrap_pt & ENTRY_ADDR_MASK) | SB_VMM_PRESENT | SB_VMM_WRITABLE;
+    bootstrap_high_pdpt[high_pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) | SB_VMM_PRESENT | SB_VMM_WRITABLE;
+    pml4[BOOTSTRAP_TEST_PML4_INDEX] = ((uint64_t)(uintptr_t)bootstrap_high_pdpt & ENTRY_ADDR_MASK) | SB_VMM_PRESENT | SB_VMM_WRITABLE;
     const uint16_t legacy_pdpt_i = pdpt_index(0x0000004000000000ull);
-    if ((pdpt[legacy_pdpt_i] & SB_VMM_PRESENT) == 0u) {
-        pdpt[legacy_pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) |
-                              SB_VMM_PRESENT | SB_VMM_WRITABLE;
-    }
-
+    if ((pdpt[legacy_pdpt_i] & SB_VMM_PRESENT) == 0u)
+        pdpt[legacy_pdpt_i] = ((uint64_t)(uintptr_t)bootstrap_pd & ENTRY_ADDR_MASK) | SB_VMM_PRESENT | SB_VMM_WRITABLE;
     bootstrap_ready = 1;
     debug_write("[VMM] bootstrap page tables ready\r\n");
+    const int activated = sb_net_device_activate();
+    debug_write(activated > 0 ? "[NET] NIC activation complete\r\n" : "[NET] no supported NIC activated\r\n");
 }
