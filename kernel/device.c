@@ -7,7 +7,10 @@ static void copy_name(char *dst, const char *src) {
     uint32_t i = 0u;
     if (dst == 0) return;
     if (src != 0) {
-        while (src[i] != '\0' && i < SB_DEVICE_NAME_MAX) dst[i++] = src[i];
+        while (i < SB_DEVICE_NAME_MAX && src[i] != '\0') {
+            dst[i] = src[i];
+            ++i;
+        }
     }
     dst[i] = '\0';
 }
