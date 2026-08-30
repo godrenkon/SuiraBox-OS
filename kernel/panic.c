@@ -25,6 +25,27 @@ static void hex64(uint32_t x, uint32_t y, uint64_t value, uint8_t color) {
         put_cell(x + 2u + i, y, digits[(value >> ((15u - i) * 4u)) & 0xFu], color);
 }
 
+static void serial_char(char c) {
+    while (1) {
+        uint8_t status;
+        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+        if ((status & 0x20u) != 0u) break;
+    }
+    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
+}
+
+static void serial_text(const char *s) {
+    if (s == 0) return;
+    while (*s) serial_char(*s++);
+}
+
+static void serial_hex64(uint64_t value) {
+    static const char digits[] = "0123456789ABCDEF";
+    serial_text("0x");
+    for (uint32_t i = 0; i < 16u; ++i)
+        serial_char(digits[(value >> ((15u - i) * 4u)) & 0xFu]);
+}
+
 static const char *reason(uint8_t vector) {
     switch (vector) {
         case 0: return "DIVIDE ERROR";
@@ -59,6 +80,13 @@ static void render(uint8_t vector, uint64_t error_code, uint64_t rip, uint64_t c
 }
 
 void sb_panic_from_exception(uint8_t vector, uint64_t error_code, uint64_t rip, uint64_t cs, uint64_t rflags, uint64_t cr2) {
+    serial_text("PANIC vector="); serial_hex64(vector);
+    serial_text(" error="); serial_hex64(error_code);
+    serial_text(" rip="); serial_hex64(rip);
+    serial_text(" cs="); serial_hex64(cs);
+    serial_text(" rflags="); serial_hex64(rflags);
+    serial_text(" cr2="); serial_hex64(cr2);
+    serial_text("\r\n");
     if (!panic_ready) {
         clear_screen(0x4F);
         text(3, 2, "SUIRABOX PANIC", 0xFF);
