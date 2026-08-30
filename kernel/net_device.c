@@ -29,7 +29,6 @@
 #define E1000_CTRL_RST 0x04000000u
 #define E1000_RCTL_EN 0x00000002u
 #define E1000_RCTL_BAM 0x00008000u
-#define E1000_RCTL_BSIZE_2048 0x00000000u
 #define E1000_RCTL_SECRC 0x04000000u
 #define E1000_TCTL_EN 0x00000002u
 #define E1000_TCTL_PSP 0x00000008u
@@ -71,33 +70,6 @@ static inline void mmio_write32(volatile uint8_t *base, uint32_t offset, uint32_
     *(volatile uint32_t *)(base + offset) = value;
 }
 
-static inline void io_outl(uint16_t port, uint32_t value) {
-    __asm__ volatile ("outl %0, %1" : : "a"(value), "Nd"(port));
-}
-
-static inline uint32_t io_inl(uint16_t port) {
-    uint32_t value;
-    __asm__ volatile ("inl %1, %0" : "=a"(value) : "Nd"(port));
-    return value;
-}
-
-static uint32_t pci_config_address_local(uint8_t bus, uint8_t device, uint8_t function, uint8_t offset) {
-    return 0x80000000u | ((uint32_t)bus << 16) | ((uint32_t)device << 11) |
-           ((uint32_t)function << 8) | ((uint32_t)offset & 0xFCu);
-}
-
-static void pci_enable_bus_mastering(const sb_device_t *device) {
-    if (device == 0 || device->bus != SB_DEVICE_BUS_PCI) return;
-    const uint32_t address = pci_config_address_local(device->bus_number,
-                                                        device->device_number,
-                                                        device->function_number, 0x04u);
-    io_outl(PCI_CONFIG_ADDRESS, address);
-    uint32_t command = io_inl(PCI_CONFIG_DATA);
-    command |= (uint32_t)(PCI_COMMAND_IO_SPACE | PCI_COMMAND_MEMORY_SPACE | PCI_COMMAND_BUS_MASTER);
-    io_outl(PCI_CONFIG_ADDRESS, address);
-    io_outl(PCI_CONFIG_DATA, command);
-}
-
 static uintptr_t e1000_mmio_base(const sb_device_t *device) {
     if (device == 0) return 0u;
     for (uint32_t i = 0u; i < device->resource_count; ++i)
@@ -125,17 +97,16 @@ static int e1000_init(uint32_t index, sb_device_t *device) {
     *ctx = (struct e1000_context){0};
     ctx->mmio = (volatile uint8_t *)(uintptr_t)base;
 
-    pci_enable_bus_mastering(device);
     mmio_write32(ctx->mmio, E1000_REG_IMC, 0xFFFFFFFFu);
     (void)mmio_read32(ctx->mmio, E1000_REG_STATUS);
     mmio_write32(ctx->mmio, E1000_REG_CTRL, mmio_read32(ctx->mmio, E1000_REG_CTRL) | E1000_CTRL_RST);
-    for (uint32_t i = 0u; i < 100000u; ++i) {
+    for (uint32_t i = 0u; i < 100000u; ++i)
         if ((mmio_read32(ctx->mmio, E1000_REG_CTRL) & E1000_CTRL_RST) == 0u) break;
-    }
     mmio_write32(ctx->mmio, E1000_REG_IMC, 0xFFFFFFFFu);
 
     const uint32_t ral = mmio_read32(ctx->mmio, E1000_REG_RAL);
     const uint32_t rah = mmio_read32(ctx->mmio, E1000_REG_RAH);
+    if ((rah & 0x80000000u) == 0u) return -1;
     net_devices[index].mac[0] = (uint8_t)ral;
     net_devices[index].mac[1] = (uint8_t)(ral >> 8);
     net_devices[index].mac[2] = (uint8_t)(ral >> 16);
@@ -143,14 +114,10 @@ static int e1000_init(uint32_t index, sb_device_t *device) {
     net_devices[index].mac[4] = (uint8_t)rah;
     net_devices[index].mac[5] = (uint8_t)(rah >> 8);
 
-    for (uint32_t i = 0u; i < E1000_RX_COUNT; ++i) {
-        ctx->rx[i] = (struct e1000_desc){
-            .address = (uint64_t)(uintptr_t)ctx->rx_buffers[i]
-        };
-    }
-    for (uint32_t i = 0u; i < E1000_TX_COUNT; ++i) {
+    for (uint32_t i = 0u; i < E1000_RX_COUNT; ++i)
+        ctx->rx[i] = (struct e1000_desc){.address = (uint64_t)(uintptr_t)ctx->rx_buffers[i]};
+    for (uint32_t i = 0u; i < E1000_TX_COUNT; ++i)
         ctx->tx[i] = (struct e1000_desc){.status = E1000_TXD_STAT_DD};
-    }
 
     const uintptr_t rx_phys = (uintptr_t)ctx->rx;
     const uintptr_t tx_phys = (uintptr_t)ctx->tx;
@@ -159,8 +126,7 @@ static int e1000_init(uint32_t index, sb_device_t *device) {
     mmio_write32(ctx->mmio, E1000_REG_RDLEN, E1000_RX_COUNT * sizeof(struct e1000_desc));
     mmio_write32(ctx->mmio, E1000_REG_RDH, 0u);
     mmio_write32(ctx->mmio, E1000_REG_RDT, E1000_RX_COUNT - 1u);
-    mmio_write32(ctx->mmio, E1000_REG_RCTL,
-                 E1000_RCTL_EN | E1000_RCTL_BAM | E1000_RCTL_BSIZE_2048 | E1000_RCTL_SECRC);
+    mmio_write32(ctx->mmio, E1000_REG_RCTL, E1000_RCTL_EN | E1000_RCTL_BAM | E1000_RCTL_SECRC);
 
     mmio_write32(ctx->mmio, E1000_REG_TDBAL, (uint32_t)tx_phys);
     mmio_write32(ctx->mmio, E1000_REG_TDBAH, (uint32_t)(tx_phys >> 32));
@@ -173,6 +139,7 @@ static int e1000_init(uint32_t index, sb_device_t *device) {
     ctx->tx_tail = 0u;
     ctx->rx_head = 0u;
     ctx->ready = 1u;
+    device->state = SB_DEVICE_ACTIVE;
     return 0;
 }
 
@@ -211,9 +178,8 @@ const sb_net_device_t *sb_net_device_get(uint32_t index) {
 }
 
 int sb_net_device_send(uint32_t index, const uint8_t *frame, uint16_t length) {
-    if (index >= net_device_count_value || frame == 0u || length < 14u || length > E1000_BUFFER_SIZE ||
-        net_devices[index].state != SB_NET_READY || e1000[index].ready == 0u)
-        return -1;
+    if (index >= net_device_count_value || frame == 0 || length < 14u || length > E1000_BUFFER_SIZE ||
+        net_devices[index].state != SB_NET_READY || e1000[index].ready == 0u) return -1;
     struct e1000_context *ctx = &e1000[index];
     struct e1000_desc *descriptor = &ctx->tx[ctx->tx_tail];
     if ((descriptor->status & E1000_TXD_STAT_DD) == 0u) return 1;
@@ -224,11 +190,10 @@ int sb_net_device_send(uint32_t index, const uint8_t *frame, uint16_t length) {
     descriptor->status = 0u;
     descriptor->errors = 0u;
     descriptor->special = 0u;
-    const uint32_t descriptor_index = ctx->tx_tail;
     ctx->tx_tail = (ctx->tx_tail + 1u) % E1000_TX_COUNT;
     mmio_write32(ctx->mmio, E1000_REG_TDT, ctx->tx_tail);
     (void)mmio_read32(ctx->mmio, E1000_REG_STATUS);
-    return (int)descriptor_index;
+    return 0;
 }
 
 int sb_net_device_receive(uint32_t index, uint8_t *frame, uint16_t capacity, uint16_t *length) {
@@ -237,7 +202,7 @@ int sb_net_device_receive(uint32_t index, uint8_t *frame, uint16_t capacity, uin
     struct e1000_context *ctx = &e1000[index];
     struct e1000_desc *descriptor = &ctx->rx[ctx->rx_head];
     if ((descriptor->status & E1000_RXD_STAT_DD) == 0u) return 1;
-    if ((descriptor->errors & 0xFFu) != 0u) {
+    if (descriptor->errors != 0u) {
         descriptor->status = 0u;
         mmio_write32(ctx->mmio, E1000_REG_RDT, ctx->rx_head);
         ctx->rx_head = (ctx->rx_head + 1u) % E1000_RX_COUNT;
