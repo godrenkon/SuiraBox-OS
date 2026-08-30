@@ -5,6 +5,7 @@
 
 #define SB_DEVICE_NAME_MAX 31u
 #define SB_DEVICE_MAX 128u
+#define SB_DEVICE_RESOURCE_SIZE_UNKNOWN 0u
 
 typedef enum {
     SB_DEVICE_BUS_PLATFORM = 0,
@@ -38,7 +39,7 @@ typedef enum {
 
 typedef struct {
     uint64_t base;
-    uint64_t size;
+    uint64_t size; /* SB_DEVICE_RESOURCE_SIZE_UNKNOWN means base is known but size is not yet probed. */
     uint32_t flags;
 } sb_device_resource_t;
 
