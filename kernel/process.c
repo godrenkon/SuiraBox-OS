@@ -31,6 +31,7 @@ sb_process_t *process_create(uint64_t pid) {
         if (processes[i].state != SB_PROCESS_UNUSED) continue;
         processes[i] = (sb_process_t){0};
         processes[i].pid = pid;
+        processes[i].parent_pid = 0u;
         processes[i].state = SB_PROCESS_CREATED;
         if (address_space_create(&processes[i].address_space) != 0) {
             processes[i].state = SB_PROCESS_UNUSED;
@@ -41,6 +42,15 @@ sb_process_t *process_create(uint64_t pid) {
         return &processes[i];
     }
     return 0;
+}
+
+sb_process_t *process_create_child(sb_process_t *parent, uint64_t pid) {
+    sb_process_t *child;
+    if (parent == 0 || parent->state == SB_PROCESS_UNUSED || parent->state == SB_PROCESS_EXITED) return 0;
+    child = process_create(pid);
+    if (child == 0) return 0;
+    child->parent_pid = parent->pid;
+    return child;
 }
 
 sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t priority) {
@@ -81,9 +91,6 @@ int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
     if (index != last_index) {
         sb_thread_t *last_thread = &process->threads[last_index];
         process->threads[index] = *last_thread;
-        /* Keep the former slot intact after rebind: scheduler users may retain
-         * the old pointer until the next scheduling boundary. The slot is
-         * outside thread_count and will be overwritten by a future create. */
         (void)user_scheduler_rebind_thread(process, last_thread, &process->threads[index]);
     } else {
         process->threads[last_index] = (sb_thread_t){0};
@@ -190,6 +197,21 @@ int process_terminate(sb_process_t *process, uint64_t exit_code) {
     process->state = SB_PROCESS_EXITED;
     process->exit_code = exit_code;
     return 0;
+}
+
+int process_wait_child(sb_process_t *parent, uint64_t child_pid, uint64_t *exit_code) {
+    if (parent == 0 || parent->state == SB_PROCESS_UNUSED) return -1;
+    for (uint32_t i = 0u; i < SB_MAX_PROCESSES; ++i) {
+        sb_process_t *child = &processes[i];
+        if (child->state == SB_PROCESS_UNUSED || child->parent_pid != parent->pid) continue;
+        if (child_pid != 0u && child->pid != child_pid) continue;
+        if (child->state != SB_PROCESS_EXITED) return 0;
+        if (exit_code != 0) *exit_code = child->exit_code;
+        const uint64_t result_pid = child->pid;
+        process_destroy(child);
+        return result_pid <= UINT64_MAX - 1u ? (int)result_pid : -1;
+    }
+    return -1;
 }
 
 sb_process_t *process_get(uint64_t pid) {
