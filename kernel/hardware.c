@@ -5,6 +5,7 @@
 #include "gpu.h"
 #include "input.h"
 #include "net_device.h"
+#include "net_stack.h"
 #include "nvme.h"
 #include "power.h"
 #include "usb.h"
@@ -19,6 +20,7 @@ void sb_hardware_init(uint64_t multiboot_info) {
     sb_gpu_init();
     sb_nvme_init();
     sb_net_device_init();
+    sb_net_stack_init();
     sb_audio_init();
 }
 
