@@ -7,7 +7,6 @@ static uint32_t audio_device_count_value;
 static sb_audio_controller_type_t controller_type(const sb_device_t *device) {
     if (device == 0 || device->class_code != 0x04u) return SB_AUDIO_CONTROLLER_UNKNOWN;
     if (device->subclass == 0x03u) return SB_AUDIO_CONTROLLER_HDA;
-    if (device->subclass == 0x01u) return SB_AUDIO_CONTROLLER_AC97;
     return SB_AUDIO_CONTROLLER_OTHER;
 }
 
