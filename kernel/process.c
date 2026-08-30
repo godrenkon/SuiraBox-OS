@@ -136,6 +136,51 @@ int process_prepare_user_resume_frame(sb_thread_t *thread) {
     return 0;
 }
 
+static int thread_belongs_to_process(const sb_process_t *process, const sb_thread_t *thread) {
+    if (process == 0 || thread == 0) return 0;
+    for (uint32_t i = 0u; i < process->thread_count; ++i)
+        if (&process->threads[i] == thread) return 1;
+    return 0;
+}
+
+static uint32_t runnable_thread_count(const sb_process_t *process) {
+    uint32_t count = 0u;
+    if (process == 0) return 0u;
+    for (uint32_t i = 0u; i < process->thread_count; ++i) {
+        const sb_thread_t *thread = &process->threads[i];
+        if (thread->state == SB_PROCESS_CREATED || thread->state == SB_PROCESS_RUNNING)
+            ++count;
+    }
+    return count;
+}
+
+int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exit_code) {
+    if (!thread_belongs_to_process(process, thread) ||
+        process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED ||
+        thread->state == SB_PROCESS_UNUSED || thread->state == SB_PROCESS_EXITED) return -1;
+
+    thread->state = SB_PROCESS_EXITED;
+    thread->runtime_ticks = 0u;
+    (void)user_scheduler_remove(process, thread);
+    if (runnable_thread_count(process) == 0u) {
+        process->state = SB_PROCESS_EXITED;
+        process->exit_code = exit_code;
+    }
+    return 0;
+}
+
+int process_terminate(sb_process_t *process, uint64_t exit_code) {
+    if (process == 0 || process->state == SB_PROCESS_UNUSED ||
+        process->state == SB_PROCESS_EXITED) return -1;
+    for (uint32_t i = 0u; i < process->thread_count; ++i) {
+        process->threads[i].state = SB_PROCESS_EXITED;
+        (void)user_scheduler_remove(process, &process->threads[i]);
+    }
+    process->state = SB_PROCESS_EXITED;
+    process->exit_code = exit_code;
+    return 0;
+}
+
 sb_process_t *process_get(uint64_t pid) {
     if (pid == 0u) return 0;
     for (uint32_t i = 0u; i < SB_MAX_PROCESSES; ++i)
