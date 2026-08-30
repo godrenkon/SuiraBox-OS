@@ -27,6 +27,23 @@ static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) {
 }
 #endif
 
+static uint32_t launcher_menu_height(const sb_desktop_shell_t *shell) {
+    if (shell == 0 || shell->launcher.count == 0u ||
+        shell->launcher.count > UINT32_MAX / SB_SHELL_MENU_ROW_H) return 0u;
+    return shell->launcher.count * SB_SHELL_MENU_ROW_H;
+}
+
+static int launcher_menu_top(const sb_desktop_shell_t *shell, int32_t *top) {
+    const uint32_t menu_height = launcher_menu_height(shell);
+    uint32_t taskbar_top;
+    if (shell == 0 || top == 0 || menu_height == 0u ||
+        shell->screen_height < SB_GUI_TASKBAR_HEIGHT) return -1;
+    taskbar_top = shell->screen_height - SB_GUI_TASKBAR_HEIGHT;
+    if (taskbar_top < menu_height || taskbar_top > (uint32_t)INT32_MAX + menu_height) return -1;
+    *top = (int32_t)(taskbar_top - menu_height);
+    return 0;
+}
+
 void sb_desktop_shell_init(sb_desktop_shell_t *shell,
                            uint32_t screen_width, uint32_t screen_height) {
     if (shell == 0) return;
@@ -48,6 +65,10 @@ int sb_desktop_shell_register_default_apps(sb_desktop_shell_t *shell) {
 
 int sb_desktop_shell_toggle_launcher(sb_desktop_shell_t *shell) {
     if (shell == 0 || shell->initialized == 0u) return -1;
+    if (shell->launcher.open == 0u) {
+        int32_t top;
+        if (launcher_menu_top(shell, &top) != 0) return -1;
+    }
     return sb_launcher_set_open(&shell->launcher, shell->launcher.open == 0u ? 1u : 0u);
 }
 
@@ -62,6 +83,7 @@ int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
                            const char **activated_id) {
     uint32_t index;
     int32_t taskbar_top;
+    int32_t menu_top;
     if (activated_id != 0) *activated_id = 0;
     if (shell == 0 || shell->initialized == 0u || activated_id == 0) return -1;
     if (shell->screen_height < SB_GUI_TASKBAR_HEIGHT || shell->screen_height > INT32_MAX) return -1;
@@ -73,11 +95,10 @@ int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
         return sb_desktop_shell_toggle_launcher(shell);
     }
 
-    if (shell->launcher.open == 0u) return -1;
+    if (shell->launcher.open == 0u || launcher_menu_top(shell, &menu_top) != 0) return -1;
     if (sb_launcher_hit_test(&shell->launcher, x, y,
                              SB_SHELL_LAUNCHER_X,
-                             taskbar_top -
-                                 (int32_t)(SB_SHELL_MENU_ROW_H * shell->launcher.count),
+                             (uint32_t)menu_top,
                              SB_SHELL_MENU_W, SB_SHELL_MENU_ROW_H, &index) != 0) return -1;
     shell->launcher.selected = index;
     return sb_launcher_activate(&shell->launcher, activated_id);
@@ -86,15 +107,14 @@ int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
 void sb_desktop_shell_present_launcher(void) {
 #if __STDC_HOSTED__ == 0
     sb_desktop_shell_t *shell = active_shell;
+    int32_t top;
+    const uint32_t menu_height = launcher_menu_height(shell);
     if (shell == 0 || shell->initialized == 0u || shell->launcher.open == 0u ||
-        shell->screen_height < SB_GUI_TASKBAR_HEIGHT || shell->launcher.count == 0u) return;
+        menu_height == 0u || launcher_menu_top(shell, &top) != 0) return;
 
-    const uint32_t menu_height = SB_SHELL_MENU_ROW_H * shell->launcher.count;
-    const uint32_t top = shell->screen_height - SB_GUI_TASKBAR_HEIGHT - menu_height;
-    draw_rect(SB_SHELL_LAUNCHER_X, top, SB_SHELL_MENU_W, menu_height, 0x171D27u);
-
+    draw_rect(SB_SHELL_LAUNCHER_X, (uint32_t)top, SB_SHELL_MENU_W, menu_height, 0x171D27u);
     for (uint32_t i = 0u; i < shell->launcher.count; ++i) {
-        const uint32_t row_y = top + i * SB_SHELL_MENU_ROW_H;
+        const uint32_t row_y = (uint32_t)top + i * SB_SHELL_MENU_ROW_H;
         draw_rect(SB_SHELL_LAUNCHER_X + 2u, row_y + 2u,
                   SB_SHELL_MENU_W - 4u, SB_SHELL_MENU_ROW_H - 4u,
                   i == shell->launcher.selected ? 0x536F8Au : 0x27313Eu);
