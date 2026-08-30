@@ -48,7 +48,7 @@ RELEASE_KERNEL := $(BUILD)/suirabox-release.elf
 RELEASE_ENTRY_OBJ := $(BUILD)/release_entry.o
 RELEASE_STORAGE_TEST_OBJ :=
 
-.PHONY: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test release-iso
+.PHONY: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test release-iso desktop-apps
 
 $(LAUNCHER_OBJ): userspace/launcher.c userspace/launcher.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
@@ -200,7 +200,7 @@ $(CONFIG_STORE_OBJ): kernel/config_store.c kernel/config_store.h kernel/storage.
 $(USER_CONTEXT_OBJ): kernel/arch/x86_64/user_context.c kernel/arch/x86_64/user_context.h kernel/mm/address_space.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 -c $< -o $@
 
-$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/timer.h kernel/scheduler.h kernel/framebuffer.h kernel/storage.h kernel/config_store.h kernel/input.h | $(BUILD)
+$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/timer.h kernel/scheduler.h kernel/framebuffer.h kernel/storage.h kernel/config_store.h kernel/input.h kernel/app_manager.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
 
 $(KERNEL): $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(USB_TRANSFER_OBJ) $(USB_CLASS_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(NET_STACK_OBJ) $(ARP_OBJ) $(NET_ROUTE_OBJ) $(TCP_OBJ) $(UDP_OBJ) $(DHCP_OBJ) $(DNS_OBJ) $(NET_MANAGER_OBJ) $(NET_FIREWALL_OBJ) $(SOCKET_OBJ) $(AUDIO_OBJ) $(GPU_OBJ) $(HARDWARE_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(IRQ_FRAME_OBJ) $(USER_CONTEXT_OBJ) $(USER_SCHED_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ)
@@ -228,3 +228,42 @@ release-iso: $(RELEASE_KERNEL) $(DESKTOP_ELF) boot/grub.cfg
 	sh scripts/check_base_image.sh $(BUILD)/release-iso
 
 check: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test
+
+# Standalone packaged desktop applications.  Each application uses the common
+# entrypoint and its own tiny userspace main, then becomes a Multiboot2 module.
+APP_ENTRY_OBJ := $(BUILD)/app-entry.o
+SETTINGS_APP_OBJ := $(BUILD)/settings-app.o
+FILES_APP_OBJ := $(BUILD)/files-app.o
+TERMINAL_APP_OBJ := $(BUILD)/terminal-app.o
+SETTINGS_APP_ELF := $(BUILD)/sb-app-settings.elf
+FILES_APP_ELF := $(BUILD)/sb-app-files.elf
+TERMINAL_APP_ELF := $(BUILD)/sb-app-terminal.elf
+
+$(APP_ENTRY_OBJ): userspace/app_entry.S | $(BUILD)
+	$(AS) --64 $< -o $@
+
+$(SETTINGS_APP_OBJ): userspace/apps/settings.c userspace/syscall.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
+$(FILES_APP_OBJ): userspace/apps/files.c userspace/syscall.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
+$(TERMINAL_APP_OBJ): userspace/apps/terminal.c userspace/syscall.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+
+$(SETTINGS_APP_ELF): $(APP_ENTRY_OBJ) $(SETTINGS_APP_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(APP_ENTRY_OBJ) $(SETTINGS_APP_OBJ)
+
+$(FILES_APP_ELF): $(APP_ENTRY_OBJ) $(FILES_APP_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(APP_ENTRY_OBJ) $(FILES_APP_OBJ)
+
+$(TERMINAL_APP_ELF): $(APP_ENTRY_OBJ) $(TERMINAL_APP_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(APP_ENTRY_OBJ) $(TERMINAL_APP_OBJ)
+
+desktop-apps: $(SETTINGS_APP_ELF) $(FILES_APP_ELF) $(TERMINAL_APP_ELF)
+	mkdir -p $(BUILD)/iso/boot
+	cp $(SETTINGS_APP_ELF) $(BUILD)/iso/boot/sb-app-settings.elf
+	cp $(FILES_APP_ELF) $(BUILD)/iso/boot/sb-app-files.elf
+	cp $(TERMINAL_APP_ELF) $(BUILD)/iso/boot/sb-app-terminal.elf
+
+iso: desktop-apps
