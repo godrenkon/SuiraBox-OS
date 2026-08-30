@@ -16,6 +16,7 @@ EVENT_QUEUE_HOST_TEST := $(BUILD)/event-queue-host-test
 LOCALE_HOST_TEST := $(BUILD)/locale-host-test
 USER_SCHED_HOST_TEST := $(BUILD)/user-scheduler-host-test
 DESKTOP_SHELL_HOST_TEST := $(BUILD)/desktop-shell-host-test
+IRQ_FRAME_HOST_TEST := $(BUILD)/irq-frame-host-test
 
 CC ?= gcc
 AS ?= as
@@ -124,7 +125,7 @@ HARDWARE_SUBSYSTEMS_HOST_TEST := $(BUILD)/hardware-subsystems-host-test
 USB_TRANSFER_HOST_TEST := $(BUILD)/usb-transfer-host-test
 GPU_HOST_TEST := $(BUILD)/gpu-host-test
 
-.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test host-desktop-shell-test host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test release-iso desktop-apps
+.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test host-desktop-shell-test host-irq-frame-test host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test release-iso desktop-apps
 
 all: iso userspace
 
@@ -340,6 +341,10 @@ $(DESKTOP_SHELL_HOST_TEST): tests/desktop_shell_host_test.c userspace/desktop_sh
 	$(CC) -std=c11 -Wall -Wextra -Werror -Iuserspace tests/desktop_shell_host_test.c userspace/desktop_shell.c userspace/launcher.c userspace/gui.c -o $@
 host-desktop-shell-test: $(DESKTOP_SHELL_HOST_TEST)
 	$(DESKTOP_SHELL_HOST_TEST)
+$(IRQ_FRAME_HOST_TEST): tests/irq_frame_host_test.c kernel/arch/x86_64/irq_frame.c kernel/arch/x86_64/irq_frame.h kernel/arch/x86_64/user_context.c kernel/arch/x86_64/user_context.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 tests/irq_frame_host_test.c kernel/arch/x86_64/irq_frame.c kernel/arch/x86_64/user_context.c -o $@
+host-irq-frame-test: $(IRQ_FRAME_HOST_TEST)
+	$(IRQ_FRAME_HOST_TEST)
 $(LAUNCHER_HOST_TEST): tests/launcher_host_test.c userspace/launcher.c userspace/launcher.h | $(BUILD)
 	$(CC) -Wall -Wextra -Werror -Iuserspace tests/launcher_host_test.c userspace/launcher.c -o $@
 host-launcher-test: $(LAUNCHER_HOST_TEST)
@@ -407,7 +412,7 @@ release-iso: $(RELEASE_KERNEL) $(DESKTOP_ELF) boot/grub.cfg
 	grub-mkrescue -o $(BUILD)/suirabox-release.iso $(BUILD)/release-iso >/dev/null
 	sh scripts/check_base_image.sh $(BUILD)/release-iso
 
-check: $(KERNEL) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test host-desktop-shell-test host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test
+check: $(KERNEL) $(DESKTOP_ELF) host-pmm-test host-fat32-test host-gui-test host-compositor-test host-config-test host-surface-test host-event-queue-test host-locale-test host-user-scheduler-test host-desktop-shell-test host-irq-frame-test host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test
 	@if command -v grub-file >/dev/null 2>&1; then grub-file --is-x86-multiboot2 $(KERNEL); else printf '%s\n' 'warning: grub-file is unavailable; skipping Multiboot2 artifact validation'; fi
 	readelf -h $(DESKTOP_ELF) | grep -q 'Class:.*ELF64'
 
