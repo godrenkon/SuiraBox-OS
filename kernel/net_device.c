@@ -1,12 +1,14 @@
 #include "net_device.h"
 #include "pci.h"
 #include "mm/pmm.h"
+#include "mm/vmm.h"
 
 #define E1000_VENDOR_INTEL 0x8086u
 #define E1000_DEVICE_82540EM 0x100Eu
 #define E1000_RX_COUNT 8u
 #define E1000_TX_COUNT 8u
 #define E1000_BUFFER_SIZE 2048u
+#define E1000_MMIO_SIZE 0x6000u
 
 #define E1000_REG_CTRL 0x0000u
 #define E1000_REG_STATUS 0x0008u
@@ -116,11 +118,16 @@ static void release_pages(e1000_context_t *ctx) {
 
 static int e1000_activate(uint32_t index, sb_device_t *device) {
     if (index >= SB_NET_MAX_DEVICES || device == 0) return -1;
-    const uintptr_t base = e1000_mmio_base(device);
-    if (base == 0u) return -1;
+    const uintptr_t physical_mmio = e1000_mmio_base(device);
+    if (physical_mmio == 0u) return -1;
     e1000_context_t *ctx = &e1000[index];
     *ctx = (e1000_context_t){0};
-    ctx->mmio = (volatile uint8_t *)(uintptr_t)base;
+
+    uint64_t virtual_mmio = 0u;
+    if (vmm_map_mmio((uint64_t)physical_mmio, E1000_MMIO_SIZE, &virtual_mmio) != 0)
+        return -1;
+    ctx->mmio = (volatile uint8_t *)(uintptr_t)virtual_mmio;
+
     ctx->rx_ring_page = pmm_alloc_page();
     ctx->tx_ring_page = pmm_alloc_page();
     if (ctx->rx_ring_page == 0 || ctx->tx_ring_page == 0) {
