@@ -97,6 +97,7 @@ int sb_net_manager_set_dhcp(sb_net_manager_t *manager, uint32_t id, uint8_t enab
 int sb_net_manager_add_route(sb_net_manager_t *manager, uint32_t destination,
                              uint32_t netmask, uint32_t gateway, uint32_t metric) {
     if (manager == 0 || manager->route_count >= SB_NET_MANAGER_MAX_ROUTES || !valid_mask(netmask)) return -1;
+    if (gateway != 0u && (gateway & netmask) != (destination & netmask)) return -1;
     const uint32_t network = destination & netmask;
     sb_net_manager_route_t *route = &manager->routes[manager->route_count++];
     *route = (sb_net_manager_route_t){
