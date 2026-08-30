@@ -121,6 +121,38 @@ int sb_net_parse_udp(const uint8_t *payload, uint32_t length,
     return 0;
 }
 
+int sb_net_validate_udp_checksum_ipv4(uint32_t source, uint32_t destination,
+                                      const uint8_t *udp, uint32_t length) {
+    if (udp == 0 || length < SB_NET_UDP_HEADER || length > UINT16_MAX) return -1;
+    const uint16_t udp_length = rd16be(udp + 4u);
+    if (udp_length != length || udp_length < SB_NET_UDP_HEADER) return -1;
+    if (rd16be(udp + 6u) == 0u) return 0;
+
+    uint8_t pseudo[12];
+    pseudo[0] = (uint8_t)(source >> 24);
+    pseudo[1] = (uint8_t)(source >> 16);
+    pseudo[2] = (uint8_t)(source >> 8);
+    pseudo[3] = (uint8_t)source;
+    pseudo[4] = (uint8_t)(destination >> 24);
+    pseudo[5] = (uint8_t)(destination >> 16);
+    pseudo[6] = (uint8_t)(destination >> 8);
+    pseudo[7] = (uint8_t)destination;
+    pseudo[8] = 0u;
+    pseudo[9] = SB_NET_IPV4_PROTO_UDP;
+    pseudo[10] = (uint8_t)(length >> 8);
+    pseudo[11] = (uint8_t)length;
+
+    uint32_t sum = 0u;
+    const uint8_t *bytes = pseudo;
+    for (uint32_t i = 0u; i < sizeof(pseudo); i += 2u)
+        sum += ((uint32_t)bytes[i] << 8) | bytes[i + 1u];
+    for (uint32_t i = 0u; i + 1u < length; i += 2u)
+        sum += ((uint32_t)udp[i] << 8) | udp[i + 1u];
+    if ((length & 1u) != 0u) sum += (uint32_t)udp[length - 1u] << 8;
+    while ((sum >> 16) != 0u) sum = (sum & 0xFFFFu) + (sum >> 16);
+    return ((uint16_t)sum == 0xFFFFu) ? 0 : -1;
+}
+
 uint32_t sb_net_ipv4_make(uint8_t a, uint8_t b, uint8_t c, uint8_t d) {
     return ((uint32_t)a << 24) | ((uint32_t)b << 16) | ((uint32_t)c << 8) | d;
 }
