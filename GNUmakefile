@@ -227,7 +227,7 @@ $(LOCALE_OBJ): userspace/locale.c userspace/locale.h userspace/config.h | $(BUIL
 $(LAUNCHER_OBJ): userspace/launcher.c userspace/launcher.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 $(DESKTOP_SHELL_OBJ): userspace/desktop_shell.c userspace/desktop_shell.h userspace/launcher.h userspace/gui.h | $(BUILD)
-	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+	$(CC) $(USER_APP_CFLAGS) -Iuserspace -c $< -o $@
 $(SETTINGS_POLICY_OBJ): userspace/settings_policy.c userspace/settings_policy.h userspace/config.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 $(SETTINGS_VIEW_OBJ): userspace/settings_view.c userspace/settings_view.h userspace/gui.h userspace/settings_policy.h | $(BUILD)
