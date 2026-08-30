@@ -36,6 +36,47 @@ static uint16_t pdpt_index(uint64_t address) { return (uint16_t)((address >> 30)
 static uint16_t pd_index(uint64_t address) { return (uint16_t)((address >> 21) & 0x1FFu); }
 static uint16_t pt_index(uint64_t address) { return (uint16_t)((address >> 12) & 0x1FFu); }
 
+#if 1
+static void debug_char(char c) {
+    while (1) {
+        uint8_t status;
+        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+        if ((status & 0x20u) != 0u) break;
+    }
+    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
+}
+static void debug_text(const char *s) { while (*s) debug_char(*s++); }
+static void debug_hex64(uint64_t value) {
+    static const char digits[] = "0123456789ABCDEF";
+    debug_text("0x");
+    for (int i = 15; i >= 0; --i) debug_char(digits[(value >> (i * 4)) & 0xFu]);
+}
+static void debug_stack_walk(const sb_address_space_t *space, uint64_t va) {
+    uint64_t *pml4 = (uint64_t *)(uintptr_t)space->pml4_physical;
+    uint64_t e4 = pml4[pml4_index(va)];
+    uint64_t e3 = 0, e2 = 0, e1 = 0;
+    if ((e4 & SB_VMM_PRESENT) != 0u) {
+        uint64_t *pdpt = table_from_entry(e4);
+        e3 = pdpt[pdpt_index(va)];
+        if ((e3 & SB_VMM_PRESENT) != 0u && (e3 & (1ull << 7)) == 0u) {
+            uint64_t *pd = table_from_entry(e3);
+            e2 = pd[pd_index(va)];
+            if ((e2 & SB_VMM_PRESENT) != 0u && (e2 & (1ull << 7)) == 0u) {
+                uint64_t *pt = table_from_entry(e2);
+                e1 = pt[pt_index(va)];
+            }
+        }
+    }
+    debug_text("[AS] stack va="); debug_hex64(va);
+    debug_text(" cr3="); debug_hex64(space->pml4_physical);
+    debug_text(" e4="); debug_hex64(e4);
+    debug_text(" e3="); debug_hex64(e3);
+    debug_text(" e2="); debug_hex64(e2);
+    debug_text(" e1="); debug_hex64(e1);
+    debug_text("\r\n");
+}
+#endif
+
 static void free_user_page_tables(uint64_t *pml4) {
     const uint16_t user_index = (uint16_t)SB_USER_PML4_INDEX;
     uint64_t pml4_entry = pml4[user_index];
@@ -115,6 +156,9 @@ int address_space_map_user(sb_address_space_t *space,
     pt[index] = (physical_address & ENTRY_ADDR_MASK) |
                 SB_VMM_PRESENT | SB_VMM_USER |
                 (flags & (SB_VMM_WRITABLE | SB_VMM_NX));
+#if 1
+    if (virtual_address == SB_USER_STACK_TOP - SB_PAGE_SIZE) debug_stack_walk(space, virtual_address);
+#endif
     return 0;
 }
 
