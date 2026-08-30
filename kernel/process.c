@@ -161,7 +161,11 @@ int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exi
 
     thread->state = SB_PROCESS_EXITED;
     thread->runtime_ticks = 0u;
-    (void)user_scheduler_remove(process, thread);
+    if (user_scheduler_current_process() == process && user_scheduler_current_thread() == thread) {
+        if (user_scheduler_request_exit(process, thread) != 0) return -1;
+    } else {
+        (void)user_scheduler_remove(process, thread);
+    }
     if (runnable_thread_count(process) == 0u) {
         process->state = SB_PROCESS_EXITED;
         process->exit_code = exit_code;
@@ -174,7 +178,10 @@ int process_terminate(sb_process_t *process, uint64_t exit_code) {
         process->state == SB_PROCESS_EXITED) return -1;
     for (uint32_t i = 0u; i < process->thread_count; ++i) {
         process->threads[i].state = SB_PROCESS_EXITED;
-        (void)user_scheduler_remove(process, &process->threads[i]);
+        if (user_scheduler_current_process() == process && user_scheduler_current_thread() == &process->threads[i])
+            (void)user_scheduler_request_exit(process, &process->threads[i]);
+        else
+            (void)user_scheduler_remove(process, &process->threads[i]);
     }
     process->state = SB_PROCESS_EXITED;
     process->exit_code = exit_code;
