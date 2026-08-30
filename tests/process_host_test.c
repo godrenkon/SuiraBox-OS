@@ -55,6 +55,15 @@ int user_scheduler_rebind_thread(sb_process_t *process, sb_thread_t *old_thread,
     return 0;
 }
 
+int user_scheduler_request_exit(sb_process_t *process, sb_thread_t *thread) {
+    (void)process;
+    (void)thread;
+    return -1;
+}
+
+sb_process_t *user_scheduler_current_process(void) { return 0; }
+sb_thread_t *user_scheduler_current_thread(void) { return 0; }
+
 int sb_user_context_init(sb_user_context_t *context, uint64_t entry_point, uint64_t user_stack_top) {
     (void)context;
     (void)entry_point;
