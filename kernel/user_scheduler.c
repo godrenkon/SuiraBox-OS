@@ -89,6 +89,18 @@ int user_scheduler_remove(sb_process_t *process, sb_thread_t *thread) {
     return -1;
 }
 
+int user_scheduler_rebind_thread(sb_process_t *process, sb_thread_t *old_thread, sb_thread_t *new_thread) {
+    if (process == 0 || old_thread == 0 || new_thread == 0) return -1;
+    if (old_thread == new_thread) return 0;
+    for (uint32_t i = 0u; i < slot_count; ++i) {
+        if (slot_matches(&slots[i], process, old_thread)) {
+            slots[i].thread = new_thread;
+            return 0;
+        }
+    }
+    return 1;
+}
+
 int user_scheduler_set_current(sb_process_t *process, sb_thread_t *thread) {
     prune_dead_slots();
     if (!thread_runnable(thread) || !process_runnable(process)) return -1;
