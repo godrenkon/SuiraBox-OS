@@ -35,6 +35,11 @@ int main(void) {
     assert(sb_device_count() == 0u);
     sb_device_t *device = sb_device_register(SB_DEVICE_BUS_PCI, SB_DEVICE_CLASS_NETWORK, 0x1234u, 0x5678u, maximum_name);
     assert(device != 0 && sb_device_count() == 1u);
+    device->bus_number = 2u;
+    device->device_number = 7u;
+    device->function_number = 3u;
+    assert(sb_device_find_pci(2u, 7u, 3u) == device);
+    assert(sb_device_find_pci(2u, 7u, 4u) == 0);
     assert(device->state == SB_DEVICE_DISCOVERED);
     assert(sizeof(device->name) == SB_DEVICE_NAME_MAX + 1u);
     assert(device->name[SB_DEVICE_NAME_MAX] == '\0');
