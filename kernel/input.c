@@ -55,18 +55,14 @@ uint64_t sb_input_read_key(void) {
 uint64_t sb_input_read_mouse(void) {
     if (!mouse_initialized) mouse_init();
     if (!mouse_initialized) return 0u;
-
     const uint8_t status = io_in8(0x64u);
     if ((status & 0x01u) == 0u || (status & 0x20u) == 0u) return 0u;
-
     const uint8_t byte = io_in8(0x60u);
     if (mouse_packet_index == 0u && (byte & 0x08u) == 0u) return 0u;
     mouse_packet[mouse_packet_index++] = byte;
     if (mouse_packet_index < 3u) return 0u;
-
     mouse_packet_index = 0u;
-    return (uint64_t)SB_INPUT_MOUSE_EVENT |
-           ((uint64_t)(mouse_packet[0] & 0x07u) << 8) |
+    return 1u | ((uint64_t)(mouse_packet[0] & 0x07u) << 8) |
            ((uint64_t)mouse_packet[1] << 16) |
            ((uint64_t)mouse_packet[2] << 24);
 }
