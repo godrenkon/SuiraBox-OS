@@ -4,6 +4,18 @@
 #include "../kernel/nvme.h"
 #include "../kernel/net_device.h"
 #include "../kernel/audio.h"
+#include "../kernel/mm/pmm.h"
+#include "../kernel/mm/vmm.h"
+
+/* Host-only memory-management boundary; production PMM/VMM remain unchanged. */
+void *pmm_alloc_page(void) { return 0; }
+void pmm_free_page(void *page) { (void)page; }
+int vmm_map_mmio(uint64_t physical_address, uint64_t size, uint64_t *virtual_address_out) {
+    (void)physical_address;
+    (void)size;
+    (void)virtual_address_out;
+    return -1;
+}
 
 int main(void) {
     sb_device_init();
