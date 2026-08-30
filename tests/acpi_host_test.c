@@ -42,7 +42,7 @@ static uint32_t make_boot_info(uint8_t *buffer, uint8_t *xsdt, uint8_t *fadt, ui
     memcpy(dsdt + 36u, aml, sizeof(aml));
     fix_checksum(dsdt, 47u, 9u);
 
-    *(uint32_t *)(void *)(buffer + 0u) = 128u;
+    *(uint32_t *)(void *)(buffer + 0u) = 64u;
     *(uint32_t *)(void *)(buffer + 4u) = 15u;
     *(uint32_t *)(void *)(buffer + 8u) = 44u;
     uint8_t *rsdp = buffer + 16u;
@@ -52,12 +52,14 @@ static uint32_t make_boot_info(uint8_t *buffer, uint8_t *xsdt, uint8_t *fadt, ui
     write64(rsdp + 24u, (uint64_t)(uintptr_t)xsdt);
     fix_checksum(rsdp, 20u, 8u);
     fix_checksum(rsdp, 36u, 32u);
+    *(uint32_t *)(void *)(buffer + 56u) = 0u;
+    *(uint32_t *)(void *)(buffer + 60u) = 8u;
     return 0u;
 }
 
 static void make_minimal_tag(uint8_t *buffer, uint32_t tag_type, uint8_t revision, int valid_basic, int valid_extended) {
     memset(buffer, 0, 128u);
-    *(uint32_t *)(void *)(buffer + 0u) = 128u;
+    *(uint32_t *)(void *)(buffer + 0u) = 64u;
     *(uint32_t *)(void *)(buffer + 4u) = tag_type;
     *(uint32_t *)(void *)(buffer + 8u) = 44u;
     uint8_t *rsdp = buffer + 16u;
@@ -66,6 +68,8 @@ static void make_minimal_tag(uint8_t *buffer, uint32_t tag_type, uint8_t revisio
     if (revision >= 2u) rsdp[20] = 36u;
     if (valid_basic) fix_checksum(rsdp, 20u, 8u);
     if (revision >= 2u && valid_extended) fix_checksum(rsdp, 36u, 32u);
+    *(uint32_t *)(void *)(buffer + 56u) = 0u;
+    *(uint32_t *)(void *)(buffer + 60u) = 8u;
 }
 
 int main(void) {
