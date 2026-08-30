@@ -6,7 +6,7 @@ static uint32_t capabilities;
 
 static void io_out8(uint16_t port, uint8_t value) { __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port)); }
 static uint16_t io_in16(uint16_t port) { uint16_t value; __asm__ volatile ("inw %1, %0" : "=a"(value) : "Nd"(port)); return value; }
-static void halt_forever(void) { for (;;) __asm__ volatile ("cli\n\thlt" ::: "memory"); }
+static __attribute__((noreturn)) void halt_forever(void) { for (;;) __asm__ volatile ("cli\n\thlt" ::: "memory"); }
 
 void sb_power_init(void) {
     capabilities = SB_POWER_REBOOT | SB_POWER_SHUTDOWN;
