@@ -100,5 +100,22 @@ int main(void) {
     assert(process_activate_calls == 2);
     assert(gdt_calls == 1);
 
+    {
+        sb_process_t rp = { .pid = 3u, .state = SB_PROCESS_RUNNING };
+        sb_thread_t old_thread = { .tid = 31u, .state = SB_PROCESS_RUNNING,
+                                   .user_context = &c1, .kernel_resume_stack_pointer = 0x3000u };
+        sb_thread_t new_thread = { .tid = 32u, .state = SB_PROCESS_RUNNING,
+                                   .user_context = &c2, .kernel_resume_stack_pointer = 0x4000u };
+        user_scheduler_init();
+        assert(user_scheduler_add(&rp, &old_thread) == 0);
+        assert(user_scheduler_set_current(&rp, &old_thread) == 0);
+        assert(user_scheduler_rebind_thread(&rp, &old_thread, &new_thread) == 0);
+        assert(user_scheduler_current_thread() == &new_thread);
+        assert(user_scheduler_rebind_thread(&rp, &old_thread, &new_thread) == 1);
+        assert(user_scheduler_remove(&rp, &new_thread) == 0);
+        assert(user_scheduler_count() == 0u);
+        assert(user_scheduler_rebind_thread(0, &old_thread, &new_thread) == -1);
+    }
+
     return 0;
 }
