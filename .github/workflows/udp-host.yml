@@ -1,0 +1,19 @@
+name: SuiraBox UDP Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  udp-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile UDP host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/udp_host_test.c kernel/udp.c -o /tmp/udp-host-test
+      - name: Run UDP host test
+        run: /tmp/udp-host-test
