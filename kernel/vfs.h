@@ -32,7 +32,7 @@ typedef struct {
     sb_block_device_t *block_device;
     uint32_t sector_size;
     uint64_t total_sectors;
-    const char *mount_path;
+    char mount_path[SB_VFS_MAX_PATH];
     void *filesystem;
     uint8_t mounted;
 } sb_vfs_mount_t;
