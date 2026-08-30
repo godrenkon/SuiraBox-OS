@@ -65,9 +65,10 @@ _start:
     movl $pml4, %eax
     movl %eax, %cr3
 
+    /* Enable long mode and NX page permissions before any NX PTE is used. */
     movl $0xC0000080, %ecx
     rdmsr
-    orl $0x100, %eax
+    orl $0x900, %eax
     wrmsr
 
     movl %cr0, %eax
