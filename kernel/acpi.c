@@ -25,7 +25,11 @@ static int rsdp_validate(const void *ptr, uint32_t available, sb_acpi_info_t *ou
     if (checksum8(bytes, ACPI_RSDP_BASIC_LENGTH) != 0u) return -1;
     const uint8_t revision = bytes[15];
     uint32_t length = ACPI_RSDP_BASIC_LENGTH;
-    if (revision >= 2u) { if (available < ACPI_RSDP_V2_LENGTH) return -1; length = rd32(bytes + 20u); if (length < ACPI_RSDP_V2_LENGTH || length > available || checksum8(bytes, length) != 0u) return -1; }
+    if (revision >= 2u) {
+        if (available < ACPI_RSDP_V2_LENGTH) return -1;
+        length = rd32(bytes + 20u);
+        if (length < ACPI_RSDP_V2_LENGTH || length > available || checksum8(bytes, length) != 0u) return -1;
+    }
     out->rsdp_address = (uint64_t)(uintptr_t)ptr;
     out->root_table_address = revision >= 2u ? rd64(bytes + 24u) : 0u;
     if (out->root_table_address == 0u) out->root_table_address = (uint64_t)rd32(bytes + 16u);
@@ -64,35 +68,57 @@ static int extract_s5_types(uint64_t dsdt_address, uint8_t *a, uint8_t *b) {
     if (dsdt == 0 || a == 0 || b == 0 || length <= ACPI_TABLE_HEADER_SIZE + 8u) return -1;
     static const uint8_t marker[] = { 0x5Fu, 0x53u, 0x35u, 0x5Fu };
     for (uint32_t i = ACPI_TABLE_HEADER_SIZE; i + sizeof(marker) + 4u < length; ++i) {
-        uint8_t match = 1u; for (uint32_t j = 0u; j < sizeof(marker); ++j) if (dsdt[i + j] != marker[j]) match = 0u;
+        uint8_t match = 1u;
+        for (uint32_t j = 0u; j < sizeof(marker); ++j) if (dsdt[i + j] != marker[j]) match = 0u;
         if (!match || dsdt[i + 4u] != 0x12u) continue;
-        uint32_t cursor = i + 5u; if (cursor >= length) return -1;
-        const uint8_t lead = dsdt[cursor++]; const uint8_t count = (uint8_t)((lead >> 6) & 3u);
+        uint32_t cursor = i + 5u;
+        if (cursor >= length) return -1;
+        const uint8_t lead = dsdt[cursor++];
+        const uint8_t count = (uint8_t)((lead >> 6) & 3u);
         if (count > 3u || cursor + count > length) return -1;
         uint32_t package_length = lead & 0x3Fu;
         for (uint8_t n = 0u; n < count; ++n) package_length |= (uint32_t)(dsdt[cursor++] & 0xFFu) << (4u + 8u * n);
         if (package_length < 3u || i + 5u + package_length > length || cursor >= length) continue;
-        const uint8_t elements = dsdt[cursor++]; if (elements < 2u) continue;
+        const uint8_t elements = dsdt[cursor++];
+        if (elements < 2u) continue;
         uint8_t values[2] = {0u, 0u};
         for (uint32_t index = 0u; index < 2u; ++index) {
-            if (cursor >= length) return -1; const uint8_t op = dsdt[cursor++];
-            if (op == 0x0Au) { if (cursor >= length) return -1; values[index] = dsdt[cursor++]; }
-            else if (op == 0x0Bu) { if (cursor + 2u > length) return -1; values[index] = dsdt[cursor++]; ++cursor; }
-            else if (op == 0x0Cu) { if (cursor + 4u > length) return -1; values[index] = dsdt[cursor++]; cursor += 3u; }
-            else return -1;
+            if (cursor >= length) return -1;
+            const uint8_t op = dsdt[cursor++];
+            if (op == 0x0Au) {
+                if (cursor >= length) return -1;
+                values[index] = dsdt[cursor++];
+            } else if (op == 0x0Bu) {
+                if (cursor + 2u > length) return -1;
+                values[index] = dsdt[cursor++];
+                ++cursor;
+            } else if (op == 0x0Cu) {
+                if (cursor + 4u > length) return -1;
+                values[index] = dsdt[cursor++];
+                cursor += 3u;
+            } else {
+                return -1;
+            }
         }
-        *a = values[0]; *b = values[1]; return 0;
+        *a = values[0];
+        *b = values[1];
+        return 0;
     }
     return -1;
 }
 static uint32_t fadt_gas_io(const uint8_t *fadt, uint32_t length, uint32_t x_offset, uint32_t legacy_offset) {
-    if (length >= x_offset + 12u && fadt[x_offset] == 1u) { const uint64_t address = rd64(fadt + x_offset + 4u); if (address <= UINT32_MAX) return (uint32_t)address; }
+    if (length >= x_offset + 12u && fadt[x_offset] == 1u) {
+        const uint64_t address = rd64(fadt + x_offset + 4u);
+        if (address <= UINT32_MAX) return (uint32_t)address;
+    }
     return length >= legacy_offset + 4u ? rd32(fadt + legacy_offset) : 0u;
 }
 
 int sb_acpi_init_from_multiboot(uint64_t multiboot_info) {
-    info = (sb_acpi_info_t){0}; if (multiboot_info == 0u) return -1;
-    const uint32_t total_size = *(const uint32_t *)(uintptr_t)multiboot_info; if (total_size < 16u || total_size > MB_INFO_MAX) return -1;
+    info = (sb_acpi_info_t){0};
+    if (multiboot_info == 0u) return -1;
+    const uint32_t total_size = *(const uint32_t *)(uintptr_t)multiboot_info;
+    if (total_size < 16u || total_size > MB_INFO_MAX) return -1;
     uint32_t offset = 8u;
     while (offset <= total_size - sizeof(struct mb_tag)) {
         const struct mb_tag *tag = (const struct mb_tag *)(uintptr_t)(multiboot_info + offset);
@@ -105,7 +131,8 @@ int sb_acpi_init_from_multiboot(uint64_t multiboot_info) {
                 if (info.revision >= 2u) fadt = find_table_in_root(info.root_table_address, "XSDT", "FACP");
                 if (fadt == 0u) fadt = find_table_in_root((uint64_t)rd32((const uint8_t *)(uintptr_t)info.rsdp_address + 16u), "RSDT", "FACP");
                 if (fadt != 0u) {
-                    uint32_t flen = 0u; const uint8_t *table = valid_table(fadt, "FACP", &flen);
+                    uint32_t flen = 0u;
+                    const uint8_t *table = valid_table(fadt, "FACP", &flen);
                     if (table != 0) {
                         info.fadt_address = fadt;
                         const uint64_t x_dsdt = flen >= 148u ? rd64(table + 140u) : 0u;
@@ -118,11 +145,16 @@ int sb_acpi_init_from_multiboot(uint64_t multiboot_info) {
                     }
                 }
                 sb_device_t *device = sb_device_register(SB_DEVICE_BUS_PLATFORM, SB_DEVICE_CLASS_POWER, 0u, 0u, "acpi-power");
-                if (device != 0) { device->state = SB_DEVICE_IDENTIFIED; device->driver_data = (void *)(uintptr_t)info.rsdp_address; }
+                if (device != 0) {
+                    device->state = SB_DEVICE_IDENTIFIED;
+                    device->driver_data = (void *)(uintptr_t)info.rsdp_address;
+                }
                 return 0;
             }
         }
-        const uint32_t next = (tag->size + 7u) & ~7u; if (next < tag->size || offset > total_size - next) return -1; offset += next;
+        const uint32_t next = (tag->size + 7u) & ~7u;
+        if (next < tag->size || offset > total_size - next) return -1;
+        offset += next;
     }
     return -1;
 }
