@@ -30,6 +30,7 @@ DEVICE_HOST_TEST := $(BUILD)/device-host-test
 ACPI_HOST_TEST := $(BUILD)/acpi-host-test
 USB_HOST_TEST := $(BUILD)/usb-host-test
 POWER_HOST_TEST := $(BUILD)/power-host-test
+BLOCK_HOST_TEST := $(BUILD)/block-host-test
 HARDWARE_SUBSYSTEMS_HOST_TEST := $(BUILD)/hardware-subsystems-host-test
 USB_TRANSFER_HOST_TEST := $(BUILD)/usb-transfer-host-test
 GPU_HOST_TEST := $(BUILD)/gpu-host-test
@@ -37,7 +38,7 @@ RELEASE_KERNEL := $(BUILD)/suirabox-release.elf
 RELEASE_ENTRY_OBJ := $(BUILD)/release_entry.o
 RELEASE_STORAGE_TEST_OBJ :=
 
-.PHONY: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test release-iso
+.PHONY: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test release-iso
 
 $(LAUNCHER_OBJ): userspace/launcher.c userspace/launcher.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
@@ -84,11 +85,17 @@ $(USB_HOST_TEST): tests/usb_host_test.c kernel/usb.c kernel/usb.h kernel/device.
 host-usb-test: $(USB_HOST_TEST)
 	$(USB_HOST_TEST)
 
-$(POWER_HOST_TEST): tests/power_host_test.c kernel/power.c kernel/power.h kernel/acpi.c kernel/acpi.h kernel/device.c kernel/device.h | $(BUILD)
-	$(CC) -Wall -Wextra -Werror -Ikernel tests/power_host_test.c kernel/power.c kernel/acpi.c kernel/device.c -o $@
+$(POWER_HOST_TEST): tests/power_host_test.c kernel/power.c kernel/power.h kernel/acpi.c kernel/acpi.h kernel/block.c kernel/block.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/power_host_test.c kernel/power.c kernel/acpi.c kernel/block.c -o $@
 
 host-power-test: $(POWER_HOST_TEST)
 	$(POWER_HOST_TEST)
+
+$(BLOCK_HOST_TEST): tests/block_host_test.c kernel/block.c kernel/block.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/block_host_test.c kernel/block.c -o $@
+
+host-block-test: $(BLOCK_HOST_TEST)
+	$(BLOCK_HOST_TEST)
 
 $(HARDWARE_SUBSYSTEMS_HOST_TEST): tests/hardware_subsystems_host_test.c kernel/device.c kernel/device.h kernel/usb.c kernel/usb.h kernel/nvme.c kernel/nvme.h kernel/net_device.c kernel/net_device.h kernel/audio.c kernel/audio.h | $(BUILD)
 	$(CC) -Wall -Wextra -Werror -Ikernel tests/hardware_subsystems_host_test.c kernel/device.c kernel/usb.c kernel/nvme.c kernel/net_device.c kernel/audio.c -o $@
@@ -117,7 +124,7 @@ $(INPUT_OBJ): kernel/input.c kernel/input.h kernel/device.h | $(BUILD)
 $(ACPI_OBJ): kernel/acpi.c kernel/acpi.h kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(POWER_OBJ): kernel/power.c kernel/power.h kernel/acpi.h | $(BUILD)
+$(POWER_OBJ): kernel/power.c kernel/power.h kernel/acpi.h kernel/block.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(USB_OBJ): kernel/usb.c kernel/usb.h kernel/device.h | $(BUILD)
@@ -141,7 +148,7 @@ $(AUDIO_OBJ): kernel/audio.c kernel/audio.h kernel/device.h | $(BUILD)
 $(GPU_OBJ): kernel/gpu.c kernel/gpu.h kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(HARDWARE_OBJ): kernel/hardware.c kernel/hardware.h kernel/acpi.h kernel/audio.h kernel/device.h kernel/gpu.h kernel/net_device.h kernel/nvme.h kernel/power.h kernel/usb.h kernel/usb_class.h | $(BUILD)
+$(HARDWARE_OBJ): kernel/hardware.c kernel/hardware.h kernel/acpi.h kernel/audio.h kernel/device.h kernel/gpu.h kernel/net_device.h kernel/nvme.h kernel/power.h kernel/usb.h kernel/usb_class.h kernel/input.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(STORAGE_OBJ): kernel/storage.c kernel/storage.h kernel/ata_pio.h kernel/vfs.h kernel/block.h kernel/fs/fat32.h | $(BUILD)
@@ -180,4 +187,4 @@ release-iso: $(RELEASE_KERNEL) $(DESKTOP_ELF) boot/grub.cfg
 	grub-mkrescue -o $(BUILD)/suirabox-release.iso $(BUILD)/release-iso >/dev/null
 	sh scripts/check_base_image.sh $(BUILD)/release-iso
 
-check: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test
+check: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-block-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test
