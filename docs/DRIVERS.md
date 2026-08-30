@@ -4,7 +4,7 @@
 
 SuiraBox needs a driver architecture that supports normal desktop hardware while allowing performance-sensitive paths for Minecraft and server workloads.
 
-The driver model must keep hardware-specific code isolated from generic kernel interfaces. A device should be discoverable, bindable to a driver, initialized, monitored, and shut down through common infrastructure.
+The driver model keeps hardware-specific code isolated from generic kernel interfaces. A device can be discovered, identified, have resources assigned, bind to a driver, start, stop, suspend/resume, and detach through common infrastructure.
 
 ## Layering
 
@@ -34,16 +34,42 @@ The application must not directly manipulate vendor-specific hardware registers.
 
 ## Device model
 
-Each device should expose metadata such as:
+The initial C ABI is implemented in `kernel/device.h` and `kernel/device.c`.
 
-- device type/class
-- bus type
-- vendor/device identifier
-- resources (MMIO, I/O ports, IRQs, DMA)
-- power state
-- driver state
+Each device records:
 
-Drivers should expose lifecycle callbacks conceptually similar to:
+- device type/class;
+- bus type;
+- vendor/device identifier;
+- revision and IRQ line;
+- MMIO/I/O resource ranges;
+- lifecycle state;
+- bound driver;
+- private driver data.
+
+Lifecycle states are:
+
+```text
+DISCOVERED
+    ↓
+IDENTIFIED
+    ↓
+RESOURCES_ASSIGNED
+    ↓
+DRIVER_BOUND
+    ↓
+ACTIVE
+    ↓
+QUIESCING
+    ↓
+DRIVER_BOUND
+    ↓
+DETACHED
+```
+
+Probe/start failures enter `FAILED` and are never silently promoted to `ACTIVE`.
+
+Driver callbacks are:
 
 ```text
 probe(device)
@@ -54,9 +80,7 @@ suspend(device)
 resume(device)
 ```
 
-The exact C ABI is intentionally not frozen yet.
-
-A common device/driver model is a deliberate design choice. Linux uses a unified device model to avoid coupling every device-specific driver to every bus implementation; this is useful prior art, not a requirement to copy Linux's implementation.
+Callbacks are optional, but a driver must not claim `ACTIVE` unless `start()` succeeds. The registry bounds the number of live device records and rejects invalid or overflowing resource ranges.
 
 ## Bus model
 
@@ -66,27 +90,43 @@ Initial buses:
 2. platform / firmware-described devices
 3. USB later
 
+PCI enumeration now publishes discovered PCI functions into the common device registry. The PCI identity is retained as `driver_data` for later driver binding.
+
 For x86_64 PCs, PCIe is especially important for GPUs, NICs, NVMe controllers, and other high-performance devices.
 
 ## DMA and IOMMU
 
 DMA-capable devices must not receive unrestricted access to arbitrary physical memory.
 
-The architecture should therefore reserve an interface for:
+The architecture therefore reserves an interface for:
 
-- DMA buffer allocation
-- DMA mapping/unmapping
-- cache/coherency handling
-- IOMMU integration
-- device memory ownership
+- DMA buffer allocation;
+- DMA mapping/unmapping;
+- cache/coherency handling;
+- IOMMU integration;
+- device memory ownership.
 
-An IOMMU-aware design is a future security and isolation requirement, especially for untrusted or hot-pluggable devices.
+An IOMMU-aware design remains a later security and isolation requirement.
 
 ## Interrupts
 
-Drivers should not each implement their own interrupt policy. The kernel owns interrupt routing and exposes a controlled interface to drivers.
+Drivers do not implement their own global interrupt policy. The kernel owns interrupt routing and exposes a controlled interface to drivers.
 
-Future network and storage drivers may additionally use polling or batched processing when benchmarks demonstrate a benefit.
+## Input foundation
+
+`kernel/input.c` and `kernel/input.h` provide the shared PS/2 polling layer used by the syscall ABI:
+
+- keyboard scancode retrieval;
+- three-byte PS/2 mouse packet assembly;
+- mouse synchronization on the first packet byte;
+- nonblocking reads;
+- initialization failure without blocking the boot path.
+
+This keeps raw PS/2 handling out of individual applications and provides a single event source for the GUI and future terminal layer.
+
+## Storage integration
+
+The existing ATA PIO backend registers detected primary-master storage with the generic device registry and publishes its legacy I/O port ranges. Block/VFS remain above the controller implementation.
 
 ## First driver milestones
 
@@ -100,7 +140,7 @@ Future network and storage drivers may additionally use polling or batched proce
 
 ### Stage B — common PC devices
 
-- PCI enumeration
+- PCI enumeration and device registration
 - NVMe
 - Ethernet NIC
 - USB input
@@ -123,9 +163,7 @@ Initial GPU driver
 Future accelerated graphics
 ```
 
-UEFI's Graphics Output Protocol can expose a framebuffer to OS loaders before a high-performance OS graphics driver is active, making it a useful bootstrap display path.
-
-QEMU's VirtIO GPU provides a virtual display/GPU device and supports configurations ranging from simple 2D output to accelerated 3D; however, accelerated guest graphics support introduces additional host/guest requirements. For initial SB development, simple framebuffer output should be preferred over attempting full 3D acceleration immediately.
+Simple framebuffer output remains the bootstrap path; accelerated graphics is a separate capability level.
 
 ## Driver isolation
 
@@ -148,7 +186,7 @@ Kernel
  +-- Security / resource policy
 ```
 
-The exact user-space versus kernel-space split will be chosen per device class after the minimal kernel is working. Performance-critical paths may remain kernel-resident initially, while less trusted or less latency-sensitive drivers can later be candidates for stronger isolation.
+The exact user-space versus kernel-space split is still chosen per device class after the corresponding minimal driver exists.
 
 ## Minecraft priorities
 
@@ -160,18 +198,16 @@ For Minecraft and Minecraft Server, the most important driver areas are expected
 4. input
 5. audio
 
-But implementation order is based on dependency and testability, not just Minecraft importance.
+Implementation order remains dependency- and test-driven.
 
 ## Performance rules
 
-Suirabox should not claim that a custom driver is faster simply because it is custom.
+SuiraBox does not claim that a custom driver is faster simply because it is custom.
 
-Every optimization must have:
+Every optimization requires:
 
-- a defined workload
-- a reproducible benchmark
-- baseline measurements
-- before/after results
-- regression checks
-
-Potential future optimizations include multi-queue NIC handling, DMA buffer reuse, batched I/O, CPU-aware interrupt routing, and hardware offload.
+- a defined workload;
+- reproducible measurements;
+- a baseline;
+- before/after results;
+- regression checks.
