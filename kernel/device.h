@@ -8,7 +8,6 @@
 #define SB_DEVICE_MAX_RESOURCES 6u
 #define SB_DEVICE_RESOURCE_SIZE_UNKNOWN 0u
 #define SB_DEVICE_MAX_CAPABILITIES 32u
-
 #define SB_DEVICE_LOCATION_UNKNOWN 0xFFu
 
 typedef enum {
@@ -98,5 +97,6 @@ int sb_device_suspend(sb_device_t *device);
 int sb_device_resume(sb_device_t *device);
 uint32_t sb_device_count(void);
 sb_device_t *sb_device_get(uint32_t index);
+sb_device_t *sb_device_find_pci(uint8_t bus, uint8_t device, uint8_t function);
 
 #endif
