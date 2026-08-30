@@ -25,6 +25,19 @@ static void draw_glyph(uint32_t x, uint32_t y, uint64_t glyph) {
 static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) {
     (void)sb_display_glyph_pair(x, y, a, b, 0xE9F2FFu);
 }
+
+static uint32_t launcher_app_id(const char *id) {
+    if (id == 0) return 0u;
+    if (id[0] == 's' && id[1] == 'e' && id[2] == 't' && id[3] == 't' && id[4] == 'i' && id[5] == 'n' && id[6] == 'g' && id[7] == 's' && id[8] == '\0') return 1u;
+    if (id[0] == 'f' && id[1] == 'i' && id[2] == 'l' && id[3] == 'e' && id[4] == 's' && id[5] == '\0') return 2u;
+    if (id[0] == 't' && id[1] == 'e' && id[2] == 'r' && id[3] == 'm' && id[4] == 'i' && id[5] == 'n' && id[6] == 'a' && id[7] == 'l' && id[8] == '\0') return 3u;
+    return 0u;
+}
+
+static void request_launcher_app(const char *id) {
+    const uint32_t app_id = launcher_app_id(id);
+    if (app_id != 0u) (void)sb_app_launch(app_id);
+}
 #endif
 
 static uint32_t launcher_menu_height(const sb_desktop_shell_t *shell) {
@@ -101,7 +114,11 @@ int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
                              (uint32_t)menu_top,
                              SB_SHELL_MENU_W, SB_SHELL_MENU_ROW_H, &index) != 0) return -1;
     shell->launcher.selected = index;
-    return sb_launcher_activate(&shell->launcher, activated_id);
+    if (sb_launcher_activate(&shell->launcher, activated_id) != 0) return -1;
+#if __STDC_HOSTED__ == 0
+    request_launcher_app(*activated_id);
+#endif
+    return 0;
 }
 
 void sb_desktop_shell_present_launcher(void) {
