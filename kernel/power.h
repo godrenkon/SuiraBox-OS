@@ -5,6 +5,7 @@
 
 #define SB_POWER_REBOOT   1u
 #define SB_POWER_SHUTDOWN 2u
+#define SB_POWER_ACPI_S5  0x100u
 
 void sb_power_init(void);
 int sb_power_reboot(void);
