@@ -20,6 +20,8 @@
 #define SB_SYS_FS_LIST_ROOT       14u
 #define SB_SYS_FS_STAT_ROOT       15u
 #define SB_SYS_FS_READ_ROOT       16u
+#define SB_SYS_FS_CREATE_ROOT     17u
+#define SB_SYS_FS_WRITE_ROOT      18u
 #define SB_CONFIG_SET_VOLATILE    1u
 
 void syscall_init(void);
