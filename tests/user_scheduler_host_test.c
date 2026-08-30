@@ -100,6 +100,25 @@ int main(void) {
     assert(process_activate_calls == 2);
     assert(gdt_calls == 1);
 
+    setup_thread(&p1, &t1, &c1, 11u, 0x30000u);
+    setup_thread(&p2, &t2, &c2, 12u, 0x40000u);
+    iret->cs = 0x23u;
+    user_scheduler_init();
+    process_activate_calls = 0;
+    gdt_calls = 0;
+    assert(user_scheduler_add(&p1, &t1) == 0);
+    assert(user_scheduler_add(&p2, &t2) == 0);
+    assert(user_scheduler_set_current(&p1, &t1) == 0);
+    assert(user_scheduler_request_exit(&p1, &t1) == 0);
+    t1.state = SB_PROCESS_EXITED;
+    assert(user_scheduler_timer_dispatch(gpr) == t2.kernel_resume_stack_pointer);
+    assert(user_scheduler_current_thread() == &t2);
+    assert(user_scheduler_current_process() == &p2);
+    assert(t1.state == SB_PROCESS_EXITED);
+    assert(t2.state == SB_PROCESS_RUNNING);
+    assert(p2.state == SB_PROCESS_RUNNING);
+    assert(process_activate_calls == 1 && gdt_calls == 1);
+
     {
         sb_process_t rp = { .pid = 3u, .state = SB_PROCESS_RUNNING };
         sb_thread_t old_thread = { .tid = 31u, .state = SB_PROCESS_RUNNING,
