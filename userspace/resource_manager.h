@@ -88,5 +88,8 @@ int sb_resource_manager_validate_manifest(const sb_resource_ref_t *manifest,
                                           uint32_t running_api);
 int sb_resource_manager_acquire(sb_resource_manager_t *manager,
                                 const char *resource_id);
+int sb_resource_manager_prefetch(sb_resource_manager_t *manager,
+                                 const char *const *resource_ids,
+                                 uint32_t resource_count);
 
 #endif
