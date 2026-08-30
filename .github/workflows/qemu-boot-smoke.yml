@@ -1,0 +1,55 @@
+name: SuiraBox QEMU Boot Smoke
+
+on:
+  push:
+    branches:
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  qemu-boot-smoke:
+    name: Boot full Desktop ISO in QEMU
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc binutils make grub-pc-bin grub-common xorriso mtools qemu-system-x86
+      - name: Build full ISO
+        run: make iso
+      - name: Boot ISO and capture serial log
+        shell: bash
+        run: |
+          set +e
+          timeout --preserve-status 30s qemu-system-x86_64 \
+            -machine q35 \
+            -cpu max \
+            -m 512M \
+            -vga std \
+            -cdrom build/suirabox.iso \
+            -serial file:build/qemu-serial.log \
+            -display none \
+            -no-reboot \
+            -no-shutdown
+          rc=$?
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
+            echo "QEMU exited unexpectedly with status $rc"
+            exit "$rc"
+          fi
+      - name: Verify boot milestones
+        run: |
+          test -s build/qemu-serial.log
+          grep -Fq 'Boot protocol: Multiboot2 OK' build/qemu-serial.log
+          grep -Fq 'Display: framebuffer ready' build/qemu-serial.log
+          grep -Fq 'Memory: VMM map/translate/unmap OK' build/qemu-serial.log
+          grep -Fq 'Userspace: SB Desktop ELF + address-space + user thread preparation OK' build/qemu-serial.log
+          grep -Fq 'Userspace: ring3 syscall reached' build/qemu-serial.log
+      - name: Upload serial log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-serial-log
+          path: build/qemu-serial.log
