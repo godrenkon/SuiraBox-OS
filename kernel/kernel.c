@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include "pci.h"
 #include "device.h"
+#include "hardware.h"
 #include "block.h"
 #include "vfs.h"
 #include "ata_pio.h"
@@ -53,10 +54,7 @@ static void serial_write_u64(uint64_t value) {
     static const char digits[] = "0123456789ABCDEF";
     char buffer[16];
     uint32_t pos = 0u;
-    if (value == 0u) {
-        serial_write_char('0');
-        return;
-    }
+    if (value == 0u) { serial_write_char('0'); return; }
     while (value != 0u && pos < sizeof(buffer)) {
         buffer[pos++] = digits[value & 0xFu];
         value >>= 4;
@@ -76,10 +74,8 @@ static void report_multiboot_modules(uint64_t multiboot_info) {
             (const struct multiboot2_tag *)(uintptr_t)(multiboot_info + offset);
         if (tag->size < 8u || tag->size > total_size - offset) return;
         if (tag->type == MULTIBOOT2_TAG_TYPE_END) return;
-        if (tag->type == MULTIBOOT2_TAG_TYPE_MODULE &&
-            tag->size >= sizeof(struct multiboot2_module_tag)) {
-            const struct multiboot2_module_tag *module =
-                (const struct multiboot2_module_tag *)tag;
+        if (tag->type == MULTIBOOT2_TAG_TYPE_MODULE && tag->size >= sizeof(struct multiboot2_module_tag)) {
+            const struct multiboot2_module_tag *module = (const struct multiboot2_module_tag *)tag;
             serial_write("Boot module: start=");
             serial_write_u64(module->mod_start);
             serial_write(" end=");
@@ -115,7 +111,8 @@ static int vmm_selftest(void) {
         return 0;
     }
     uint64_t unmapped = 0u;
-    if (vmm_unmap_page(test_virtual, &unmapped) != 0 || (unmapped & mask) != ((uint64_t)(uintptr_t)page & mask)) {
+    if (vmm_unmap_page(test_virtual, &unmapped) != 0 ||
+        (unmapped & mask) != ((uint64_t)(uintptr_t)page & mask)) {
         pmm_free_page(page);
         return 0;
     }
@@ -125,9 +122,8 @@ static int vmm_selftest(void) {
 
 static int heap_selftest(void) {
     const uint64_t before = pmm_free_pages();
-    uint8_t *memory;
     kheap_init();
-    memory = (uint8_t *)kheap_alloc(32u);
+    uint8_t *memory = (uint8_t *)kheap_alloc(32u);
     if (memory == 0) return 0;
     memory[0] = 0xA5u;
     memory[1] = 0x5Au;
@@ -213,12 +209,16 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     sb_device_init();
     serial_write("Device: common registry ready\r\n");
     pci_enumerate();
+    sb_hardware_init(multiboot_info);
+    serial_write("Hardware: ACPI/power/USB/network/audio foundations initialized\r\n");
 
     serial_write("Display: probing Multiboot framebuffer...\r\n");
     if (sb_framebuffer_init(multiboot_info)) {
         const sb_framebuffer_info_t *fb = sb_framebuffer_info();
         serial_write("Display: framebuffer ready ");
-        serial_write_u64(fb->width); serial_write("x"); serial_write_u64(fb->height); serial_write(" "); serial_write_u64(fb->bits_per_pixel); serial_write("bpp\r\n");
+        serial_write_u64(fb->width); serial_write("x"); serial_write_u64(fb->height); serial_write(" ");
+        serial_write_u64(fb->bits_per_pixel); serial_write("bpp\r\n");
+        sb_hardware_register_display(fb->address, (uint64_t)fb->pitch * fb->height);
     } else {
         serial_write("Display: framebuffer unavailable; using fallback console\r\n");
     }
