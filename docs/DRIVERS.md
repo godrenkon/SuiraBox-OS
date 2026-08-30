@@ -41,8 +41,9 @@ Each device records:
 - device type/class;
 - bus type;
 - vendor/device identifier;
-- PCI class/subclass/programming interface when applicable;
-- revision and IRQ line;
+- PCI BDF, class/subclass/programming interface when applicable;
+- revision and header type;
+- interrupt line;
 - MMIO/I/O resource ranges;
 - PCI standard capability identifiers;
 - lifecycle state;
@@ -50,6 +51,8 @@ Each device records:
 - private driver data.
 
 Unknown resource sizes are represented explicitly as `SB_DEVICE_RESOURCE_SIZE_UNKNOWN`; discovery never writes PCI BAR probe values merely to determine size.
+
+`sb_device_find_pci()` is the canonical Device Model lookup path for a discovered PCI function.
 
 Lifecycle states are:
 
@@ -71,7 +74,7 @@ DRIVER_BOUND
 DETACHED
 ```
 
-Probe/start failures enter `FAILED` and are never silently promoted to `ACTIVE`.
+Probe/start/stop/remove failures enter `FAILED` and are not silently promoted to `ACTIVE`.
 
 Driver callbacks are:
 
@@ -91,8 +94,9 @@ resume(device)
 The PCI layer records:
 
 - vendor/device ID;
+- BDF;
 - class/subclass/programming interface;
-- revision;
+- revision/header type;
 - interrupt line;
 - standard BAR base addresses;
 - standard capability IDs.
@@ -116,25 +120,27 @@ The PS/2 controller is published as a platform input device with its I/O ports r
 
 The existing ATA PIO backend registers detected primary-master storage with the generic device registry and publishes its legacy I/O port ranges. Block/VFS remain above the controller implementation.
 
+The common Block API now provides `flush()` and `sb_block_flush_all()` so power-management paths can request device writeback without depending on the filesystem layer. ATA PIO implements the ATA cache-flush command, and repeated ATA initialization is idempotent.
+
 `kernel/nvme.c` discovers PCI NVMe controllers and records their MMIO BAR without dereferencing device memory during early boot. Controller-register probing is explicitly deferred until the corresponding MMIO mapping/driver stage exists, preventing unsafe pre-VMM hardware access.
 
 ## USB foundation
 
 PCI USB host controllers are classified by programming interface as UHCI, OHCI, EHCI, or xHCI when identified. Controller records retain the first suitable MMIO resource.
 
-The common USB layer validates standard USB device and endpoint descriptors and records endpoint type, direction, maximum packet size, and polling interval.
+The common USB layer validates standard USB device and endpoint descriptors for supported descriptor versions and records endpoint type, direction, maximum packet size, and polling interval.
 
 `kernel/usb_transfer.c` adds a bounded controller-agnostic FIFO transfer scheduler with ordered sequence numbers, active/completed/failed/cancelled states, and completion callbacks. `kernel/usb_class.c` adds bounded class-driver registration and wildcard class/subclass/protocol matching. Controller-specific rings, DMA, transaction processing, and hotplug remain below this abstraction.
 
 ## Network foundation
 
-PCI network devices are published through `kernel/net_device.c`. Ethernet and wireless-class devices are distinguished from other network controllers, while MAC/address state remains unset until a real NIC driver reads it from hardware.
+PCI network devices are published through `kernel/net_device.c`. Ethernet controllers are identified from PCI subclass `0x00`; other network controllers remain `OTHER` unless a future device-specific driver has enough information to make a stronger claim. MAC/address state remains unset until a real NIC driver reads it from hardware.
 
 The IP/TCP/UDP protocol stack is a later subsystem; this layer is hardware discovery only.
 
 ## Audio foundation
 
-PCI audio devices are published through `kernel/audio.c`. High Definition Audio and AC'97 classes are distinguished from other multimedia controllers. Codec enumeration and PCM playback/capture remain driver-level work.
+PCI audio devices are published through `kernel/audio.c`. High Definition Audio is identified from PCI multimedia subclass `0x03`; other multimedia controllers remain `OTHER` unless a device-specific driver supplies stronger identification. Codec enumeration and PCM playback/capture remain driver-level work.
 
 ## GPU / display compatibility
 
@@ -156,7 +162,7 @@ A platform framebuffer is represented as `BASIC_FALLBACK`; a PCI display device 
 
 `kernel/acpi.c` validates Multiboot-provided RSDP data, locates a valid XSDT/RSDT and FADT, and extracts the DSDT and PM1 power-control information when valid. `_S5_` sleep types are accepted only after AML/table bounds and checksums have passed.
 
-`kernel/power.c` exposes reboot/shutdown capabilities and prefers validated ACPI S5 shutdown before emulator/legacy development fallbacks. Power actions are not advertised as ACPI-native unless the required firmware data has been validated.
+`kernel/power.c` exposes reboot/shutdown capabilities and prefers validated ACPI S5 shutdown before emulator/legacy development fallbacks. Power actions request a global block-device flush before the power action and therefore give storage consistency precedence over shutdown speed.
 
 ## Bus model
 
@@ -199,12 +205,14 @@ Drivers do not implement their own global interrupt policy. The kernel owns inte
 ### Stage B — common PC devices
 
 - PCI enumeration and device registration
+- canonical PCI BDF lookup
 - NVMe discovery foundation
-- Ethernet/Wi-Fi discovery foundation
+- Ethernet/other network discovery foundation
 - USB host-controller discovery foundation
 - USB descriptor/endpoint validation
 - USB transfer scheduler and class-driver registry foundation
 - ACPI power/device information
+- storage flush path for controlled reboot/shutdown
 
 ### Stage C — graphics
 
