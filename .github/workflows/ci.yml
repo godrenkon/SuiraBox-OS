@@ -22,6 +22,11 @@ jobs:
             mtools \
             qemu-system-x86
 
+      - name: Prepare persistent FAT32 test disk
+        run: |
+          truncate -s 64M build/test-disk.img
+          mformat -F -i build/test-disk.img ::
+
       - name: Build ISO
         run: make
 
@@ -41,6 +46,7 @@ jobs:
           timeout 20s qemu-system-x86_64 \
             -m 256M \
             -cdrom build/suirabox.iso \
+            -drive file=build/test-disk.img,format=raw,if=ide \
             -nic user,model=e1000 \
             -serial stdio \
             -display none \
@@ -56,6 +62,7 @@ jobs:
           grep -F "CPU: GDT/TSS ready" qemu.log
           grep -F "Scheduler: task table/round-robin selection OK" qemu.log
           grep -F "Process/Syscall: model and dispatch OK" qemu.log
+          grep -F "Storage: real block device + FAT32 mount OK" qemu.log
           grep -F "Syscall: int 0x80 user gate ready" qemu.log
           grep -F "Userspace: SB Desktop ELF + address-space + user thread preparation OK" qemu.log
           grep -F "Timer: IRQ0 enabled" qemu.log
@@ -70,6 +77,7 @@ jobs:
           timeout 20s qemu-system-x86_64 \
             -m 256M \
             -cdrom build/suirabox.iso \
+            -drive file=build/test-disk.img,format=raw,if=ide \
             -nic user,model=e1000 \
             -serial file:qemu-gui.log \
             -display none \
@@ -81,6 +89,7 @@ jobs:
           grep -F "Display: framebuffer mapped" qemu-gui.log
           grep -F "Display: framebuffer clear OK" qemu-gui.log
           grep -F "Desktop: kernel fallback surface rendered" qemu-gui.log
+          grep -F "Storage: real block device + FAT32 mount OK" qemu-gui.log
           grep -F "Userspace: GUI framebuffer draw reached" qemu-gui.log
           grep -F "Memory: VMM map/translate/unmap OK" qemu-gui.log
 
@@ -92,6 +101,7 @@ jobs:
           path: |
             build/suirabox.iso
             build/suirabox.elf
+            build/test-disk.img
             qemu.log
             qemu-gui.log
             qemu-gui-host.log

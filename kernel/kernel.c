@@ -278,6 +278,7 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Process/Syscall: initializing...\r\n");
     serial_write(process_syscall_selftest() ? "Process/Syscall: model and dispatch OK\r\n" : "Process/Syscall: model and dispatch FAILED\r\n");
     syscall_init();
+    serial_write(sb_storage_ready() ? "Storage: real block device + FAT32 mount OK\r\n" : "Storage: persistent filesystem unavailable; continuing in fallback mode\r\n");
     interrupts_set_user_handler(0x80u, (uintptr_t)sb_syscall_int80_stub);
     serial_write("Syscall: int 0x80 user gate ready\r\n");
     sb_app_manager_init(multiboot_info);
