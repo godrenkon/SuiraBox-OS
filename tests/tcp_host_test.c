@@ -43,6 +43,9 @@ int main(void) {
     assert(sb_tcp_connection_count() == 1u);
     assert(sb_tcp_connection_get(0u) == &connection);
     assert(connection.state == SB_TCP_STATE_SYN_SENT && connection.send_next == 101u);
+    assert(sb_tcp_connection_set_deadline(&connection, 1000u) == 0);
+    assert(!sb_tcp_connection_timed_out(&connection, 999u));
+    assert(sb_tcp_connection_timed_out(&connection, 1000u));
 
     make_segment(segment, remote, local, 80u, 40000u, 900u, 101u, SB_TCP_FLAG_SYN | SB_TCP_FLAG_ACK);
     assert(sb_tcp_parse_ipv4(remote, local, segment, sizeof(segment), &parsed) == 0);
@@ -51,7 +54,15 @@ int main(void) {
     assert(sb_tcp_connection_input(&connection, &parsed) == 0);
     assert(connection.state == SB_TCP_STATE_ESTABLISHED);
     assert(connection.receive_next == 901u);
+    assert(sb_tcp_connection_abort(&connection) == 0);
+    assert(connection.state == SB_TCP_STATE_CLOSED && !sb_tcp_connection_is_active(&connection));
+    assert(sb_tcp_connection_count() == 0u);
 
+    sb_tcp_init();
+    assert(sb_tcp_connection_open(&connection, local, 40000u, remote, 80u, 100u) == 0);
+    make_segment(segment, remote, local, 80u, 40000u, 900u, 101u, SB_TCP_FLAG_SYN | SB_TCP_FLAG_ACK);
+    assert(sb_tcp_parse_ipv4(remote, local, segment, sizeof(segment), &parsed) == 0);
+    assert(sb_tcp_connection_input(&connection, &parsed) == 0);
     assert(sb_tcp_connection_close(&connection) == 0);
     assert(connection.state == SB_TCP_STATE_FIN_WAIT_1 && connection.send_next == 102u);
     assert(sb_tcp_connection_count() == 1u);
@@ -77,19 +88,19 @@ int main(void) {
     };
     assert(sb_tcp_connection_input(&listener, &ack) == 0);
     assert(listener.state == SB_TCP_STATE_ESTABLISHED);
-
-    const sb_tcp_segment_t bad_sequence = {
-        remote, local, 50000u, 8080u, 999u, 1u, 20u, SB_TCP_FLAG_ACK,
-        4096u, 0u, 0u, 0, 4u
-    };
-    assert(sb_tcp_connection_input(&listener, &bad_sequence) != 0);
-    assert(listener.state == SB_TCP_STATE_ESTABLISHED);
-
-    const sb_tcp_segment_t rst = {
-        remote, local, 50000u, 8080u, 701u, 1u, 20u, SB_TCP_FLAG_RST,
+    const sb_tcp_segment_t fin = {
+        remote, local, 50000u, 8080u, 701u, 1u, 20u, SB_TCP_FLAG_ACK | SB_TCP_FLAG_FIN,
         4096u, 0u, 0u, 0, 0u
     };
-    assert(sb_tcp_connection_input(&listener, &rst) == 0);
+    assert(sb_tcp_connection_input(&listener, &fin) == 0);
+    assert(listener.state == SB_TCP_STATE_CLOSE_WAIT);
+    assert(sb_tcp_connection_close(&listener) == 0);
+    assert(listener.state == SB_TCP_STATE_LAST_ACK);
+    const sb_tcp_segment_t last_ack = {
+        remote, local, 50000u, 8080u, 702u, 2u, 20u, SB_TCP_FLAG_ACK,
+        4096u, 0u, 0u, 0, 0u
+    };
+    assert(sb_tcp_connection_input(&listener, &last_ack) == 0);
     assert(listener.state == SB_TCP_STATE_CLOSED && !sb_tcp_connection_is_active(&listener));
     assert(sb_tcp_connection_count() == 0u);
 
@@ -98,6 +109,5 @@ int main(void) {
     bad_checksum[19] ^= 1u;
     assert(sb_tcp_parse_ipv4(remote, local, bad_checksum, sizeof(bad_checksum), &parsed) != 0);
     assert(sb_tcp_parse_ipv4(remote, local, bad_checksum, 19u, &parsed) != 0);
-
     return 0;
 }
