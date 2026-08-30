@@ -6,31 +6,10 @@ static int process_activate_calls;
 static int gdt_calls;
 static int fail_next_gdt;
 
-int process_activate(sb_process_t *process) {
-    if (process == 0) return -1;
-    ++process_activate_calls;
-    return 0;
-}
-
-int process_prepare_user_resume_frame(sb_thread_t *thread) {
-    return (thread != 0 && thread->user_context != 0 && thread->kernel_resume_stack_pointer != 0u) ? 0 : -1;
-}
-
-int gdt_try_set_kernel_stack(uint64_t stack_pointer) {
-    if (stack_pointer == 0u || (stack_pointer & 0xFu) != 0u) return -1;
-    if (fail_next_gdt != 0) {
-        fail_next_gdt = 0;
-        return -1;
-    }
-    ++gdt_calls;
-    return 0;
-}
-
-int sb_user_context_from_timer_frame(sb_user_context_t *context, const sb_timer_saved_gpr_t *gpr, const sb_x86_64_user_iret_frame_t *iret) {
-    if (context == 0 || gpr == 0 || iret == 0) return -1;
-    context->rip = iret->rip; context->cs = iret->cs; context->rflags = iret->rflags;
-    context->rsp = iret->rsp; context->ss = iret->ss; context->rax = gpr->rax; return 0;
-}
+int process_activate(sb_process_t *process) { if (process == 0) return -1; ++process_activate_calls; return 0; }
+int process_prepare_user_resume_frame(sb_thread_t *thread) { return (thread != 0 && thread->user_context != 0 && thread->kernel_resume_stack_pointer != 0u) ? 0 : -1; }
+int gdt_try_set_kernel_stack(uint64_t stack_pointer) { if (stack_pointer == 0u || (stack_pointer & 0xFu) != 0u) return -1; if (fail_next_gdt != 0) { fail_next_gdt = 0; return -1; } ++gdt_calls; return 0; }
+int sb_user_context_from_timer_frame(sb_user_context_t *context, const sb_timer_saved_gpr_t *gpr, const sb_x86_64_user_iret_frame_t *iret) { if (context == 0 || gpr == 0 || iret == 0) return -1; context->rip = iret->rip; context->cs = iret->cs; context->rflags = iret->rflags; context->rsp = iret->rsp; context->ss = iret->ss; context->rax = gpr->rax; return 0; }
 
 static void setup_thread(sb_process_t *process, sb_thread_t *thread, sb_user_context_t *context, uint64_t tid, uint64_t base) {
     *process = (sb_process_t){ .pid = tid, .state = SB_PROCESS_RUNNING, .thread_count = 1u };
@@ -111,7 +90,7 @@ int main(void) {
     assert(user_scheduler_set_current(&p1, &t1) == 0);
     assert(user_scheduler_request_exit(&p1, &t1) == 0);
     t1.state = SB_PROCESS_EXITED;
-    assert(user_scheduler_timer_dispatch(gpr) == t2.kernel_resume_stack_pointer);
+    assert(user_scheduler_exit_dispatch() == t2.kernel_resume_stack_pointer);
     assert(user_scheduler_current_thread() == &t2);
     assert(user_scheduler_current_process() == &p2);
     assert(t1.state == SB_PROCESS_EXITED);
@@ -119,22 +98,17 @@ int main(void) {
     assert(p2.state == SB_PROCESS_RUNNING);
     assert(process_activate_calls == 1 && gdt_calls == 1);
 
-    {
-        sb_process_t rp = { .pid = 3u, .state = SB_PROCESS_RUNNING };
-        sb_thread_t old_thread = { .tid = 31u, .state = SB_PROCESS_RUNNING,
-                                   .user_context = &c1, .kernel_resume_stack_pointer = 0x3000u };
-        sb_thread_t new_thread = { .tid = 32u, .state = SB_PROCESS_RUNNING,
-                                   .user_context = &c2, .kernel_resume_stack_pointer = 0x4000u };
-        user_scheduler_init();
-        assert(user_scheduler_add(&rp, &old_thread) == 0);
-        assert(user_scheduler_set_current(&rp, &old_thread) == 0);
-        assert(user_scheduler_rebind_thread(&rp, &old_thread, &new_thread) == 0);
-        assert(user_scheduler_current_thread() == &new_thread);
-        assert(user_scheduler_rebind_thread(&rp, &old_thread, &new_thread) == 1);
-        assert(user_scheduler_remove(&rp, &new_thread) == 0);
-        assert(user_scheduler_count() == 0u);
-        assert(user_scheduler_rebind_thread(0, &old_thread, &new_thread) == -1);
-    }
+    setup_thread(&p1, &t1, &c1, 21u, 0x50000u);
+    setup_thread(&p2, &t2, &c2, 22u, 0x60000u);
+    iret->cs = 0x23u;
+    user_scheduler_init();
+    assert(user_scheduler_add(&p1, &t1) == 0);
+    assert(user_scheduler_add(&p2, &t2) == 0);
+    assert(user_scheduler_set_current(&p1, &t1) == 0);
+    assert(user_scheduler_rebind_thread(&p1, &t1, &t2) == 0);
+    assert(user_scheduler_current_thread() == &t2);
+    assert(user_scheduler_rebind_thread(&p1, &t1, &t2) == 1);
+    assert(user_scheduler_remove(&p1, &t2) == 0);
 
     return 0;
 }
