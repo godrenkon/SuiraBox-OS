@@ -12,3 +12,5 @@ _start:
     cli
     hlt
     jmp 1b
+
+.section .note.GNU-stack,"",@progbits
