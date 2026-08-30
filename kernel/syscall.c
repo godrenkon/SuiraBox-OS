@@ -9,6 +9,8 @@
 #include "app_manager.h"
 #include "fs_syscall.h"
 
+#define SB_SYSCALL_EXIT_SWITCH (UINT64_MAX - 1u)
+
 static uint8_t syscall_user_smoke_seen;
 static uint8_t syscall_user_draw_seen;
 
@@ -89,7 +91,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
     switch (number) {
         case SB_SYS_GET_TICKS: return timer_ticks();
         case SB_SYS_PROCESS_ID: return syscall_process_id();
-        case SB_SYS_EXIT: return syscall_exit_current(arg0) == 0 ? 0u : UINT64_MAX;
+        case SB_SYS_EXIT: return syscall_exit_current(arg0) == 0 ? SB_SYSCALL_EXIT_SWITCH : UINT64_MAX;
         case SB_SYS_DISPLAY_INFO: return syscall_display_info();
         case SB_SYS_DISPLAY_CLEAR:
             syscall_user_draw_mark();
