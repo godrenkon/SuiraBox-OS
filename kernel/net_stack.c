@@ -15,6 +15,7 @@ static sb_net_interface_t interfaces[SB_NET_MAX_INTERFACES];
 static sb_dhcp_client_t dhcp_clients[SB_NET_DHCP_MAX_CLIENTS];
 static uint8_t dhcp_active[SB_NET_DHCP_MAX_CLIENTS];
 static uint32_t interface_count;
+static uint32_t dhcp_xid_seed = 0x53425501u;
 
 static uint16_t rd16be(const uint8_t *p) {
     return (uint16_t)(((uint16_t)p[0] << 8) | p[1]);
@@ -109,6 +110,7 @@ static uint32_t interface_device_index(uint32_t interface_index) {
 
 void sb_net_stack_init(void) {
     interface_count = 0u;
+    dhcp_xid_seed = 0x53425501u;
     for (uint32_t i = 0u; i < SB_NET_MAX_INTERFACES; ++i) {
         interfaces[i] = (sb_net_interface_t){0};
         dhcp_clients[i] = (sb_dhcp_client_t){0};
@@ -255,6 +257,7 @@ int sb_net_dhcp_start(uint32_t interface_index, uint32_t transaction_id) {
 
     sb_net_interface_t *iface = &interfaces[interface_index];
     copy_bytes(iface->mac, device->mac, 6u);
+    if (transaction_id == 0u) transaction_id = dhcp_xid_seed++;
     sb_dhcp_client_init(&dhcp_clients[interface_index], transaction_id, iface->mac, 6u);
     uint8_t dhcp[SB_DHCP_PACKET_MAX];
     uint8_t frame[SB_NET_FRAME_MAX];
@@ -306,6 +309,9 @@ uint32_t sb_net_poll(void) {
         sb_net_interface_t *iface = &interfaces[device_index + 1u];
         iface->state = SB_NET_IF_UP;
         copy_bytes(iface->mac, device->mac, 6u);
+        if (iface->ipv4.address == 0u && dhcp_active[device_index + 1u] == 0u) {
+            (void)sb_net_dhcp_start(device_index + 1u, 0u);
+        }
         uint16_t frame_length = 0u;
         const int receive = sb_net_device_receive(device_index, frame, sizeof(frame), &frame_length);
         if (receive != 0) continue;
