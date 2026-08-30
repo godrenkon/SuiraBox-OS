@@ -1,0 +1,23 @@
+name: SuiraBox Process Host Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  process-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile process host test
+        run: |
+          mkdir -p build
+          gcc -Wall -Wextra -Werror \
+            -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 \
+            tests/process_host_test.c kernel/process.c \
+            -o build/process-host-test
+
+      - name: Run process host test
+        run: build/process-host-test
