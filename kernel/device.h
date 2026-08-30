@@ -6,6 +6,7 @@
 #define SB_DEVICE_NAME_MAX 31u
 #define SB_DEVICE_MAX 128u
 #define SB_DEVICE_RESOURCE_SIZE_UNKNOWN 0u
+#define SB_DEVICE_MAX_CAPABILITIES 32u
 
 typedef enum {
     SB_DEVICE_BUS_PLATFORM = 0,
@@ -67,6 +68,9 @@ struct sb_device {
     uint8_t programming_interface;
     uint8_t irq_line;
     uint8_t resource_count;
+    uint8_t capability_count;
+    uint8_t first_capability;
+    uint8_t capabilities[SB_DEVICE_MAX_CAPABILITIES];
     char name[SB_DEVICE_NAME_MAX + 1u];
     sb_device_resource_t resources[6];
     const sb_device_driver_t *driver;
