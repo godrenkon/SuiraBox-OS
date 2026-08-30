@@ -1,0 +1,23 @@
+name: SuiraBox DMA Host Test
+
+on:
+  push:
+    paths:
+      - 'kernel/dma.*'
+      - 'tests/dma_host_test.c'
+      - '.github/workflows/dma-host.yml'
+  pull_request:
+    paths:
+      - 'kernel/dma.*'
+      - 'tests/dma_host_test.c'
+      - '.github/workflows/dma-host.yml'
+
+jobs:
+  dma-host-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run DMA host test
+        run: |
+          cc -Wall -Wextra -Werror -Ikernel tests/dma_host_test.c kernel/dma.c -o /tmp/sb-dma-host-test
+          /tmp/sb-dma-host-test
