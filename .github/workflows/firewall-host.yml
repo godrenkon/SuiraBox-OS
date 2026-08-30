@@ -1,0 +1,19 @@
+name: SuiraBox Firewall Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  firewall-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile firewall host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_firewall_host_test.c kernel/net_firewall.c -o /tmp/firewall-host-test
+      - name: Run firewall host test
+        run: /tmp/firewall-host-test
