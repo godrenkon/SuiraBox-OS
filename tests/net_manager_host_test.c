@@ -31,6 +31,12 @@ int main(void) {
     assert(sb_net_manager_interface(&manager, 1u)->dns[0] == dns[0]);
     assert(sb_net_manager_set_dns(&manager, 1u, dns, 3u) != 0);
 
+    assert(sb_net_manager_set_operation_deadline(&manager, 1u, 500u) == 0);
+    assert(!sb_net_manager_operation_timed_out(&manager, 1u, 499u));
+    assert(sb_net_manager_operation_timed_out(&manager, 1u, 500u));
+    assert(sb_net_manager_operation_timed_out(&manager, 999u, 500u) == 0);
+    assert(sb_net_manager_set_operation_deadline(&manager, 1u, 0u) != 0);
+
     assert(sb_net_manager_add_route(&manager, 0x00000000u, 0x00000000u, 0u, 100u) == 0);
     assert(sb_net_manager_add_route(&manager, 0x0A000000u, 0xFF000000u, 0xC0A80101u, 20u) != 0);
     assert(sb_net_manager_add_route(&manager, 0x0A000000u, 0xFF000000u, 0x0A000001u, 20u) == 0);
