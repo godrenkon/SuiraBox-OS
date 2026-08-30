@@ -106,3 +106,15 @@ int sb_device_resume(sb_device_t *device) {
 
 uint32_t sb_device_count(void) { return device_count_value; }
 sb_device_t *sb_device_get(uint32_t index) { return index < device_count_value ? &devices[index] : 0; }
+
+sb_device_t *sb_device_find_pci(uint8_t bus, uint8_t device_number, uint8_t function) {
+    for (uint32_t i = 0u; i < device_count_value; ++i) {
+        sb_device_t *device = &devices[i];
+        if (device->bus == SB_DEVICE_BUS_PCI &&
+            device->bus_number == bus &&
+            device->device_number == device_number &&
+            device->function_number == function)
+            return device;
+    }
+    return 0;
+}
