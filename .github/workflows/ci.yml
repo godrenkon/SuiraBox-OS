@@ -41,6 +41,7 @@ jobs:
           timeout 20s qemu-system-x86_64 \
             -m 256M \
             -cdrom build/suirabox.iso \
+            -nic user,model=e1000 \
             -serial stdio \
             -display none \
             -no-reboot \
@@ -69,6 +70,7 @@ jobs:
           timeout 20s qemu-system-x86_64 \
             -m 256M \
             -cdrom build/suirabox.iso \
+            -nic user,model=e1000 \
             -serial file:qemu-gui.log \
             -display none \
             -vga std \
