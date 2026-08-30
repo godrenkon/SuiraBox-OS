@@ -1,0 +1,19 @@
+name: SuiraBox Network Stack Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  net-stack-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile Network Stack host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_stack_host_test.c kernel/net_stack.c -o /tmp/net-stack-host-test
+      - name: Run Network Stack host test
+        run: /tmp/net-stack-host-test
