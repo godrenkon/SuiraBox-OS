@@ -1,0 +1,19 @@
+name: SuiraBox DNS Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  dns-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile DNS host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/dns_host_test.c kernel/dns.c -o /tmp/dns-host-test
+      - name: Run DNS host test
+        run: /tmp/dns-host-test
