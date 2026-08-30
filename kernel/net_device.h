@@ -34,6 +34,7 @@ typedef struct {
 } sb_net_device_t;
 
 void sb_net_device_init(void);
+int sb_net_device_activate(void);
 uint32_t sb_net_device_count(void);
 const sb_net_device_t *sb_net_device_get(uint32_t index);
 int sb_net_device_send(uint32_t index, const uint8_t *frame, uint16_t length);
