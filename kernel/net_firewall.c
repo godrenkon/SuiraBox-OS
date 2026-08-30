@@ -75,7 +75,9 @@ uint8_t sb_net_firewall_evaluate(const sb_net_firewall_t *firewall,
                                  uint16_t destination_port) {
     if (firewall == 0 || !valid_action(firewall->default_action))
         return SB_NET_FIREWALL_ACTION_DROP;
-    for (uint32_t i = 0u; i < firewall->rule_count; ++i) {
+    const uint32_t count = firewall->rule_count < SB_NET_FIREWALL_MAX_RULES
+        ? firewall->rule_count : SB_NET_FIREWALL_MAX_RULES;
+    for (uint32_t i = 0u; i < count; ++i) {
         if (rule_matches(&firewall->rules[i], source_address, destination_address,
                          protocol, source_port, destination_port))
             return firewall->rules[i].action;
@@ -84,5 +86,7 @@ uint8_t sb_net_firewall_evaluate(const sb_net_firewall_t *firewall,
 }
 
 uint32_t sb_net_firewall_rule_count(const sb_net_firewall_t *firewall) {
-    return firewall == 0 ? 0u : firewall->rule_count;
+    if (firewall == 0) return 0u;
+    return firewall->rule_count < SB_NET_FIREWALL_MAX_RULES
+        ? firewall->rule_count : SB_NET_FIREWALL_MAX_RULES;
 }
