@@ -84,7 +84,6 @@ int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
         }
     }
     if (index >= process->thread_count) return -1;
-
     const uint64_t removed_stack = thread->kernel_stack_base;
     (void)user_scheduler_remove(process, thread);
     const uint32_t last_index = process->thread_count - 1u;
@@ -100,10 +99,8 @@ int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
     return 0;
 }
 
-int process_prepare_thread_context(sb_thread_t *thread,
-                                   sb_user_context_t *context,
-                                   uint64_t entry_point,
-                                   uint64_t user_stack_top) {
+int process_prepare_thread_context(sb_thread_t *thread, sb_user_context_t *context,
+                                   uint64_t entry_point, uint64_t user_stack_top) {
     if (thread == 0 || context == 0 || thread->tid == 0u ||
         thread->state == SB_PROCESS_UNUSED || thread->state == SB_PROCESS_EXITED ||
         thread->kernel_stack_base == 0u || thread->kernel_stack_top == 0u) return -1;
@@ -122,17 +119,14 @@ int process_prepare_user_resume_frame(sb_thread_t *thread) {
         thread->kernel_stack_top == 0u || thread->kernel_stack_top < thread->kernel_stack_base ||
         thread->kernel_stack_top - thread->kernel_stack_base < SB_USER_RESUME_FRAME_OFFSET) return -1;
     if (sb_user_context_validate(thread->user_context) != 0) return -1;
-
     const uint64_t frame_address = thread->kernel_stack_top - SB_USER_RESUME_FRAME_OFFSET;
     if (frame_address < thread->kernel_stack_base ||
         thread->kernel_stack_top - frame_address < SB_USER_RESUME_FRAME_SIZE ||
         (frame_address & 0xFu) != 0u) return -1;
-
     sb_timer_saved_gpr_t *gpr = (sb_timer_saved_gpr_t *)(uintptr_t)frame_address;
     sb_x86_64_user_iret_frame_t *iret =
         (sb_x86_64_user_iret_frame_t *)(uintptr_t)(frame_address + sizeof(*gpr));
     const sb_user_context_t *context = thread->user_context;
-
     *gpr = (sb_timer_saved_gpr_t){
         .r15=context->r15, .r14=context->r14, .r13=context->r13, .r12=context->r12,
         .rbp=context->rbp, .rbx=context->rbx, .r11=context->r11, .r10=context->r10,
@@ -159,17 +153,15 @@ static uint32_t runnable_thread_count(const sb_process_t *process) {
     if (process == 0) return 0u;
     for (uint32_t i = 0u; i < process->thread_count; ++i) {
         const sb_thread_t *thread = &process->threads[i];
-        if (thread->state == SB_PROCESS_CREATED || thread->state == SB_PROCESS_RUNNING)
-            ++count;
+        if (thread->state == SB_PROCESS_CREATED || thread->state == SB_PROCESS_RUNNING) ++count;
     }
     return count;
 }
 
 int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exit_code) {
-    if (!thread_belongs_to_process(process, thread) ||
-        process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED ||
-        thread->state == SB_PROCESS_UNUSED || thread->state == SB_PROCESS_EXITED) return -1;
-
+    if (!thread_belongs_to_process(process, thread) || process->state == SB_PROCESS_UNUSED ||
+        process->state == SB_PROCESS_EXITED || thread->state == SB_PROCESS_UNUSED ||
+        thread->state == SB_PROCESS_EXITED) return -1;
     thread->state = SB_PROCESS_EXITED;
     thread->runtime_ticks = 0u;
     if (user_scheduler_current_process() == process && user_scheduler_current_thread() == thread) {
@@ -185,8 +177,7 @@ int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exi
 }
 
 int process_terminate(sb_process_t *process, uint64_t exit_code) {
-    if (process == 0 || process->state == SB_PROCESS_UNUSED ||
-        process->state == SB_PROCESS_EXITED) return -1;
+    if (process == 0 || process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED) return -1;
     for (uint32_t i = 0u; i < process->thread_count; ++i) {
         process->threads[i].state = SB_PROCESS_EXITED;
         if (user_scheduler_current_process() == process && user_scheduler_current_thread() == &process->threads[i])
@@ -199,19 +190,19 @@ int process_terminate(sb_process_t *process, uint64_t exit_code) {
     return 0;
 }
 
-int process_wait_child(sb_process_t *parent, uint64_t child_pid, uint64_t *exit_code) {
-    if (parent == 0 || parent->state == SB_PROCESS_UNUSED) return -1;
+uint64_t process_wait_child(sb_process_t *parent, uint64_t child_pid, uint64_t *exit_code) {
+    if (parent == 0 || parent->state == SB_PROCESS_UNUSED) return UINT64_MAX;
     for (uint32_t i = 0u; i < SB_MAX_PROCESSES; ++i) {
         sb_process_t *child = &processes[i];
         if (child->state == SB_PROCESS_UNUSED || child->parent_pid != parent->pid) continue;
         if (child_pid != 0u && child->pid != child_pid) continue;
-        if (child->state != SB_PROCESS_EXITED) return 0;
+        if (child->state != SB_PROCESS_EXITED) return 0u;
         if (exit_code != 0) *exit_code = child->exit_code;
         const uint64_t result_pid = child->pid;
         process_destroy(child);
-        return result_pid <= UINT64_MAX - 1u ? (int)result_pid : -1;
+        return result_pid;
     }
-    return -1;
+    return UINT64_MAX;
 }
 
 sb_process_t *process_get(uint64_t pid) {
