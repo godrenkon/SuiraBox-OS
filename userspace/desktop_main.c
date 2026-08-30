@@ -54,8 +54,12 @@ static void draw_first_boot(uint32_t width, uint32_t height, uint32_t selection,
 static void draw_launcher(const sb_desktop_shell_t *shell) {
     uint32_t top;
     if (shell == 0 || shell->launcher.open == 0u || shell->screen_height < SB_GUI_TASKBAR_HEIGHT) return;
-    top = shell->screen_height - SB_GUI_TASKBAR_HEIGHT - SB_SHELL_MENU_ROW_H * shell->launcher.count;
-    draw_rect(SB_SHELL_LAUNCHER_X, top, SB_SHELL_MENU_W, SB_SHELL_MENU_ROW_H * shell->launcher.count, 0x171D27u);
+    if (shell->launcher.count > UINT32_MAX / SB_SHELL_MENU_ROW_H) return;
+    const uint32_t menu_height = SB_SHELL_MENU_ROW_H * shell->launcher.count;
+    const uint32_t taskbar_top = shell->screen_height - SB_GUI_TASKBAR_HEIGHT;
+    if (taskbar_top < menu_height) return;
+    top = taskbar_top - menu_height;
+    draw_rect(SB_SHELL_LAUNCHER_X, top, SB_SHELL_MENU_W, menu_height, 0x171D27u);
     for (uint32_t i = 0u; i < shell->launcher.count; ++i) {
         const uint32_t row_y = top + i * SB_SHELL_MENU_ROW_H;
         draw_rect(SB_SHELL_LAUNCHER_X + 2u, row_y + 2u, SB_SHELL_MENU_W - 4u, SB_SHELL_MENU_ROW_H - 4u,
@@ -119,6 +123,7 @@ static void present_damage(sb_surface_t *surface, uint32_t width, uint32_t heigh
     sb_compositor_init(&style, width, height);
     sb_compositor_present_damage(&style, wm, damage, count, full);
     sb_compositor_present_cursor(&style, g_cursor_x, g_cursor_y);
+    sb_desktop_shell_present_launcher();
 }
 
 static int shell_open_app(sb_gui_window_manager_t *wm, const char *id, uint32_t width, uint32_t height) {
