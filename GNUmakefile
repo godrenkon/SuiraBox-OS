@@ -222,7 +222,7 @@ $(LOCALE_OBJ): userspace/locale.c userspace/locale.h userspace/config.h | $(BUIL
 $(LAUNCHER_OBJ): userspace/launcher.c userspace/launcher.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 $(DESKTOP_SHELL_OBJ): userspace/desktop_shell.c userspace/desktop_shell.h userspace/launcher.h userspace/gui.h | $(BUILD)
-	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
+	$(CC) $(USER_CFLAGS) -mcmodel=large -Iuserspace -c $< -o $@
 $(RESOURCE_POLICY_OBJ): userspace/resource_policy.c userspace/resource_policy.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
 $(RESOURCE_MANAGER_OBJ): userspace/resource_manager.c userspace/resource_manager.h userspace/resource.h | $(BUILD)
