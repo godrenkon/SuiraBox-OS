@@ -75,6 +75,7 @@ int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
     }
     if (index >= process->thread_count) return -1;
 
+    const uint64_t removed_stack = thread->kernel_stack_base;
     (void)user_scheduler_remove(process, thread);
     const uint32_t last_index = process->thread_count - 1u;
     if (index != last_index) {
@@ -82,9 +83,8 @@ int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
         (void)user_scheduler_rebind_thread(process, last_thread, &process->threads[index]);
         process->threads[index] = *last_thread;
     }
-    if (process->threads[last_index].kernel_stack_base != 0u)
-        pmm_free_page((void *)(uintptr_t)process->threads[last_index].kernel_stack_base);
     process->threads[last_index] = (sb_thread_t){0};
+    if (removed_stack != 0u) pmm_free_page((void *)(uintptr_t)removed_stack);
     --process->thread_count;
     return 0;
 }
