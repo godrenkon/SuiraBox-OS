@@ -10,19 +10,12 @@ static sb_block_status_t test_disk_read(sb_block_device_t *device,
                                         uint64_t lba,
                                         uint32_t count,
                                         void *buffer) {
-    uint64_t offset;
-    uint32_t i;
-
-    (void)device;
-    if (buffer == 0 || count == 0 || lba >= SB_STORAGE_TEST_SECTORS ||
-        (uint64_t)count > SB_STORAGE_TEST_SECTORS - lba) {
+    if (device == 0 || buffer == 0 || count == 0u ||
+        lba >= device->sector_count || (uint64_t)count > device->sector_count - lba)
         return SB_BLOCK_INVALID_ARGUMENT;
-    }
-
-    offset = lba * SB_BLOCK_SECTOR_SIZE;
-    for (i = 0; i < count * SB_BLOCK_SECTOR_SIZE; ++i) {
-        ((uint8_t *)buffer)[i] = g_test_disk[offset + i];
-    }
+    const uint64_t offset = lba * device->sector_size;
+    const uint64_t length = (uint64_t)count * device->sector_size;
+    for (uint64_t i = 0u; i < length; ++i) ((uint8_t *)buffer)[i] = g_test_disk[offset + i];
     return SB_BLOCK_OK;
 }
 
@@ -30,20 +23,17 @@ static sb_block_status_t test_disk_write(sb_block_device_t *device,
                                          uint64_t lba,
                                          uint32_t count,
                                          const void *buffer) {
-    uint64_t offset;
-    uint32_t i;
-
-    (void)device;
-    if (buffer == 0 || count == 0 || lba >= SB_STORAGE_TEST_SECTORS ||
-        (uint64_t)count > SB_STORAGE_TEST_SECTORS - lba) {
+    if (device == 0 || buffer == 0 || count == 0u ||
+        lba >= device->sector_count || (uint64_t)count > device->sector_count - lba)
         return SB_BLOCK_INVALID_ARGUMENT;
-    }
-
-    offset = lba * SB_BLOCK_SECTOR_SIZE;
-    for (i = 0; i < count * SB_BLOCK_SECTOR_SIZE; ++i) {
-        g_test_disk[offset + i] = ((const uint8_t *)buffer)[i];
-    }
+    const uint64_t offset = lba * device->sector_size;
+    const uint64_t length = (uint64_t)count * device->sector_size;
+    for (uint64_t i = 0u; i < length; ++i) g_test_disk[offset + i] = ((const uint8_t *)buffer)[i];
     return SB_BLOCK_OK;
+}
+
+static sb_block_status_t test_disk_flush(sb_block_device_t *device) {
+    return device == 0 ? SB_BLOCK_INVALID_ARGUMENT : SB_BLOCK_OK;
 }
 
 static sb_block_device_t g_test_disk_device = {
@@ -52,38 +42,23 @@ static sb_block_device_t g_test_disk_device = {
     .sector_size = SB_BLOCK_SECTOR_SIZE,
     .read = test_disk_read,
     .write = test_disk_write,
-    .driver_data = 0,
+    .flush = test_disk_flush,
+    .driver_data = 0
 };
 
 int sb_storage_selftest(void) {
     sb_vfs_mount_t mount;
     uint8_t write_buffer[SB_BLOCK_SECTOR_SIZE];
     uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
-    uint32_t i;
 
-    for (i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
+    for (uint32_t i = 0u; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         write_buffer[i] = (uint8_t)(i ^ 0x5Au);
-        read_buffer[i] = 0;
+        read_buffer[i] = 0u;
     }
-
-    if (sb_block_register(&g_test_disk_device) != SB_BLOCK_OK) {
-        return 0;
-    }
-    if (sb_vfs_mount(&g_test_disk_device, &mount) != SB_VFS_OK) {
-        return 0;
-    }
-    if (sb_vfs_write_sectors(&mount, 2, 1, write_buffer) != SB_VFS_OK) {
-        return 0;
-    }
-    if (sb_vfs_read_sectors(&mount, 2, 1, read_buffer) != SB_VFS_OK) {
-        return 0;
-    }
-
-    for (i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
-        if (read_buffer[i] != write_buffer[i]) {
-            return 0;
-        }
-    }
-
-    return 1;
+    if (sb_vfs_mount(&g_test_disk_device, &mount) != SB_VFS_OK) return 0;
+    if (sb_vfs_write_sectors(&mount, 2u, 1u, write_buffer) != SB_VFS_OK) return 0;
+    if (sb_vfs_read_sectors(&mount, 2u, 1u, read_buffer) != SB_VFS_OK) return 0;
+    for (uint32_t i = 0u; i < SB_BLOCK_SECTOR_SIZE; ++i)
+        if (read_buffer[i] != write_buffer[i]) return 0;
+    return g_test_disk_device.flush(&g_test_disk_device) == SB_BLOCK_OK;
 }
