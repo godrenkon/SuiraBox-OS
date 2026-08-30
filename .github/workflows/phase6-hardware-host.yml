@@ -1,0 +1,68 @@
+name: SuiraBox Phase 6 Hardware Host
+
+on:
+  push:
+    paths:
+      - 'kernel/device.*'
+      - 'kernel/pci.*'
+      - 'kernel/acpi.*'
+      - 'kernel/power.*'
+      - 'kernel/input.*'
+      - 'kernel/usb.*'
+      - 'kernel/usb_transfer.*'
+      - 'kernel/usb_class.*'
+      - 'kernel/nvme.*'
+      - 'kernel/net_device.*'
+      - 'kernel/audio.*'
+      - 'kernel/gpu.*'
+      - 'kernel/hardware.*'
+      - 'kernel/ata_pio.c'
+      - 'tests/device_host_test.c'
+      - 'tests/acpi_host_test.c'
+      - 'tests/usb_host_test.c'
+      - 'tests/usb_transfer_host_test.c'
+      - 'tests/power_host_test.c'
+      - 'tests/hardware_subsystems_host_test.c'
+      - 'tests/gpu_host_test.c'
+      - 'GNUmakefile'
+      - '.github/workflows/phase6-hardware-host.yml'
+  pull_request:
+    paths:
+      - 'kernel/device.*'
+      - 'kernel/pci.*'
+      - 'kernel/acpi.*'
+      - 'kernel/power.*'
+      - 'kernel/input.*'
+      - 'kernel/usb.*'
+      - 'kernel/usb_transfer.*'
+      - 'kernel/usb_class.*'
+      - 'kernel/nvme.*'
+      - 'kernel/net_device.*'
+      - 'kernel/audio.*'
+      - 'kernel/gpu.*'
+      - 'kernel/hardware.*'
+      - 'kernel/ata_pio.c'
+      - 'tests/device_host_test.c'
+      - 'tests/acpi_host_test.c'
+      - 'tests/usb_host_test.c'
+      - 'tests/usb_transfer_host_test.c'
+      - 'tests/power_host_test.c'
+      - 'tests/hardware_subsystems_host_test.c'
+      - 'tests/gpu_host_test.c'
+      - 'GNUmakefile'
+      - '.github/workflows/phase6-hardware-host.yml'
+
+jobs:
+  phase6-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Phase 6 hardware host suites
+        run: |
+          make host-device-test
+          make host-acpi-test
+          make host-usb-test
+          make host-usb-transfer-test
+          make host-power-test
+          make host-hardware-subsystems-test
+          make host-gpu-test
