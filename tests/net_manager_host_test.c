@@ -40,8 +40,8 @@ int main(void) {
     assert(sb_net_manager_add_route(&manager, 0x00000000u, 0x00000000u, 0u, 100u) == 0);
     assert(sb_net_manager_add_route(&manager, 0x0A000000u, 0xFF000000u, 0xC0A80101u, 20u) != 0);
     assert(sb_net_manager_add_route(&manager, 0x0A000000u, 0xFF000000u, 0x0A000001u, 20u) == 0);
-    assert(sb_net_manager_add_route(&manager, 0x0A010000u, 0xFFFF0000u, 0x0A000001u, 30u) == 0);
-    assert(sb_net_manager_add_route(&manager, 0x0A010000u, 0xFFFF0000u, 0x0A000001u, 10u) == 0);
+    assert(sb_net_manager_add_route(&manager, 0x0A010000u, 0xFFFF0000u, 0x0A010001u, 30u) == 0);
+    assert(sb_net_manager_add_route(&manager, 0x0A010000u, 0xFFFF0000u, 0x0A010001u, 10u) == 0);
 
     assert(sb_net_manager_route_lookup(&manager, 0x0A010203u, &route) == 0);
     assert(route.netmask == 0xFFFF0000u && route.metric == 10u);
