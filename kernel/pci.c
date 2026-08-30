@@ -28,6 +28,9 @@ uint16_t pci_config_read16(uint8_t bus, uint8_t device, uint8_t function, uint8_
     const uint32_t value = pci_config_read32(bus, device, function, offset & 0xFCu);
     return (uint16_t)((value >> ((offset & 2u) * 8u)) & 0xFFFFu);
 }
+static uint16_t pci_status(uint8_t bus, uint8_t device, uint8_t function) { return (uint16_t)(pci_config_read32(bus, device, function, PCI_STATUS_OFFSET) >> 16); }
+static uint8_t pci_cap_ptr(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, PCI_CAP_PTR_OFFSET) & 0xFFu); }
+
 int pci_find_capability(uint8_t bus, uint8_t device, uint8_t function, uint8_t capability_id, uint8_t *offset_out) {
     if (offset_out == 0 || device >= PCI_MAX_DEVICES || function >= PCI_MAX_FUNCTIONS ||
         (pci_status(bus, device, function) & PCI_STATUS_CAP_LIST) == 0u) return -1;
@@ -46,8 +49,6 @@ static uint8_t pci_class(uint8_t bus, uint8_t device, uint8_t function) { return
 static uint8_t pci_subclass(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 16); }
 static uint8_t pci_prog_if(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, 0x08u) >> 8); }
 static uint8_t pci_header_type(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, PCI_HEADER_TYPE_OFFSET) >> 16); }
-static uint16_t pci_status(uint8_t bus, uint8_t device, uint8_t function) { return (uint16_t)(pci_config_read32(bus, device, function, PCI_STATUS_OFFSET) >> 16); }
-static uint8_t pci_cap_ptr(uint8_t bus, uint8_t device, uint8_t function) { return (uint8_t)(pci_config_read32(bus, device, function, PCI_CAP_PTR_OFFSET) & 0xFFu); }
 static sb_device_class_t pci_device_class(uint8_t class_code, uint8_t subclass) {
     switch (class_code) {
         case PCI_CLASS_MASS_STORAGE: return SB_DEVICE_CLASS_STORAGE;
