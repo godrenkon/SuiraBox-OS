@@ -26,6 +26,7 @@ typedef struct {
 
 typedef struct {
     uint64_t pid;
+    uint64_t exit_code;
     sb_process_state_t state;
     uint32_t thread_count;
     sb_thread_t threads[SB_MAX_THREADS_PER_PROCESS];
@@ -43,6 +44,8 @@ int process_prepare_user_resume_frame(sb_thread_t *thread);
 sb_process_t *process_get(uint64_t pid);
 uint32_t process_count(void);
 int process_activate(sb_process_t *process);
+int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exit_code);
+int process_terminate(sb_process_t *process, uint64_t exit_code);
 void process_destroy(sb_process_t *process);
 
 #endif
