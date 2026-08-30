@@ -116,13 +116,15 @@ The PS/2 controller is published as a platform input device with its I/O ports r
 
 The existing ATA PIO backend registers detected primary-master storage with the generic device registry and publishes its legacy I/O port ranges. Block/VFS remain above the controller implementation.
 
-`kernel/nvme.c` discovers PCI NVMe controllers and reads controller capability/version/status registers without enabling command processing yet. The controller record therefore distinguishes hardware discovery from a ready I/O engine.
+`kernel/nvme.c` discovers PCI NVMe controllers and records their MMIO BAR without dereferencing device memory during early boot. Controller-register probing is explicitly deferred until the corresponding MMIO mapping/driver stage exists, preventing unsafe pre-VMM hardware access.
 
 ## USB foundation
 
-PCI USB host controllers are classified by programming interface as UHCI, OHCI, EHCI, or xHCI when identified. Controller records retain the first discovered MMIO resource.
+PCI USB host controllers are classified by programming interface as UHCI, OHCI, EHCI, or xHCI when identified. Controller records retain the first suitable MMIO resource.
 
-The common USB layer also validates standard USB device and endpoint descriptors and records endpoint type, direction, maximum packet size, and polling interval. Transfer scheduling and controller-specific rings are intentionally separate from descriptor parsing so they can be added per host-controller implementation.
+The common USB layer validates standard USB device and endpoint descriptors and records endpoint type, direction, maximum packet size, and polling interval.
+
+`kernel/usb_transfer.c` adds a bounded controller-agnostic FIFO transfer scheduler with ordered sequence numbers, active/completed/failed/cancelled states, and completion callbacks. `kernel/usb_class.c` adds bounded class-driver registration and wildcard class/subclass/protocol matching. Controller-specific rings, DMA, transaction processing, and hotplug remain below this abstraction.
 
 ## Network foundation
 
@@ -133,6 +135,22 @@ The IP/TCP/UDP protocol stack is a later subsystem; this layer is hardware disco
 ## Audio foundation
 
 PCI audio devices are published through `kernel/audio.c`. High Definition Audio and AC'97 classes are distinguished from other multimedia controllers. Codec enumeration and PCM playback/capture remain driver-level work.
+
+## GPU / display compatibility
+
+`kernel/gpu.c` defines the explicit compatibility ladder:
+
+```text
+DETECTED
+BASIC_FALLBACK
+DRIVER_PRESENT
+FUNCTIONAL
+ACCELERATED
+PERFORMANCE_VERIFIED
+HARDWARE_VERIFIED
+```
+
+A platform framebuffer is represented as `BASIC_FALLBACK`; a PCI display device begins at `DETECTED`. No acceleration or performance level is claimed without an actual driver and corresponding validation.
 
 ## ACPI / power foundation
 
@@ -185,6 +203,7 @@ Drivers do not implement their own global interrupt policy. The kernel owns inte
 - Ethernet/Wi-Fi discovery foundation
 - USB host-controller discovery foundation
 - USB descriptor/endpoint validation
+- USB transfer scheduler and class-driver registry foundation
 - ACPI power/device information
 
 ### Stage C — graphics
