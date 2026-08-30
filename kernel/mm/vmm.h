@@ -11,6 +11,7 @@
 int vmm_map_page(uint64_t virtual_address, uint64_t physical_address, uint64_t flags);
 int vmm_unmap_page(uint64_t virtual_address, uint64_t *physical_address);
 uint64_t vmm_translate(uint64_t virtual_address);
+int vmm_map_mmio(uint64_t physical_address, uint64_t size, uint64_t *virtual_address_out);
 void vmm_init(void);
 
 #endif /* SB_KERNEL_VMM_H */
