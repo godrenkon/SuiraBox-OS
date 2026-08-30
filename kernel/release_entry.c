@@ -1,4 +1,7 @@
 #include <stdint.h>
+#include "pci.h"
+#include "device.h"
+#include "hardware.h"
 #include "block.h"
 #include "ata_pio.h"
 #include "storage.h"
@@ -18,8 +21,7 @@
 extern void sb_syscall_int80_stub(void);
 extern void arch_enter_user(uint64_t entry_point, uint64_t user_stack);
 
-static sb_process_t *prepare_desktop(uint64_t multiboot_info,
-                                     sb_process_image_t *image) {
+static sb_process_t *prepare_desktop(uint64_t multiboot_info, sb_process_image_t *image) {
     sb_process_t *process;
     if (image == 0) return 0;
     process = process_create(1u);
@@ -35,19 +37,28 @@ static sb_process_t *prepare_desktop(uint64_t multiboot_info,
     return process;
 }
 
+static void halt_forever(void) { for (;;) __asm__ volatile ("hlt"); }
+
 void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     sb_process_t *desktop;
     sb_process_image_t desktop_image;
-
     (void)multiboot_magic;
-    interrupts_init();
-    (void)sb_ata_pio_init();
 
+    interrupts_init();
+    sb_device_init();
+    pci_enumerate();
+    sb_hardware_init(multiboot_info);
+
+    (void)sb_ata_pio_init();
     pmm_init_from_multiboot(multiboot_info);
     vmm_init();
 
-    if (sb_framebuffer_init(multiboot_info) && sb_framebuffer_available())
+    if (sb_framebuffer_init(multiboot_info) && sb_framebuffer_available()) {
+        const sb_framebuffer_info_t *fb = sb_framebuffer_info();
+        (void)sb_hardware_register_display(fb->address, (uint64_t)fb->pitch * fb->height);
         (void)sb_framebuffer_map();
+        (void)sb_framebuffer_clear(12u, 16u, 24u);
+    }
 
     gdt_init();
     scheduler_init();
@@ -58,16 +69,13 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     timer_init();
 
     desktop = prepare_desktop(multiboot_info, &desktop_image);
-    if (desktop == 0) {
-        for (;;) __asm__ volatile ("hlt");
-    }
-
+    if (desktop == 0) halt_forever();
     desktop->state = SB_PROCESS_RUNNING;
     if (process_activate(desktop) != 0) {
         process_destroy(desktop);
-        for (;;) __asm__ volatile ("hlt");
+        halt_forever();
     }
 
     arch_enter_user(desktop_image.entry_point, desktop_image.user_stack_top);
-    for (;;) __asm__ volatile ("hlt");
+    halt_forever();
 }
