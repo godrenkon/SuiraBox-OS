@@ -13,11 +13,22 @@ typedef enum {
     SB_NET_ERROR
 } sb_net_state_t;
 
+typedef enum {
+    SB_NET_CONTROLLER_UNKNOWN = 0,
+    SB_NET_CONTROLLER_ETHERNET,
+    SB_NET_CONTROLLER_WIFI,
+    SB_NET_CONTROLLER_OTHER
+} sb_net_controller_type_t;
+
 typedef struct {
     uint32_t device_index;
     sb_net_state_t state;
+    sb_net_controller_type_t controller_type;
     uint16_t vendor_id;
     uint16_t device_id;
+    uint8_t class_code;
+    uint8_t subclass;
+    uint8_t programming_interface;
     uint8_t mac[6];
 } sb_net_device_t;
 
