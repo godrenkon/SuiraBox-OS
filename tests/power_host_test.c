@@ -2,6 +2,7 @@
 #include "../kernel/power.h"
 #include "../kernel/device.h"
 
+/* Host-only device registration boundary; production device.c remains unchanged. */
 static sb_device_t test_power_device;
 
 sb_device_t *sb_device_register(sb_device_bus_t bus, sb_device_class_t class_id,
