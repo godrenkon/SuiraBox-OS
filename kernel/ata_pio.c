@@ -111,6 +111,7 @@ static sb_block_status_t ata_flush(sb_block_device_t *device) {
 }
 
 sb_block_status_t sb_ata_pio_init(void) {
+    if (g_ata_ready != 0u) return SB_BLOCK_OK;
     outb(ATA_PRIMARY_CTRL, 0u);
     io_wait();
     outb(ATA_PRIMARY_IO + ATA_REG_DRIVE, 0xA0u);
