@@ -57,6 +57,27 @@ static uint64_t syscall_config_get(void) {
            ((uint64_t)record.optional_enabled_mask << 16);
 }
 
+static int syscall_exit_current(uint64_t exit_code) {
+    sb_process_t *process = user_scheduler_current_process();
+    sb_thread_t *thread = user_scheduler_current_thread();
+    if (process == 0 || thread == 0) return -1;
+    if (user_scheduler_request_exit(process, thread) != 0) return -1;
+    thread->state = SB_PROCESS_EXITED;
+    thread->runtime_ticks = 0u;
+    uint32_t runnable = 0u;
+    for (uint32_t i = 0u; i < process->thread_count; ++i) {
+        const sb_thread_t *candidate = &process->threads[i];
+        if (candidate != thread &&
+            (candidate->state == SB_PROCESS_CREATED || candidate->state == SB_PROCESS_RUNNING))
+            ++runnable;
+    }
+    if (runnable == 0u) {
+        process->state = SB_PROCESS_EXITED;
+        process->exit_code = exit_code;
+    }
+    return 0;
+}
+
 static void syscall_idle(void) {
     __asm__ volatile ("sti\n\thlt\n\tcli" ::: "memory");
 }
@@ -69,7 +90,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_PROCESS_ID:
             return syscall_process_id();
         case SB_SYS_EXIT:
-            return 0u;
+            return syscall_exit_current(arg0) == 0 ? 0u : UINT64_MAX;
         case SB_SYS_DISPLAY_INFO:
             return syscall_display_info();
         case SB_SYS_DISPLAY_CLEAR:
