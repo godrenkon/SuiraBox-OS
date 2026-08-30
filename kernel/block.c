@@ -44,7 +44,7 @@ static sb_block_status_t test_disk_flush(sb_block_device_t *device) {
 
 sb_block_status_t sb_block_register(sb_block_device_t *device) {
     if (device == 0 || device->sector_size == 0u || device->sector_count == 0u ||
-        device->read == 0 || device->write == 0 || g_device_count >= SB_MAX_BLOCK_DEVICES)
+        device->read == 0 || device->write == 0u || g_device_count >= SB_MAX_BLOCK_DEVICES)
         return SB_BLOCK_INVALID_ARGUMENT;
     for (uint32_t i = 0u; i < g_device_count; ++i)
         if (g_devices[i] == device) return SB_BLOCK_OK;
@@ -71,7 +71,7 @@ sb_block_status_t sb_block_flush_all(void) {
 
 sb_block_status_t sb_block_selftest(void) {
     static sb_block_device_t test_device = {
-        .name = "memory-test",
+        .name = "memory-selftest",
         .sector_count = SB_SELFTEST_SECTORS,
         .sector_size = SB_BLOCK_SECTOR_SIZE,
         .read = test_disk_read,
@@ -86,11 +86,9 @@ sb_block_status_t sb_block_selftest(void) {
         write_buffer[i] = (uint8_t)(i ^ 0xA5u);
         read_buffer[i] = 0u;
     }
-    if (sb_block_register(&test_device) != SB_BLOCK_OK) return SB_BLOCK_INVALID_ARGUMENT;
-    sb_block_device_t *device = sb_block_get(sb_block_count() - 1u);
-    if (device == 0 || device->write(device, 2u, 1u, write_buffer) != SB_BLOCK_OK ||
-        device->read(device, 2u, 1u, read_buffer) != SB_BLOCK_OK ||
-        device->flush(device) != SB_BLOCK_OK)
+    if (test_device.write(&test_device, 2u, 1u, write_buffer) != SB_BLOCK_OK ||
+        test_device.read(&test_device, 2u, 1u, read_buffer) != SB_BLOCK_OK ||
+        test_device.flush(&test_device) != SB_BLOCK_OK)
         return SB_BLOCK_NOT_READY;
     for (uint32_t i = 0u; i < SB_BLOCK_SECTOR_SIZE; ++i)
         if (read_buffer[i] != write_buffer[i]) return SB_BLOCK_INVALID_ARGUMENT;
