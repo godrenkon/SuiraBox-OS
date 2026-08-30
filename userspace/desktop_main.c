@@ -86,7 +86,7 @@ static int persist_language(sb_config_record_t *config, uint32_t selection) {
     if (commit_language(config, selection) != 0) return -1;
     {
         const uint64_t result = sb_config_set(selection);
-        return result == 0u || result == SB_CONFIG_SET_VOLATILE ? 0 : -1;
+        return result == 0u ? 0 : -1;
     }
 }
 
