@@ -1,0 +1,23 @@
+name: SuiraBox Resource Prefetch Host Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  resource-prefetch-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and run host test
+        run: |
+          set -eux
+          gcc -std=c11 -Wall -Wextra -Werror -Iuserspace \
+            tests/resource_prefetch_host_test.c \
+            userspace/resource_prefetch.c \
+            userspace/resource_manager.c \
+            userspace/resource.c \
+            -o resource-prefetch-host-test
+          ./resource-prefetch-host-test
