@@ -15,5 +15,9 @@ jobs:
         uses: actions/checkout@v4
       - name: Compile Network Stack host test
         run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_stack_host_test.c kernel/net_stack.c -o /tmp/net-stack-host-test
+      - name: Compile Network Routing host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_route_host_test.c kernel/net_route.c kernel/net_stack.c -o /tmp/net-route-host-test
       - name: Run Network Stack host test
         run: /tmp/net-stack-host-test
+      - name: Run Network Routing host test
+        run: /tmp/net-route-host-test
