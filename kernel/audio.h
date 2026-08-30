@@ -11,11 +11,22 @@ typedef enum {
     SB_AUDIO_ERROR
 } sb_audio_state_t;
 
+typedef enum {
+    SB_AUDIO_CONTROLLER_UNKNOWN = 0,
+    SB_AUDIO_CONTROLLER_AC97,
+    SB_AUDIO_CONTROLLER_HDA,
+    SB_AUDIO_CONTROLLER_OTHER
+} sb_audio_controller_type_t;
+
 typedef struct {
     uint32_t device_index;
     sb_audio_state_t state;
+    sb_audio_controller_type_t controller_type;
     uint16_t vendor_id;
     uint16_t device_id;
+    uint8_t class_code;
+    uint8_t subclass;
+    uint8_t programming_interface;
 } sb_audio_device_t;
 
 void sb_audio_init(void);
