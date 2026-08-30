@@ -5,13 +5,13 @@ static sb_usb_controller_t controllers[SB_USB_MAX_CONTROLLERS];
 static uint32_t controller_count;
 
 static sb_usb_controller_type_t controller_type(const sb_device_t *device) {
-    if (device == 0 || device->bus != SB_DEVICE_BUS_PCI) return SB_USB_CONTROLLER_UNKNOWN;
-    switch ((uint8_t)device->revision) {
-        default:
-            /* PCI ProgIF is encoded in driver_data along with bus/device/function only.
-             * The generic registry therefore deliberately reports UNKNOWN until a
-             * controller-specific driver inspects PCI configuration space. */
-            return SB_USB_CONTROLLER_UNKNOWN;
+    if (device == 0 || device->class_id != SB_DEVICE_CLASS_USB_HOST) return SB_USB_CONTROLLER_UNKNOWN;
+    switch (device->programming_interface) {
+        case 0x00u: return SB_USB_CONTROLLER_UHCI;
+        case 0x10u: return SB_USB_CONTROLLER_OHCI;
+        case 0x20u: return SB_USB_CONTROLLER_EHCI;
+        case 0x30u: return SB_USB_CONTROLLER_XHCI;
+        default:    return SB_USB_CONTROLLER_UNKNOWN;
     }
 }
 
