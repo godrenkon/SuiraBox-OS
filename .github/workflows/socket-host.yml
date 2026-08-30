@@ -1,0 +1,19 @@
+name: SuiraBox Socket Host Test
+
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+  pull_request:
+
+jobs:
+  socket-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile socket host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/socket_host_test.c kernel/socket.c -o /tmp/socket-host-test
+      - name: Run socket host test
+        run: /tmp/socket-host-test
