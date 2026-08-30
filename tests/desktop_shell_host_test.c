@@ -29,6 +29,21 @@ int main(void) {
     assert(sb_desktop_shell_click(&shell, 300, 700, &activated) != 0);
     assert(activated == 0);
 
+    sb_desktop_shell_init(&shell, 200u, 100u);
+    assert(shell.initialized == 1u);
+    assert(sb_desktop_shell_register_default_apps(&shell) == 0);
+    assert(sb_desktop_shell_toggle_launcher(&shell) != 0);
+    assert(shell.launcher.open == 0u);
+
+    sb_desktop_shell_init(&shell, 200u, SB_GUI_TASKBAR_HEIGHT + SB_SHELL_MENU_ROW_H * 3u);
+    assert(shell.initialized == 1u);
+    assert(sb_desktop_shell_register_default_apps(&shell) == 0);
+    assert(sb_desktop_shell_toggle_launcher(&shell) == 0);
+    assert(shell.launcher.open == 1u);
+    activated = 0;
+    assert(sb_desktop_shell_click(&shell, 40, 0, &activated) == 0);
+    assert(activated != 0 && activated[0] == 's');
+
     sb_desktop_shell_init(&shell, 0u, 768u);
     assert(shell.initialized == 0u);
     assert(sb_desktop_shell_register_default_apps(&shell) != 0);
