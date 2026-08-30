@@ -15,14 +15,20 @@ static int fail_scheduler;
 
 sb_process_t *process_create(uint64_t pid) {
     if (process_count_value >= 16u) return 0;
-    sb_process_t *process = &processes[process_count_value++];
-    *process = (sb_process_t){ .pid = pid, .state = SB_PROCESS_CREATED };
-    return process;
+    for (uint32_t i = 0u; i < 16u; ++i) {
+        if (processes[i].state != SB_PROCESS_UNUSED) continue;
+        sb_process_t *process = &processes[i];
+        *process = (sb_process_t){ .pid = pid, .state = SB_PROCESS_CREATED };
+        ++process_count_value;
+        return process;
+    }
+    return 0;
 }
 
 void process_destroy(sb_process_t *process) {
     if (process == 0) return;
-    process->state = SB_PROCESS_UNUSED;
+    *process = (sb_process_t){ .state = SB_PROCESS_UNUSED };
+    if (process_count_value > 0u) --process_count_value;
 }
 
 int process_prepare_boot_module(sb_process_t *process, uint64_t multiboot_info,
