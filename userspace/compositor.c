@@ -126,12 +126,16 @@ static void render_taskbar(const sb_compositor_style_t *style,
 static int damage_intersects_rect(const sb_surface_rect_t *damage,
                                   int32_t x, int32_t y,
                                   uint32_t width, uint32_t height) {
-    const int64_t right = (int64_t)x + (int64_t)width;
-    const int64_t bottom = (int64_t)y + (int64_t)height;
-    const int64_t damage_right = (int64_t)damage->x + (int64_t)damage->width;
-    const int64_t damage_bottom = (int64_t)damage->y + (int64_t)damage->height;
-    return damage != 0 && width != 0u && height != 0u &&
-           (int64_t)x < damage_right && damage->x < right &&
+    int64_t right;
+    int64_t bottom;
+    int64_t damage_right;
+    int64_t damage_bottom;
+    if (damage == 0 || width == 0u || height == 0u) return 0;
+    right = (int64_t)x + (int64_t)width;
+    bottom = (int64_t)y + (int64_t)height;
+    damage_right = (int64_t)damage->x + (int64_t)damage->width;
+    damage_bottom = (int64_t)damage->y + (int64_t)damage->height;
+    return (int64_t)x < damage_right && damage->x < right &&
            (int64_t)y < damage_bottom && damage->y < bottom;
 }
 
@@ -140,20 +144,35 @@ static void compositor_damage_rect(const sb_compositor_style_t *style,
                                    int32_t x, int32_t y,
                                    uint32_t width, uint32_t height,
                                    uint32_t rgb) {
-    int64_t left = x;
-    int64_t top = y;
-    int64_t right = left + (int64_t)width;
-    int64_t bottom = top + (int64_t)height;
-    int64_t damage_left = damage->x;
-    int64_t damage_top = damage->y;
-    int64_t damage_right = damage_left + (int64_t)damage->width;
-    int64_t damage_bottom = damage_top + (int64_t)damage->height;
-    int64_t clip_left = left > damage_left ? left : damage_left;
-    int64_t clip_top = top > damage_top ? top : damage_top;
-    int64_t clip_right = right < damage_right ? right : damage_right;
-    int64_t clip_bottom = bottom < damage_bottom ? bottom : damage_bottom;
+    int64_t left;
+    int64_t top;
+    int64_t right;
+    int64_t bottom;
+    int64_t damage_left;
+    int64_t damage_top;
+    int64_t damage_right;
+    int64_t damage_bottom;
+    int64_t clip_left;
+    int64_t clip_top;
+    int64_t clip_right;
+    int64_t clip_bottom;
 
-    if (style == 0 || damage == 0 || clip_left >= clip_right || clip_top >= clip_bottom) return;
+    if (style == 0 || damage == 0 || width == 0u || height == 0u) return;
+
+    left = x;
+    top = y;
+    right = left + (int64_t)width;
+    bottom = top + (int64_t)height;
+    damage_left = damage->x;
+    damage_top = damage->y;
+    damage_right = damage_left + (int64_t)damage->width;
+    damage_bottom = damage_top + (int64_t)damage->height;
+    clip_left = left > damage_left ? left : damage_left;
+    clip_top = top > damage_top ? top : damage_top;
+    clip_right = right < damage_right ? right : damage_right;
+    clip_bottom = bottom < damage_bottom ? bottom : damage_bottom;
+
+    if (clip_left >= clip_right || clip_top >= clip_bottom) return;
     compositor_rect(style, (int32_t)clip_left, (int32_t)clip_top,
                     (uint32_t)(clip_right - clip_left),
                     (uint32_t)(clip_bottom - clip_top), rgb);
