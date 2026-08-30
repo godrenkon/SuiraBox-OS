@@ -1,4 +1,5 @@
 #include "net_stack.h"
+#include "net_device.h"
 
 #define SB_ETHERTYPE_IPV4 0x0800u
 
@@ -30,10 +31,26 @@ static void copy_name(char *dst, const char *src) {
     dst[i] = '\0';
 }
 
+static void make_device_name(char *dst, uint32_t number) {
+    if (dst == 0) return;
+    dst[0] = 'e';
+    dst[1] = 't';
+    dst[2] = 'h';
+    if (number < 10u) {
+        dst[3] = (char)('0' + number);
+        dst[4] = '\0';
+    } else {
+        dst[3] = (char)('0' + ((number / 10u) % 10u));
+        dst[4] = (char)('0' + (number % 10u));
+        dst[5] = '\0';
+    }
+}
+
 void sb_net_stack_init(void) {
-    interface_count = 1u;
+    interface_count = 0u;
     for (uint32_t i = 0u; i < SB_NET_MAX_INTERFACES; ++i)
         interfaces[i] = (sb_net_interface_t){0};
+
     interfaces[0].index = 0u;
     interfaces[0].state = SB_NET_IF_LOOPBACK;
     interfaces[0].ipv4.address = sb_net_ipv4_make(127u, 0u, 0u, 1u);
@@ -41,6 +58,22 @@ void sb_net_stack_init(void) {
     interfaces[0].ipv4.gateway = 0u;
     interfaces[0].ipv4.dns_ready = 0u;
     copy_name(interfaces[0].name, "lo");
+    ++interface_count;
+
+    const uint32_t device_count = sb_net_device_count();
+    for (uint32_t device_index = 0u;
+         device_index < device_count && interface_count < SB_NET_MAX_INTERFACES;
+         ++device_index) {
+        const sb_net_device_t *device = sb_net_device_get(device_index);
+        if (device == 0) continue;
+        sb_net_interface_t *iface = &interfaces[interface_count];
+        *iface = (sb_net_interface_t){0};
+        iface->index = interface_count;
+        iface->state = device->state == SB_NET_READY ? SB_NET_IF_UP : SB_NET_IF_DOWN;
+        copy_bytes(iface->mac, device->mac, 6u);
+        make_device_name(iface->name, device_index);
+        ++interface_count;
+    }
 }
 
 uint32_t sb_net_interface_count(void) { return interface_count; }
