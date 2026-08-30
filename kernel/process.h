@@ -54,7 +54,7 @@ uint32_t process_count(void);
 int process_activate(sb_process_t *process);
 int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exit_code);
 int process_terminate(sb_process_t *process, uint64_t exit_code);
-int process_wait_child(sb_process_t *parent, uint64_t child_pid, uint64_t *exit_code);
+uint64_t process_wait_child(sb_process_t *parent, uint64_t child_pid, uint64_t *exit_code);
 void process_destroy(sb_process_t *process);
 
 #endif
