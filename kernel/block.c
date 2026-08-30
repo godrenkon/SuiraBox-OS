@@ -46,6 +46,8 @@ sb_block_status_t sb_block_register(sb_block_device_t *device) {
     if (device == 0 || device->sector_size == 0u || device->sector_count == 0u ||
         device->read == 0 || device->write == 0 || g_device_count >= SB_MAX_BLOCK_DEVICES)
         return SB_BLOCK_INVALID_ARGUMENT;
+    for (uint32_t i = 0u; i < g_device_count; ++i)
+        if (g_devices[i] == device) return SB_BLOCK_OK;
     g_devices[g_device_count++] = device;
     return SB_BLOCK_OK;
 }
