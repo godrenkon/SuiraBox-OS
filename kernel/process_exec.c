@@ -4,7 +4,6 @@
 #include "mm/multiboot_modules.h"
 #include "mm/pmm.h"
 #include "mm/vmm.h"
-#include "app_manager.h"
 
 #define SB_USER_STACK_PAGES 4u
 
@@ -66,11 +65,6 @@ int process_prepare_boot_module(sb_process_t *process,
                                 const char *module_name,
                                 sb_process_image_t *image_info) {
     sb_multiboot_module_t module;
-    if (multiboot_info != 0u && module_name != 0 && module_name[0] == 's' && module_name[1] == 'b' &&
-        module_name[2] == '-' && module_name[3] == 'd' && module_name[4] == 'e' &&
-        module_name[5] == 's' && module_name[6] == 'k' && module_name[7] == 't' &&
-        module_name[8] == 'o' && module_name[9] == 'p' && module_name[10] == '\0')
-        sb_app_manager_init(multiboot_info);
     if (multiboot_find_module(multiboot_info, module_name, &module) != 0) return -1;
     if (module.end <= module.start) return -1;
     return process_prepare_elf(process,
