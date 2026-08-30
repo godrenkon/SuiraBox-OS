@@ -11,7 +11,7 @@ static sb_usb_controller_type_t controller_type(const sb_device_t *device) {
         case 0x10u: return SB_USB_CONTROLLER_OHCI;
         case 0x20u: return SB_USB_CONTROLLER_EHCI;
         case 0x30u: return SB_USB_CONTROLLER_XHCI;
-        default:    return SB_USB_CONTROLLER_UNKNOWN;
+        default: return SB_USB_CONTROLLER_UNKNOWN;
     }
 }
 
@@ -54,7 +54,7 @@ int sb_usb_parse_endpoint(const uint8_t *descriptor, uint32_t length, sb_usb_end
     }
     endpoint->address = address;
     endpoint->attributes = descriptor[3];
-    endpoint->max_packet_size = (uint16_t)descriptor[4] | ((uint16_t)descriptor[5] << 8);
+    endpoint->max_packet_size = (uint16_t)(descriptor[4] | ((uint16_t)(descriptor[5] & 0x07u) << 8));
     endpoint->interval = descriptor[6];
     endpoint->type = type;
     endpoint->direction_in = (address & 0x80u) != 0u;
@@ -64,7 +64,9 @@ int sb_usb_parse_endpoint(const uint8_t *descriptor, uint32_t length, sb_usb_end
 
 int sb_usb_parse_device_descriptor(const uint8_t *descriptor, uint32_t length, sb_usb_device_t *device) {
     if (descriptor == 0 || device == 0 || length < 18u) return -1;
-    if (descriptor[0] < 18u || descriptor[0] > length || descriptor[1] != 1u || descriptor[2] != 0x00u || descriptor[3] != 0x02u) return -1;
+    if (descriptor[0] < 18u || descriptor[0] > length || descriptor[1] != 1u) return -1;
+    const uint16_t bcd_usb = (uint16_t)descriptor[2] | ((uint16_t)descriptor[3] << 8);
+    if (bcd_usb < 0x0100u) return -1;
     *device = (sb_usb_device_t){
         .address = 0u,
         .usb_class = descriptor[4],
