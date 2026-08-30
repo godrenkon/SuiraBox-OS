@@ -126,6 +126,7 @@ int sb_config_store_set(uint8_t language, uint32_t optional_enabled_mask) {
     next.generation = generation;
     next.optional_enabled_mask = optional_enabled_mask;
     next.checksum = checksum(&next);
-    return sb_fat32_write_file(fs, target_entry, 0u,
-                               SB_CONFIG_STORE_RECORD_SIZE, &next) ? 0 : -1;
+    if (!sb_fat32_write_file(fs, target_entry, 0u,
+                             SB_CONFIG_STORE_RECORD_SIZE, &next)) return -1;
+    return sb_storage_sync() == SB_BLOCK_OK ? 0 : -1;
 }
