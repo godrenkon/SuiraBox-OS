@@ -2,6 +2,7 @@
 #define SB_KERNEL_SYSCALL_H
 
 #include <stdint.h>
+#include "storage.h"
 
 #define SB_SYS_GET_TICKS          0u
 #define SB_SYS_PROCESS_ID         1u
