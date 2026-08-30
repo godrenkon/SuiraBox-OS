@@ -1,9 +1,11 @@
 #include "input.h"
+#include "device.h"
 
 static uint8_t mouse_packet[3];
 static uint8_t mouse_packet_index;
 static uint8_t mouse_initialized;
 static uint8_t mouse_init_attempted;
+static sb_device_t *ps2_device;
 
 static uint8_t io_in8(uint16_t port) {
     uint8_t value;
@@ -43,7 +45,14 @@ void sb_input_init(void) {
     mouse_packet_index = 0u;
     mouse_initialized = 0u;
     mouse_init_attempted = 0u;
+    ps2_device = sb_device_register(SB_DEVICE_BUS_PLATFORM, SB_DEVICE_CLASS_INPUT, 0u, 0u, "ps2-input");
+    if (ps2_device != 0) {
+        (void)sb_device_set_resource(ps2_device, 0u, 0x60u, 1u, 0x1u);
+        (void)sb_device_set_resource(ps2_device, 1u, 0x64u, 1u, 0x1u);
+        ps2_device->state = SB_DEVICE_IDENTIFIED;
+    }
     mouse_init();
+    if (ps2_device != 0) ps2_device->state = SB_DEVICE_ACTIVE;
 }
 
 uint64_t sb_input_read_key(void) {
