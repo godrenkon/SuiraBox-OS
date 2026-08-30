@@ -41,26 +41,20 @@ static void draw_rows(void) {
         (void)sb_display_glyph(48u, 96u, FILES_ICON, 0xFF8080u);
         return;
     }
-
     uint32_t offset = 0u;
     uint32_t row = 0u;
     while (offset < (uint32_t)result && row < 8u) {
         uint32_t length = 0u;
         while (offset + length < (uint32_t)result && names[offset + length] != '\0') ++length;
-        if (length == 0u) {
-            ++offset;
-            continue;
-        }
+        if (length == 0u) { ++offset; continue; }
         const uint32_t y = 92u + row * 40u;
         (void)sb_display_rect(44u, y - 4u, 352u, 34u, row & 1u ? 0x27313Eu : 0x242D39u);
         (void)sb_display_glyph(52u, y, FILE_ICON, 0xE9F2FFu);
         draw_u32(88u, y, row + 1u);
-        if (length > 0u) {
-            const uint32_t name_length = length > 12u ? 12u : length;
-            uint64_t marker = 0u;
-            for (uint32_t i = 0u; i < name_length; ++i) marker ^= (uint64_t)(uint8_t)names[offset + i] << ((i & 7u) * 8u);
-            (void)sb_display_glyph(180u, y, FILE_ICON ^ marker, 0xB8C4D4u);
-        }
+        const uint32_t name_length = length > 12u ? 12u : length;
+        uint64_t marker = 0u;
+        for (uint32_t i = 0u; i < name_length; ++i) marker ^= (uint64_t)(uint8_t)names[offset + i] << ((i & 7u) * 8u);
+        (void)sb_display_glyph(180u, y, FILE_ICON ^ marker, 0xB8C4D4u);
         ++row;
         offset += length + 1u;
     }
@@ -74,10 +68,7 @@ uint64_t sb_app_main(void) {
     draw_rows();
     for (;;) {
         const uint64_t key = sb_input_key();
-        if (key == 0u) {
-            (void)sb_yield();
-            continue;
-        }
+        if (key == 0u) { (void)sb_yield(); continue; }
         if ((key & 0x80u) != 0u) continue;
         if (key == 0x01u) return 0u;
         if (key == 0x2Bu) draw_rows();
