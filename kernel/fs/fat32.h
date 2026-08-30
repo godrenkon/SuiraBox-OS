@@ -6,7 +6,6 @@
 
 #define SB_FAT32_ATTR_DIRECTORY 0x10u
 
-/* Minimal FAT32 mount/lookup interface with bounded in-place file writes. */
 typedef struct {
     sb_vfs_mount_t *mount;
     uint32_t bytes_per_sector;
@@ -31,6 +30,7 @@ int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *
 int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t *entry);
 int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name,
                               uint32_t file_size, sb_fat32_dirent_t *entry);
+int sb_fat32_delete_root_file(sb_fat32_t *fs, const char *name);
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
                        uint32_t offset, uint32_t length, void *buffer);
 int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
