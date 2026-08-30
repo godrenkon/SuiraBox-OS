@@ -6,6 +6,8 @@
 #define PAGE_MASK (~(uint64_t)(SB_PAGE_SIZE - 1u))
 #define ENTRY_ADDR_MASK 0x000FFFFFFFFFF000ull
 #define BOOTSTRAP_TEST_PML4_INDEX 1u
+#define MMIO_WINDOW_BASE 0x0000010000000000ull
+#define MMIO_WINDOW_LIMIT 0x0000011000000000ull
 
 #ifndef SB_KERNEL_DEBUG
 #define SB_KERNEL_DEBUG 1
@@ -19,6 +21,7 @@ static uint64_t bootstrap_pd[PT_ENTRIES] __attribute__((aligned(4096)));
 static uint64_t bootstrap_pt[PT_ENTRIES] __attribute__((aligned(4096)));
 static uint64_t bootstrap_high_pdpt[PT_ENTRIES] __attribute__((aligned(4096)));
 static int bootstrap_ready;
+static uint64_t mmio_next = MMIO_WINDOW_BASE;
 
 #if SB_KERNEL_DEBUG
 static void debug_write_char(char c) {
@@ -146,6 +149,27 @@ uint64_t vmm_translate(uint64_t virtual_address) {
     const uint64_t e1 = pt_table[pt_index(virtual_address)];
     if ((e1 & SB_VMM_PRESENT) == 0u) return 0;
     return (e1 & ENTRY_ADDR_MASK) | (virtual_address & 0xFFFu);
+}
+
+int vmm_map_mmio(uint64_t physical_address, uint64_t size, uint64_t *virtual_address_out) {
+    if (virtual_address_out == 0 || physical_address > UINT64_MAX - size || size == 0u) return -1;
+    const uint64_t physical_base = physical_address & PAGE_MASK;
+    const uint64_t offset = physical_address - physical_base;
+    const uint64_t span = size > UINT64_MAX - offset ? 0u : offset + size;
+    if (span == 0u) return -1;
+    const uint64_t pages = (span + SB_PAGE_SIZE - 1u) / SB_PAGE_SIZE;
+    if (pages == 0u || pages > (MMIO_WINDOW_LIMIT - MMIO_WINDOW_BASE) / SB_PAGE_SIZE) return -1;
+    const uint64_t virtual_base = (mmio_next + SB_PAGE_SIZE - 1u) & PAGE_MASK;
+    if (virtual_base < MMIO_WINDOW_BASE || virtual_base > MMIO_WINDOW_LIMIT ||
+        pages > (MMIO_WINDOW_LIMIT - virtual_base) / SB_PAGE_SIZE) return -1;
+    for (uint64_t i = 0u; i < pages; ++i) {
+        if (vmm_map_page(virtual_base + i * SB_PAGE_SIZE,
+                         physical_base + i * SB_PAGE_SIZE,
+                         SB_VMM_WRITABLE | SB_VMM_NX) != 0) return -1;
+    }
+    mmio_next = virtual_base + pages * SB_PAGE_SIZE;
+    *virtual_address_out = virtual_base + offset;
+    return 0;
 }
 
 void vmm_init(void) {
