@@ -32,6 +32,7 @@ typedef struct {
     uint32_t netmask;
     uint32_t gateway;
     uint32_t dns[SB_NET_MANAGER_MAX_DNS];
+    uint64_t operation_deadline_tick;
 } sb_net_manager_interface_t;
 
 typedef struct {
@@ -52,6 +53,10 @@ int sb_net_manager_set_dns(sb_net_manager_t *manager, uint32_t id,
 int sb_net_manager_set_dhcp(sb_net_manager_t *manager, uint32_t id, uint8_t enabled);
 int sb_net_manager_add_route(sb_net_manager_t *manager, uint32_t destination,
                              uint32_t netmask, uint32_t gateway, uint32_t metric);
+int sb_net_manager_set_operation_deadline(sb_net_manager_t *manager, uint32_t id,
+                                          uint64_t deadline_tick);
+int sb_net_manager_operation_timed_out(const sb_net_manager_t *manager, uint32_t id,
+                                       uint64_t now_tick);
 const sb_net_manager_interface_t *sb_net_manager_interface(const sb_net_manager_t *manager, uint32_t id);
 int sb_net_manager_route_lookup(const sb_net_manager_t *manager, uint32_t destination,
                                 sb_net_manager_route_t *out);
