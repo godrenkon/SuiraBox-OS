@@ -111,10 +111,14 @@ int sb_dns_parse_a_response(uint16_t transaction_id, const uint8_t *packet,
         cursor += 10u;
         if (cursor + rdlength > length) return -1;
         if (type == SB_DNS_TYPE_A && rr_class == SB_DNS_CLASS_IN && rdlength == 4u) {
-            if (*count >= capacity) return -2;
-            records[*count].address = rd32be(packet + cursor);
-            records[*count].ttl = ttl;
-            ++(*count);
+            if (capacity == 0u) {
+                ++(*count);
+            } else {
+                if (*count >= capacity) return -2;
+                records[*count].address = rd32be(packet + cursor);
+                records[*count].ttl = ttl;
+                ++(*count);
+            }
         }
         cursor += rdlength;
     }
