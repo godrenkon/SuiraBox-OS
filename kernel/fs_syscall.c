@@ -55,7 +55,10 @@ static uint64_t list_root(char *user_buffer, uint32_t capacity) {
         if (copy_to_user(user_buffer + written, temp, length + 1u) != 0) return UINT64_MAX;
         written += length + 1u;
     }
-    if (written < capacity) user_buffer[written] = '\0';
+    if (written < capacity) {
+        const char terminator = '\0';
+        if (copy_to_user(user_buffer + written, &terminator, 1u) != 0) return UINT64_MAX;
+    }
     return written;
 }
 
@@ -73,12 +76,29 @@ static uint64_t read_root(const char *user_name, uint32_t name_length,
     sb_fat32_t *fs = sb_storage_fat32();
     sb_fat32_dirent_t entry;
     char name[SB_FS_NAME_MAX + 1u];
+    uint8_t chunk[SB_FS_IO_CHUNK];
+    uint32_t remaining;
+    uint32_t current_offset;
+    uint8_t *destination;
+
     if (fs == 0 || user_buffer == 0 || capacity == 0u || copy_user_name(user_name, name_length, name) != 0) return UINT64_MAX;
     if (validate_user(user_buffer, capacity, 1u) != 0) return UINT64_MAX;
     if (!sb_fat32_find_root_entry(fs, name, &entry) || offset > entry.file_size) return UINT64_MAX;
     if (capacity > entry.file_size - offset) capacity = entry.file_size - offset;
     if (capacity == 0u) return 0u;
-    return sb_fat32_read_file(fs, &entry, offset, capacity, user_buffer) ? capacity : UINT64_MAX;
+
+    remaining = capacity;
+    current_offset = offset;
+    destination = (uint8_t *)(uintptr_t)user_buffer;
+    while (remaining > 0u) {
+        const uint32_t count = remaining > SB_FS_IO_CHUNK ? SB_FS_IO_CHUNK : remaining;
+        if (!sb_fat32_read_file(fs, &entry, current_offset, count, chunk)) return UINT64_MAX;
+        if (copy_to_user(destination, chunk, count) != 0) return UINT64_MAX;
+        destination += count;
+        current_offset += count;
+        remaining -= count;
+    }
+    return capacity;
 }
 
 static uint64_t create_root(const char *user_name, uint32_t name_length, uint32_t file_size) {
