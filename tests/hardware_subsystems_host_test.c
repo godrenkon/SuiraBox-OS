@@ -13,8 +13,10 @@ int main(void) {
     sb_device_t *audio = sb_device_register(SB_DEVICE_BUS_PCI, SB_DEVICE_CLASS_AUDIO, 0x8086u, 0x2668u, "audio");
     assert(usb && nvme && net && audio);
     usb->programming_interface = 0x30u;
-    nvme->class_code = 0x01u; nvme->subclass = 0x08u; nvme->programming_interface = 0x02u;
     usb->class_code = 0x0Cu; usb->subclass = 0x03u;
+    nvme->class_code = 0x01u; nvme->subclass = 0x08u; nvme->programming_interface = 0x02u;
+    net->class_code = 0x02u; net->subclass = 0x00u; net->programming_interface = 0x00u;
+    audio->class_code = 0x04u; audio->subclass = 0x03u; audio->programming_interface = 0x00u;
 
     sb_usb_init();
     sb_nvme_init();
@@ -27,7 +29,11 @@ int main(void) {
     assert(sb_nvme_controller_get(0u)->vendor_id == 0x144Du);
     assert(sb_net_device_count() == 1u);
     assert(sb_net_device_get(0u)->state == SB_NET_DISCOVERED);
+    assert(sb_net_device_get(0u)->controller_type == SB_NET_CONTROLLER_ETHERNET);
     assert(sb_audio_device_count() == 1u);
     assert(sb_audio_device_get(0u)->state == SB_AUDIO_DISCOVERED);
+    assert(sb_audio_device_get(0u)->controller_type == SB_AUDIO_CONTROLLER_HDA);
+    assert(sb_usb_controller_get(1u) == 0);
+    assert(sb_nvme_controller_get(1u) == 0);
     return 0;
 }
