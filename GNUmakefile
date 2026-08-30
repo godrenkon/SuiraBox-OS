@@ -24,11 +24,13 @@ USER_CONTEXT_OBJ := $(BUILD)/user_context.o
 LAUNCHER_HOST_TEST := $(BUILD)/launcher-host-test
 DEVICE_HOST_TEST := $(BUILD)/device-host-test
 ACPI_HOST_TEST := $(BUILD)/acpi-host-test
+USB_HOST_TEST := $(BUILD)/usb-host-test
+POWER_HOST_TEST := $(BUILD)/power-host-test
 RELEASE_KERNEL := $(BUILD)/suirabox-release.elf
 RELEASE_ENTRY_OBJ := $(BUILD)/release_entry.o
 RELEASE_STORAGE_TEST_OBJ :=
 
-.PHONY: host-launcher-test host-device-test host-acpi-test release-iso
+.PHONY: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test release-iso
 
 $(LAUNCHER_OBJ): userspace/launcher.c userspace/launcher.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
@@ -68,6 +70,18 @@ $(ACPI_HOST_TEST): tests/acpi_host_test.c kernel/acpi.c kernel/acpi.h | $(BUILD)
 
 host-acpi-test: $(ACPI_HOST_TEST)
 	$(ACPI_HOST_TEST)
+
+$(USB_HOST_TEST): tests/usb_host_test.c kernel/usb.c kernel/usb.h kernel/device.c kernel/device.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/usb_host_test.c kernel/usb.c kernel/device.c -o $@
+
+host-usb-test: $(USB_HOST_TEST)
+	$(USB_HOST_TEST)
+
+$(POWER_HOST_TEST): tests/power_host_test.c kernel/power.c kernel/power.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/power_host_test.c kernel/power.c -o $@
+
+host-power-test: $(POWER_HOST_TEST)
+	$(POWER_HOST_TEST)
 
 $(DEVICE_OBJ): kernel/device.c kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
@@ -129,4 +143,4 @@ release-iso: $(RELEASE_KERNEL) $(DESKTOP_ELF) boot/grub.cfg
 	grub-mkrescue -o $(BUILD)/suirabox-release.iso $(BUILD)/release-iso >/dev/null
 	sh scripts/check_base_image.sh $(BUILD)/release-iso
 
-check: host-launcher-test host-device-test host-acpi-test
+check: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test
