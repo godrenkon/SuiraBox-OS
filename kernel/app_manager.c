@@ -30,9 +30,7 @@ static const char *module_name_for_app(uint32_t app_id) {
     }
 }
 
-static int app_id_is_valid(uint32_t app_id) {
-    return module_name_for_app(app_id) != 0;
-}
+static int app_id_is_valid(uint32_t app_id) { return module_name_for_app(app_id) != 0; }
 
 static int app_already_running(uint32_t app_id) {
     for (uint32_t i = 0u; i < SB_APP_MAX_RUNNING; ++i)
@@ -51,9 +49,7 @@ uint32_t sb_app_reap_exited(void) {
     uint32_t reaped = 0u;
     for (uint32_t i = 0u; i < SB_APP_MAX_RUNNING; ++i) {
         sb_app_instance_t *instance = &instances[i];
-        if (instance->active == 0u || instance->process == 0 ||
-            instance->process->state != SB_PROCESS_EXITED)
-            continue;
+        if (instance->active == 0u || instance->process == 0 || instance->process->state != SB_PROCESS_EXITED) continue;
         if (user_scheduler_current_process() == instance->process) continue;
         process_destroy(instance->process);
         *instance = (sb_app_instance_t){0};
@@ -72,12 +68,12 @@ int sb_app_launch(uint32_t app_id) {
     for (uint32_t i = 0u; i < SB_APP_MAX_RUNNING; ++i) {
         if (instances[i].active == 0u) { slot = i; break; }
     }
-    if (slot == SB_APP_MAX_RUNNING) return -1;
+    if (slot == SB_APP_MAX_RUNNING || next_pid == 0u || next_tid == 0u || next_pid == UINT64_MAX || next_tid == UINT64_MAX) return -1;
 
-    if (next_pid == 0u || next_pid > UINT64_MAX - 1u) return -1;
-    if (next_tid == 0u || next_tid > UINT64_MAX - 1u) return -1;
-    sb_process_t *process = process_create(next_pid++);
+    sb_process_t *parent = user_scheduler_current_process();
+    sb_process_t *process = parent != 0 ? process_create_child(parent, next_pid++) : process_create(next_pid++);
     if (process == 0) return -1;
+
     sb_process_image_t image;
     if (process_prepare_boot_module(process, multiboot_info_value, module_name, &image) != 0) {
         process_destroy(process);
