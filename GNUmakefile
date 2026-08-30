@@ -17,9 +17,12 @@ INPUT_OBJ := $(BUILD)/input.o
 ACPI_OBJ := $(BUILD)/acpi.o
 POWER_OBJ := $(BUILD)/power.o
 USB_OBJ := $(BUILD)/usb.o
+USB_TRANSFER_OBJ := $(BUILD)/usb_transfer.o
+USB_CLASS_OBJ := $(BUILD)/usb_class.o
 NVME_OBJ := $(BUILD)/nvme.o
 NET_DEVICE_OBJ := $(BUILD)/net_device.o
 AUDIO_OBJ := $(BUILD)/audio.o
+GPU_OBJ := $(BUILD)/gpu.o
 HARDWARE_OBJ := $(BUILD)/hardware.o
 USER_CONTEXT_OBJ := $(BUILD)/user_context.o
 LAUNCHER_HOST_TEST := $(BUILD)/launcher-host-test
@@ -28,11 +31,13 @@ ACPI_HOST_TEST := $(BUILD)/acpi-host-test
 USB_HOST_TEST := $(BUILD)/usb-host-test
 POWER_HOST_TEST := $(BUILD)/power-host-test
 HARDWARE_SUBSYSTEMS_HOST_TEST := $(BUILD)/hardware-subsystems-host-test
+USB_TRANSFER_HOST_TEST := $(BUILD)/usb-transfer-host-test
+GPU_HOST_TEST := $(BUILD)/gpu-host-test
 RELEASE_KERNEL := $(BUILD)/suirabox-release.elf
 RELEASE_ENTRY_OBJ := $(BUILD)/release_entry.o
 RELEASE_STORAGE_TEST_OBJ :=
 
-.PHONY: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-hardware-subsystems-test release-iso
+.PHONY: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test release-iso
 
 $(LAUNCHER_OBJ): userspace/launcher.c userspace/launcher.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -Iuserspace -c $< -o $@
@@ -91,6 +96,18 @@ $(HARDWARE_SUBSYSTEMS_HOST_TEST): tests/hardware_subsystems_host_test.c kernel/d
 host-hardware-subsystems-test: $(HARDWARE_SUBSYSTEMS_HOST_TEST)
 	$(HARDWARE_SUBSYSTEMS_HOST_TEST)
 
+$(USB_TRANSFER_HOST_TEST): tests/usb_transfer_host_test.c kernel/usb_transfer.c kernel/usb_transfer.h kernel/usb.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/usb_transfer_host_test.c kernel/usb_transfer.c -o $@
+
+host-usb-transfer-test: $(USB_TRANSFER_HOST_TEST)
+	$(USB_TRANSFER_HOST_TEST)
+
+$(GPU_HOST_TEST): tests/gpu_host_test.c kernel/gpu.c kernel/gpu.h kernel/device.c kernel/device.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/gpu_host_test.c kernel/gpu.c kernel/device.c -o $@
+
+host-gpu-test: $(GPU_HOST_TEST)
+	$(GPU_HOST_TEST)
+
 $(DEVICE_OBJ): kernel/device.c kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
@@ -106,6 +123,12 @@ $(POWER_OBJ): kernel/power.c kernel/power.h kernel/acpi.h | $(BUILD)
 $(USB_OBJ): kernel/usb.c kernel/usb.h kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
+$(USB_TRANSFER_OBJ): kernel/usb_transfer.c kernel/usb_transfer.h kernel/usb.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
+$(USB_CLASS_OBJ): kernel/usb_class.c kernel/usb_class.h kernel/usb.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
 $(NVME_OBJ): kernel/nvme.c kernel/nvme.h kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
@@ -115,7 +138,10 @@ $(NET_DEVICE_OBJ): kernel/net_device.c kernel/net_device.h kernel/device.h | $(B
 $(AUDIO_OBJ): kernel/audio.c kernel/audio.h kernel/device.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(HARDWARE_OBJ): kernel/hardware.c kernel/hardware.h kernel/acpi.h kernel/audio.h kernel/device.h kernel/net_device.h kernel/nvme.h kernel/power.h kernel/usb.h | $(BUILD)
+$(GPU_OBJ): kernel/gpu.c kernel/gpu.h kernel/device.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
+$(HARDWARE_OBJ): kernel/hardware.c kernel/hardware.h kernel/acpi.h kernel/audio.h kernel/device.h kernel/gpu.h kernel/net_device.h kernel/nvme.h kernel/power.h kernel/usb.h kernel/usb_class.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(STORAGE_OBJ): kernel/storage.c kernel/storage.h kernel/ata_pio.h kernel/vfs.h kernel/block.h kernel/fs/fat32.h | $(BUILD)
@@ -130,15 +156,15 @@ $(USER_CONTEXT_OBJ): kernel/arch/x86_64/user_context.c kernel/arch/x86_64/user_c
 $(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/timer.h kernel/scheduler.h kernel/framebuffer.h kernel/storage.h kernel/config_store.h kernel/input.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -c $< -o $@
 
-$(KERNEL): $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(HARDWARE_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(IRQ_FRAME_OBJ) $(USER_CONTEXT_OBJ) $(USER_SCHED_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ)
-$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(HARDWARE_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(HARDWARE_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ)
+$(KERNEL): $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(USB_TRANSFER_OBJ) $(USB_CLASS_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(GPU_OBJ) $(HARDWARE_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(IRQ_FRAME_OBJ) $(USER_CONTEXT_OBJ) $(USER_SCHED_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ)
+$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(USB_TRANSFER_OBJ) $(USB_CLASS_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(GPU_OBJ) $(HARDWARE_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(KERNEL_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(USB_TRANSFER_OBJ) $(USB_CLASS_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(GPU_OBJ) $(HARDWARE_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ)
 
 $(RELEASE_ENTRY_OBJ): kernel/release_entry.c kernel/pci.h kernel/device.h kernel/hardware.h kernel/block.h kernel/ata_pio.h kernel/storage.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/syscall.h kernel/framebuffer.h kernel/desktop_bootstrap.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/arch/x86_64/user_mode.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -Ikernel/mm -Ikernel/arch/x86_64 -c $< -o $@
 
-$(RELEASE_KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(RELEASE_ENTRY_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(HARDWARE_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(RELEASE_STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(RELEASE_ENTRY_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(HARDWARE_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(RELEASE_STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ)
+$(RELEASE_KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(RELEASE_ENTRY_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(USB_TRANSFER_OBJ) $(USB_CLASS_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(GPU_OBJ) $(HARDWARE_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(RELEASE_STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DESKTOP_OBJ) $(RELEASE_ENTRY_OBJ) $(DEVICE_OBJ) $(INPUT_OBJ) $(ACPI_OBJ) $(POWER_OBJ) $(USB_OBJ) $(USB_TRANSFER_OBJ) $(USB_CLASS_OBJ) $(NVME_OBJ) $(NET_DEVICE_OBJ) $(AUDIO_OBJ) $(GPU_OBJ) $(HARDWARE_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(RELEASE_STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(STORAGE_OBJ) $(CONFIG_STORE_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(IRQ_FRAME_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(USER_SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(USER_CONTEXT_OBJ) $(USER_RESUME_OBJ) $(USER_LAUNCH_OBJ) $(MB_MODULES_OBJ)
 
 $(DESKTOP_ELF): $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ) $(RESOURCE_POLICY_OBJ) $(RESOURCE_MANAGER_OBJ) $(SETTINGS_POLICY_OBJ) $(SETTINGS_VIEW_OBJ) $(SETTINGS_RUNTIME_OBJ)
 $(DESKTOP_ELF): $(DESKTOP_ENTRY_OBJ) $(DESKTOP_MAIN_OBJ) $(GUI_OBJ) $(COMPOSITOR_OBJ) $(CONFIG_OBJ) $(SURFACE_OBJ) $(EVENT_QUEUE_OBJ) $(LOCALE_OBJ) $(LAUNCHER_OBJ) $(DESKTOP_SHELL_OBJ) $(RESOURCE_POLICY_OBJ) $(RESOURCE_MANAGER_OBJ) $(SETTINGS_POLICY_OBJ) $(SETTINGS_VIEW_OBJ) $(SETTINGS_RUNTIME_OBJ) userspace/user.ld
@@ -154,4 +180,4 @@ release-iso: $(RELEASE_KERNEL) $(DESKTOP_ELF) boot/grub.cfg
 	grub-mkrescue -o $(BUILD)/suirabox-release.iso $(BUILD)/release-iso >/dev/null
 	sh scripts/check_base_image.sh $(BUILD)/release-iso
 
-check: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-hardware-subsystems-test
+check: host-launcher-test host-device-test host-acpi-test host-usb-test host-power-test host-hardware-subsystems-test host-usb-transfer-test host-gpu-test
