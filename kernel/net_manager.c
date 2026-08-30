@@ -73,6 +73,7 @@ int sb_net_manager_set_static_ipv4(sb_net_manager_t *manager, uint32_t id,
     iface->netmask = netmask;
     iface->gateway = gateway;
     iface->dhcp_enabled = 0u;
+    iface->operation_deadline_tick = 0u;
     return 0;
 }
 
@@ -106,6 +107,21 @@ int sb_net_manager_add_route(sb_net_manager_t *manager, uint32_t destination,
         .metric = metric
     };
     return 0;
+}
+
+int sb_net_manager_set_operation_deadline(sb_net_manager_t *manager, uint32_t id,
+                                          uint64_t deadline_tick) {
+    sb_net_manager_interface_t *iface = find_interface(manager, id);
+    if (iface == 0 || deadline_tick == 0u) return -1;
+    iface->operation_deadline_tick = deadline_tick;
+    return 0;
+}
+
+int sb_net_manager_operation_timed_out(const sb_net_manager_t *manager, uint32_t id,
+                                       uint64_t now_tick) {
+    const sb_net_manager_interface_t *iface = find_interface_const(manager, id);
+    if (iface == 0 || iface->operation_deadline_tick == 0u) return 0;
+    return now_tick >= iface->operation_deadline_tick;
 }
 
 const sb_net_manager_interface_t *sb_net_manager_interface(const sb_net_manager_t *manager, uint32_t id) {
