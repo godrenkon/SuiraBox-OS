@@ -22,7 +22,7 @@ USB_CLASS_OBJ := $(BUILD)/usb_class.o
 NVME_OBJ := $(BUILD)/nvme.o
 NET_DEVICE_OBJ := $(BUILD)/net_device.o
 NET_STACK_OBJ := $(BUILD)/net_stack.o
-ARP_OBJ := $(BUILD)/arp.o
+ARP_OBJ := $(BUILD)/net_arp.o
 NET_ROUTE_OBJ := $(BUILD)/net_route.o
 TCP_OBJ := $(BUILD)/tcp.o
 UDP_OBJ := $(BUILD)/udp.o
@@ -155,7 +155,7 @@ $(NET_DEVICE_OBJ): kernel/net_device.c kernel/net_device.h kernel/device.h | $(B
 $(NET_STACK_OBJ): kernel/net_stack.c kernel/net_stack.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(ARP_OBJ): kernel/arp.c kernel/arp.h | $(BUILD)
+$(ARP_OBJ): kernel/net_arp.c kernel/net_arp.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(NET_ROUTE_OBJ): kernel/net_route.c kernel/net_route.h | $(BUILD)
