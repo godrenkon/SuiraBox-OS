@@ -5,6 +5,7 @@
 #include "device.h"
 
 #define SB_NET_MAX_DEVICES 16u
+#define SB_NET_FRAME_MAX 2048u
 
 typedef enum {
     SB_NET_DOWN = 0,
@@ -35,5 +36,7 @@ typedef struct {
 void sb_net_device_init(void);
 uint32_t sb_net_device_count(void);
 const sb_net_device_t *sb_net_device_get(uint32_t index);
+int sb_net_device_send(uint32_t index, const uint8_t *frame, uint16_t length);
+int sb_net_device_receive(uint32_t index, uint8_t *frame, uint16_t capacity, uint16_t *length);
 
 #endif
