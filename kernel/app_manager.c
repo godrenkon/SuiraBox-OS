@@ -47,9 +47,26 @@ void sb_app_manager_init(uint64_t multiboot_info) {
     for (uint32_t i = 0u; i < SB_APP_MAX_RUNNING; ++i) instances[i] = (sb_app_instance_t){0};
 }
 
+uint32_t sb_app_reap_exited(void) {
+    uint32_t reaped = 0u;
+    for (uint32_t i = 0u; i < SB_APP_MAX_RUNNING; ++i) {
+        sb_app_instance_t *instance = &instances[i];
+        if (instance->active == 0u || instance->process == 0 ||
+            instance->process->state != SB_PROCESS_EXITED)
+            continue;
+        if (user_scheduler_current_process() == instance->process) continue;
+        process_destroy(instance->process);
+        *instance = (sb_app_instance_t){0};
+        ++reaped;
+    }
+    return reaped;
+}
+
 int sb_app_launch(uint32_t app_id) {
     const char *module_name = module_name_for_app(app_id);
-    if (!app_id_is_valid(app_id) || multiboot_info_value == 0u || app_already_running(app_id)) return -1;
+    if (!app_id_is_valid(app_id) || multiboot_info_value == 0u) return -1;
+    (void)sb_app_reap_exited();
+    if (app_already_running(app_id)) return -1;
 
     uint32_t slot = SB_APP_MAX_RUNNING;
     for (uint32_t i = 0u; i < SB_APP_MAX_RUNNING; ++i) {
@@ -57,6 +74,8 @@ int sb_app_launch(uint32_t app_id) {
     }
     if (slot == SB_APP_MAX_RUNNING) return -1;
 
+    if (next_pid == 0u || next_pid > UINT64_MAX - 1u) return -1;
+    if (next_tid == 0u || next_tid > UINT64_MAX - 1u) return -1;
     sb_process_t *process = process_create(next_pid++);
     if (process == 0) return -1;
     sb_process_image_t image;

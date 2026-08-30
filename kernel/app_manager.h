@@ -9,6 +9,7 @@
 
 void sb_app_manager_init(uint64_t multiboot_info);
 int sb_app_launch(uint32_t app_id);
+uint32_t sb_app_reap_exited(void);
 uint32_t sb_app_count(void);
 
 #endif
