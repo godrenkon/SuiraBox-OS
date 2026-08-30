@@ -6,7 +6,6 @@ static uint32_t net_device_count_value;
 static sb_net_controller_type_t controller_type(const sb_device_t *device) {
     if (device == 0 || device->class_code != 0x02u) return SB_NET_CONTROLLER_UNKNOWN;
     if (device->subclass == 0x00u) return SB_NET_CONTROLLER_ETHERNET;
-    if (device->subclass == 0x80u) return SB_NET_CONTROLLER_WIFI;
     return SB_NET_CONTROLLER_OTHER;
 }
 
