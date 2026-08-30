@@ -1,5 +1,6 @@
 #include "power.h"
 #include "acpi.h"
+#include "storage.h"
 
 static uint32_t capabilities;
 
@@ -16,6 +17,7 @@ uint32_t sb_power_capabilities(void) { return capabilities; }
 
 int sb_power_reboot(void) {
     if ((capabilities & SB_POWER_REBOOT) == 0u) return -1;
+    (void)sb_storage_sync();
     io_out8(0xCF9u, 0x06u);
     io_out8(0x64u, 0xFEu);
     for (uint32_t i = 0u; i < 100000u; ++i) (void)io_in16(0x80u);
@@ -24,6 +26,7 @@ int sb_power_reboot(void) {
 
 int sb_power_shutdown(void) {
     if ((capabilities & SB_POWER_SHUTDOWN) == 0u) return -1;
+    if (sb_storage_sync() != SB_BLOCK_OK && sb_storage_ready()) return -2;
     if ((capabilities & SB_POWER_ACPI_S5) != 0u && sb_acpi_poweroff() == 0) halt_forever();
     __asm__ volatile ("outw %0, %1" : : "a"((uint16_t)0x2000u), "Nd"((uint16_t)0x604u));
     __asm__ volatile ("outw %0, %1" : : "a"((uint16_t)0x3400u), "Nd"((uint16_t)0x4004u));
