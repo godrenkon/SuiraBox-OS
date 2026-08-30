@@ -77,9 +77,9 @@ static int fetch(void *user, const char *path,
                  void *emit_user) {
     fake_store_t *store = (fake_store_t *)user;
     static const uint8_t payload[] = {'h', 'e', 'l', 'l', 'o'};
+    if (store == 0 || path == 0 || path[0] != 'l' || emit == 0) return -1;
     ++store->fetch_count;
-    if (path == 0 || path[0] != 'l' || emit == 0 || emit(emit_user, payload, 5u) != 0) return -1;
-    return 0;
+    return emit(emit_user, payload, 5u);
 }
 
 static sb_resource_ref_t make_ref(const char *id,
@@ -110,6 +110,7 @@ int main(void) {
     const sb_resource_ref_t manifest[] = {core, locale};
     const sb_resource_manager_io_t io = {
         .verify_manifest = verify_manifest,
+        .verify_manifest_bytes = 0,
         .cache_begin = cache_begin,
         .cache_write = cache_write,
         .cache_commit = cache_commit,
@@ -142,6 +143,15 @@ int main(void) {
     assert(sb_resource_manager_acquire(&manager, "locale/en-us") == 0);
     assert(store.fetch_count == 1u);
     assert(store.activate_count == 2u);
+
+    const char *prefetch[] = {"core/ui", "locale/en-us"};
+    assert(sb_resource_manager_prefetch(&manager, prefetch, 2u) == 0);
+    assert(store.fetch_count == 1u);
+    assert(store.activate_count == 4u);
+
+    const char *missing[] = {"missing/resource"};
+    assert(sb_resource_manager_prefetch(&manager, missing, 1u) != 0);
+    assert(sb_resource_manager_prefetch(&manager, prefetch, 0u) != 0);
 
     sb_resource_ref_t bad = locale;
     bad.sha256 = "0000000000000000000000000000000000000000000000000000000000000000";
