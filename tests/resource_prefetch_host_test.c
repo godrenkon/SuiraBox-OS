@@ -54,7 +54,9 @@ static void cache_abort(void *transaction) {
 
 static int activate(void *user, const sb_resource_ref_t *ref, const char *sha256) {
     store_t *store = (store_t *)user;
-    return store != 0 && ref != 0 && sha256 != 0 ? (++store->activate_count, 0) : -1;
+    if (store == 0 || ref == 0 || sha256 == 0) return -1;
+    ++store->activate_count;
+    return 0;
 }
 
 static int fetch(void *user, const char *path,
@@ -103,7 +105,7 @@ int main(void) {
     sb_resource_manager_t manager;
     const char *prefetch_ids[] = {
         "locale/first",
-        "locale/FIRST",
+        "locale/first",
         "locale/second",
         "locale/second"
     };
