@@ -37,6 +37,14 @@ jobs:
       - name: Validate Multiboot2 image
         run: make check
 
+      - name: Test filesystem syscall boundary
+        run: |
+          gcc -Wall -Wextra -Werror -std=c11 -D_GNU_SOURCE \
+            -Ikernel -Ikernel/fs -Ikernel/mm -Ikernel/arch/x86_64 \
+            tests/fs_syscall_host_test.c kernel/fs_syscall.c \
+            -o build/fs-syscall-host-test
+          ./build/fs-syscall-host-test
+
       - name: Inspect kernel layout
         run: |
           nm -nS build/suirabox.elf | grep -E 'stack_(bottom|top)|pml4|pdpt|pd$|bitmap|page_count|free_count|next_page' || true
