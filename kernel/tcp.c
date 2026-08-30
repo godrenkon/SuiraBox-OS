@@ -47,6 +47,18 @@ static int register_connection(sb_tcp_connection_t *connection) {
     return 0;
 }
 
+static int endpoint_matches(const sb_tcp_connection_t *connection,
+                            const sb_tcp_segment_t *segment) {
+    if (connection == 0 || segment == 0 || connection->local_port != segment->destination_port)
+        return 0;
+    if (connection->local_address != SB_TCP_WILDCARD_ADDRESS &&
+        connection->local_address != segment->destination) return 0;
+    if (connection->state != SB_TCP_STATE_LISTEN &&
+        (connection->remote_address != segment->source ||
+         connection->remote_port != segment->source_port)) return 0;
+    return 1;
+}
+
 void sb_tcp_init(void) {
     connection_count = 0u;
     for (uint32_t i = 0u; i < SB_TCP_MAX_CONNECTIONS; ++i) connections[i] = 0;
@@ -92,25 +104,12 @@ int sb_tcp_parse_ipv4(uint32_t source, uint32_t destination,
     return 0;
 }
 
-static int endpoint_matches(const sb_tcp_connection_t *connection,
-                            const sb_tcp_segment_t *segment) {
-    if (connection == 0 || segment == 0 || connection->local_port != segment->destination_port)
-        return 0;
-    if (connection->local_address != SB_TCP_WILDCARD_ADDRESS &&
-        connection->local_address != segment->destination) return 0;
-    if (connection->state != SB_TCP_STATE_LISTEN &&
-        (connection->remote_address != segment->source ||
-         connection->remote_port != segment->source_port)) return 0;
-    return 1;
-}
-
 int sb_tcp_connection_open(sb_tcp_connection_t *connection,
                            uint32_t local_address, uint16_t local_port,
                            uint32_t remote_address, uint16_t remote_port,
                            uint32_t initial_sequence) {
     if (connection == 0 || local_port == 0u || remote_port == 0u ||
         remote_address == 0u || connection_registered(connection)) return -1;
-    if (register_connection(connection) != 0) return -1;
     *connection = (sb_tcp_connection_t){
         .state = SB_TCP_STATE_SYN_SENT,
         .active = 1u,
@@ -121,23 +120,24 @@ int sb_tcp_connection_open(sb_tcp_connection_t *connection,
         .send_next = initial_sequence + 1u,
         .send_unacknowledged = initial_sequence,
         .receive_next = 0u,
-        .receive_window = 65535u
+        .receive_window = 65535u,
+        .deadline_tick = 0u
     };
-    return 0;
+    return register_connection(connection);
 }
 
 int sb_tcp_connection_listen(sb_tcp_connection_t *connection,
                              uint32_t local_address, uint16_t local_port) {
     if (connection == 0 || local_port == 0u || connection_registered(connection)) return -1;
-    if (register_connection(connection) != 0) return -1;
     *connection = (sb_tcp_connection_t){
         .state = SB_TCP_STATE_LISTEN,
         .active = 1u,
         .local_port = local_port,
         .local_address = local_address,
-        .receive_window = 65535u
+        .receive_window = 65535u,
+        .deadline_tick = 0u
     };
-    return 0;
+    return register_connection(connection);
 }
 
 int sb_tcp_connection_input(sb_tcp_connection_t *connection,
@@ -147,6 +147,7 @@ int sb_tcp_connection_input(sb_tcp_connection_t *connection,
     if ((segment->flags & SB_TCP_FLAG_RST) != 0u) {
         connection->state = SB_TCP_STATE_CLOSED;
         connection->active = 0u;
+        connection->deadline_tick = 0u;
         unregister_connection(connection);
         return 0;
     }
@@ -210,8 +211,16 @@ int sb_tcp_connection_input(sb_tcp_connection_t *connection,
             connection->receive_next += 1u;
             connection->state = SB_TCP_STATE_TIME_WAIT;
             return 0;
-        case SB_TCP_STATE_CLOSE_WAIT:
         case SB_TCP_STATE_LAST_ACK:
+            if ((segment->flags & SB_TCP_FLAG_ACK) == 0u ||
+                segment->acknowledgement != connection->send_next) return -1;
+            connection->send_unacknowledged = segment->acknowledgement;
+            connection->state = SB_TCP_STATE_CLOSED;
+            connection->active = 0u;
+            connection->deadline_tick = 0u;
+            unregister_connection(connection);
+            return 0;
+        case SB_TCP_STATE_CLOSE_WAIT:
         case SB_TCP_STATE_TIME_WAIT:
         case SB_TCP_STATE_CLOSED:
         default:
@@ -234,6 +243,29 @@ int sb_tcp_connection_close(sb_tcp_connection_t *connection) {
         default:
             return -1;
     }
+}
+
+int sb_tcp_connection_abort(sb_tcp_connection_t *connection) {
+    if (connection == 0 || connection->active == 0u) return -1;
+    connection->state = SB_TCP_STATE_CLOSED;
+    connection->active = 0u;
+    connection->deadline_tick = 0u;
+    unregister_connection(connection);
+    return 0;
+}
+
+int sb_tcp_connection_set_deadline(sb_tcp_connection_t *connection,
+                                   uint64_t deadline_tick) {
+    if (connection == 0 || connection->active == 0u) return -1;
+    connection->deadline_tick = deadline_tick;
+    return 0;
+}
+
+int sb_tcp_connection_timed_out(const sb_tcp_connection_t *connection,
+                                uint64_t now_tick) {
+    if (connection == 0 || connection->active == 0u || connection->deadline_tick == 0u)
+        return 0;
+    return now_tick >= connection->deadline_tick;
 }
 
 int sb_tcp_connection_is_active(const sb_tcp_connection_t *connection) {
