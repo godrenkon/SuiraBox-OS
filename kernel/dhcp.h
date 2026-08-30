@@ -14,6 +14,7 @@
 #define SB_DHCP_OPTION_LEASE_TIME 51u
 #define SB_DHCP_OPTION_MESSAGE_TYPE 53u
 #define SB_DHCP_OPTION_SERVER_ID 54u
+#define SB_DHCP_OPTION_PARAMETER_REQUEST_LIST 55u
 #define SB_DHCP_OPTION_END 255u
 
 #define SB_DHCP_DISCOVER 1u
@@ -44,7 +45,7 @@ typedef struct {
 
 void sb_dhcp_client_init(sb_dhcp_client_t *client, uint32_t transaction_id,
                          const uint8_t *hardware_address, uint8_t hardware_length);
-int sb_dhcp_build_discover(const sb_dhcp_client_t *client,
+int sb_dhcp_build_discover(sb_dhcp_client_t *client,
                            uint8_t *packet, uint32_t capacity, uint32_t *length);
 int sb_dhcp_build_request(const sb_dhcp_client_t *client,
                           uint8_t *packet, uint32_t capacity, uint32_t *length);
