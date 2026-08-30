@@ -26,6 +26,7 @@ int main(void) {
     assert(sb_block_flush_all() == SB_BLOCK_OK);
     assert(flush_calls == 0);
     assert(sb_block_register(&device) == SB_BLOCK_OK);
+    assert(sb_block_register(&device) == SB_BLOCK_OK);
     assert(sb_block_count() == 2u);
     assert(sb_block_flush_all() == SB_BLOCK_OK);
     assert(flush_calls == 1);
