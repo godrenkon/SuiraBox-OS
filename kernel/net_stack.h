@@ -71,6 +71,8 @@ int sb_net_parse_ipv4(const uint8_t *packet, uint32_t length,
                       sb_net_ipv4_packet_t *out);
 int sb_net_parse_udp(const uint8_t *payload, uint32_t length,
                      sb_net_udp_packet_t *out);
+int sb_net_validate_udp_checksum_ipv4(uint32_t source, uint32_t destination,
+                                      const uint8_t *udp, uint32_t length);
 uint32_t sb_net_ipv4_make(uint8_t a, uint8_t b, uint8_t c, uint8_t d);
 int sb_net_ipv4_is_valid(uint32_t address);
 
