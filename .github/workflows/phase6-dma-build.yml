@@ -1,0 +1,63 @@
+name: SuiraBox Phase 6 DMA Build
+
+on:
+  push:
+    paths:
+      - 'kernel/dma.*'
+      - 'kernel/device.*'
+      - 'kernel/pci.*'
+      - 'kernel/acpi.*'
+      - 'kernel/power.*'
+      - 'kernel/input.*'
+      - 'kernel/usb.*'
+      - 'kernel/usb_transfer.*'
+      - 'kernel/usb_class.*'
+      - 'kernel/usb_hotplug.*'
+      - 'kernel/nvme.*'
+      - 'kernel/net_device.*'
+      - 'kernel/audio.*'
+      - 'kernel/gpu.*'
+      - 'kernel/hardware.*'
+      - 'GNUmakefile'
+      - '.github/workflows/phase6-dma-build.yml'
+  pull_request:
+    paths:
+      - 'kernel/dma.*'
+      - 'kernel/device.*'
+      - 'kernel/pci.*'
+      - 'kernel/acpi.*'
+      - 'kernel/power.*'
+      - 'kernel/input.*'
+      - 'kernel/usb.*'
+      - 'kernel/usb_transfer.*'
+      - 'kernel/usb_class.*'
+      - 'kernel/usb_hotplug.*'
+      - 'kernel/nvme.*'
+      - 'kernel/net_device.*'
+      - 'kernel/audio.*'
+      - 'kernel/gpu.*'
+      - 'kernel/hardware.*'
+      - 'GNUmakefile'
+      - '.github/workflows/phase6-dma-build.yml'
+
+jobs:
+  phase6-dma-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile DMA foundation
+        run: cc -Wall -Wextra -Werror -Ikernel -Ikernel/mm -c kernel/dma.c -o /tmp/sb-dma.o
+      - name: Run DMA host test
+        run: |
+          cc -Wall -Wextra -Werror -Ikernel tests/dma_host_test.c kernel/dma.c -o /tmp/sb-dma-test
+          /tmp/sb-dma-test
+      - name: Run consolidated Phase 6 host suites
+        run: |
+          make host-device-test
+          make host-acpi-test
+          make host-usb-test
+          make host-usb-transfer-test
+          make host-usb-hotplug-test
+          make host-power-test
+          make host-hardware-subsystems-test
+          make host-gpu-test
