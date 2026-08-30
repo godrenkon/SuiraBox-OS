@@ -54,6 +54,7 @@ void sb_tcp_init(void) {
 
 uint32_t sb_tcp_checksum_ipv4(uint32_t source, uint32_t destination,
                               const uint8_t *segment, uint32_t length) {
+    if (length > UINT16_MAX || (segment == 0 && length != 0u)) return 0u;
     uint32_t sum = 0u;
     const uint8_t pseudo[12] = {
         (uint8_t)(source >> 24), (uint8_t)(source >> 16), (uint8_t)(source >> 8), (uint8_t)source,
@@ -70,10 +71,11 @@ uint32_t sb_tcp_checksum_ipv4(uint32_t source, uint32_t destination,
 int sb_tcp_parse_ipv4(uint32_t source, uint32_t destination,
                       const uint8_t *segment, uint32_t length,
                       sb_tcp_segment_t *out) {
-    if (segment == 0 || out == 0 || length < 20u) return -1;
+    if (segment == 0 || out == 0 || length < 20u || length > UINT16_MAX) return -1;
     const uint8_t data_offset_words = (uint8_t)(segment[12] >> 4);
     const uint32_t header_length = (uint32_t)data_offset_words * 4u;
     if (data_offset_words < 5u || header_length > length) return -1;
+    if (sb_tcp_checksum_ipv4(source, destination, segment, length) != 0u) return -1;
     out->source = source;
     out->destination = destination;
     out->source_port = rd16be(segment + 0u);
@@ -108,6 +110,7 @@ int sb_tcp_connection_open(sb_tcp_connection_t *connection,
                            uint32_t initial_sequence) {
     if (connection == 0 || local_port == 0u || remote_port == 0u ||
         remote_address == 0u || connection_registered(connection)) return -1;
+    if (register_connection(connection) != 0) return -1;
     *connection = (sb_tcp_connection_t){
         .state = SB_TCP_STATE_SYN_SENT,
         .active = 1u,
@@ -120,12 +123,13 @@ int sb_tcp_connection_open(sb_tcp_connection_t *connection,
         .receive_next = 0u,
         .receive_window = 65535u
     };
-    return register_connection(connection);
+    return 0;
 }
 
 int sb_tcp_connection_listen(sb_tcp_connection_t *connection,
                              uint32_t local_address, uint16_t local_port) {
     if (connection == 0 || local_port == 0u || connection_registered(connection)) return -1;
+    if (register_connection(connection) != 0) return -1;
     *connection = (sb_tcp_connection_t){
         .state = SB_TCP_STATE_LISTEN,
         .active = 1u,
@@ -133,7 +137,7 @@ int sb_tcp_connection_listen(sb_tcp_connection_t *connection,
         .local_address = local_address,
         .receive_window = 65535u
     };
-    return register_connection(connection);
+    return 0;
 }
 
 int sb_tcp_connection_input(sb_tcp_connection_t *connection,
