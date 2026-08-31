@@ -32,6 +32,10 @@ header_end:
 _start:
     cli
     cld
+    /* Early UART breadcrumbs: deliberately no TX-ready polling. */
+    movb $'A', %al
+    movw $0x3F8, %dx
+    outb %al, %dx
     movl %eax, multiboot_magic_saved
     movl %ebx, multiboot_info_saved
     movl $stack_top, %esp
@@ -75,6 +79,10 @@ _start:
     orl $0x80000000, %eax
     movl %eax, %cr0
 
+    movb $'B', %al
+    movw $0x3F8, %dx
+    outb %al, %dx
+
     lgdt gdt64_descriptor
     ljmp $0x18, $long_mode_entry
 
@@ -88,9 +96,16 @@ long_mode_entry:
     movw %ax, %fs
     movw %ax, %gs
 
+    movb $'C', %al
+    movw $0x3F8, %dx
+    outb %al, %dx
+
     movl multiboot_magic_saved, %edi
     movl multiboot_info_saved, %esi
     cld
+    movb $'D', %al
+    movw $0x3F8, %dx
+    outb %al, %dx
     call kmain
 
 .hang:
