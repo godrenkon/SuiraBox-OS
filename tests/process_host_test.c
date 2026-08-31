@@ -53,15 +53,16 @@ int main(void) {
 
     process_init();
     {
-        sb_process_t *parent=process_create(1000u); sb_process_t *child=process_create_child(parent,0x100000001ull); uint64_t code=0u;
-        assert(parent!=0&&child!=0); assert(child->parent_pid==parent->pid); assert(process_wait_child(parent,child->pid,&code)==0u);
+        const uint64_t child_pid=0x100000001ull;
+        sb_process_t *parent=process_create(1000u); sb_process_t *child=process_create_child(parent,child_pid); uint64_t code=0u;
+        assert(parent!=0&&child!=0); assert(child->parent_pid==parent->pid); assert(process_wait_child(parent,child_pid,&code)==0u);
         child->state=SB_PROCESS_EXITED; child->exit_code=0x1122334455667788ull;
-        assert(process_wait_child(parent,child->pid,&code)==child->pid); assert(code==0x1122334455667788ull);
-        assert(process_get(child->pid)==0); assert(process_count()==1u);
-        assert(process_wait_child(parent,child->pid,&code)==UINT64_MAX);
+        assert(process_wait_child(parent,child_pid,&code)==child_pid); assert(code==0x1122334455667788ull);
+        assert(process_get(child_pid)==0); assert(process_count()==1u);
+        assert(process_wait_child(parent,child_pid,&code)==UINT64_MAX);
         assert(process_create_child(parent,0u)==0);
         assert(process_create_child(0,1001u)==0);
-        assert(process_create(0x100000001ull)==0);
+        assert(process_create(child_pid)==0);
         process_destroy(parent); assert(process_count()==0u);
     }
     return 0;
