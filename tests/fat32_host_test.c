@@ -121,6 +121,10 @@ int main(void) {
     char buffer[64];
     static const char patch[] = "SBOS";
     static const char created_contents[] = "SuiraBox config journal record";
+    static uint8_t growth_payload[600u];
+    static uint8_t grown_contents[625u];
+
+    for (uint32_t i = 0u; i < sizeof(growth_payload); ++i) growth_payload[i] = (uint8_t)(i * 37u + 11u);
 
     build_image();
     if (!expect(sb_vfs_mount(&device, &mount) == SB_VFS_OK, "VFS mount failed")) return 1;
@@ -132,13 +136,16 @@ int main(void) {
     if (!expect(entry.first_cluster == 3u, "root entry cluster is wrong")) return 1;
     if (!expect(entry.file_size == 27u, "root entry file size is wrong")) return 1;
     if (!expect(entry.root_index == 1u, "root entry index was not recorded")) return 1;
+    if (!expect(entry.directory_cluster == fs.root_cluster && entry.entry_lba == 3u && entry.entry_offset == 32u,
+                "root entry location metadata is wrong")) return 1;
     if (!expect(sb_fat32_find_root_entry(&fs, "HELLO.TXT", &found) != 0,
                 "root filename lookup failed")) return 1;
     if (!expect(sb_fat32_find_root_entry(&fs, "hello.txt", &found) != 0,
                 "lowercase root filename lookup failed")) return 1;
     if (!expect(found.root_index == entry.root_index &&
                 found.first_cluster == entry.first_cluster &&
-                found.file_size == entry.file_size,
+                found.file_size == entry.file_size &&
+                found.entry_lba == entry.entry_lba && found.entry_offset == entry.entry_offset,
                 "root filename lookup returned inconsistent metadata")) return 1;
     if (!expect(sb_fat32_find_root_entry(&fs, "MISSING.BIN", &found) == 0,
                 "missing root filename was unexpectedly found")) return 1;
@@ -173,13 +180,33 @@ int main(void) {
     if (!expect(sb_fat32_read_file(&fs, &entry, entry.file_size, 1u, buffer) == 0,
                 "out-of-range read was accepted")) return 1;
 
+    if (!expect(sb_fat32_write_file_grow(&fs, &entry, 25u, sizeof(growth_payload), growth_payload) != 0,
+                "FAT32 growth write failed")) return 1;
+    if (!expect(entry.file_size == sizeof(grown_contents) && entry.first_cluster == 3u,
+                "grown entry metadata is wrong")) return 1;
+    if (!expect(get_le32(&disk[SECTOR_SIZE + 12u]) == 4u &&
+                get_le32(&disk[2u * SECTOR_SIZE + 12u]) == 4u &&
+                get_le32(&disk[SECTOR_SIZE + 16u]) == 0x0FFFFFFFu &&
+                get_le32(&disk[2u * SECTOR_SIZE + 16u]) == 0x0FFFFFFFu,
+                "grown FAT chain is wrong in one or both FAT copies")) return 1;
+    if (!expect(get_le32(&disk[3u * SECTOR_SIZE + 32u + 28u]) == sizeof(grown_contents),
+                "grown directory entry size was not persisted")) return 1;
+    memset(grown_contents, 0, sizeof(grown_contents));
+    if (!expect(sb_fat32_read_file(&fs, &entry, 0u, sizeof(grown_contents), grown_contents) != 0,
+                "grown file reread failed")) return 1;
+    if (!expect(memcmp(&grown_contents[25u], growth_payload, sizeof(growth_payload)) == 0,
+                "grown file payload is wrong")) return 1;
+    if (!expect(sb_fat32_find_root_entry(&fs, "HELLO.TXT", &found) != 0 &&
+                found.file_size == sizeof(grown_contents) && found.first_cluster == 3u,
+                "grown file was not rediscovered with committed metadata")) return 1;
+
     if (!expect(sb_fat32_create_root_file(&fs, "CONFIG.BIN", (uint32_t)(sizeof(created_contents) - 1u), &created) != 0,
                 "root file creation failed")) return 1;
     if (!expect(strcmp(created.name, "CONFIG.BIN") == 0 && created.root_index == 0u &&
-                created.first_cluster == 4u && created.file_size == sizeof(created_contents) - 1u,
+                created.first_cluster == 5u && created.file_size == sizeof(created_contents) - 1u,
                 "created root entry metadata is wrong")) return 1;
-    if (!expect(get_le32(&disk[SECTOR_SIZE + 16u]) == 0x0FFFFFFFu &&
-                get_le32(&disk[2u * SECTOR_SIZE + 16u]) == 0x0FFFFFFFu,
+    if (!expect(get_le32(&disk[SECTOR_SIZE + 20u]) == 0x0FFFFFFFu &&
+                get_le32(&disk[2u * SECTOR_SIZE + 20u]) == 0x0FFFFFFFu,
                 "new cluster was not marked EOC in both FAT copies")) return 1;
     if (!expect(sb_fat32_find_root_entry(&fs, "CONFIG.BIN", &found) != 0 &&
                 found.first_cluster == created.first_cluster && found.file_size == created.file_size,
