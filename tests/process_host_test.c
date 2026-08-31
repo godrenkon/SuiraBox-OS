@@ -62,8 +62,9 @@ int main(void) {
         assert(process_wait_child(parent,child_pid,&code)==UINT64_MAX);
         assert(process_create_child(parent,0u)==0);
         assert(process_create_child(0,1001u)==0);
-        assert(process_create(child_pid)==0);
-        process_destroy(parent); assert(process_count()==0u);
+        assert(process_create(child_pid)!=0);
+        process_destroy(parent); assert(process_count()==1u);
+        process_destroy(process_get(child_pid)); assert(process_count()==0u);
     }
     return 0;
 }
