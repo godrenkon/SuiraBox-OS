@@ -90,6 +90,8 @@ int main(void) {
     assert(user_scheduler_set_current(&p1, &t1) == 0);
     assert(user_scheduler_request_exit(&p1, &t1) == 0);
     t1.state = SB_PROCESS_EXITED;
+    assert(user_scheduler_current_thread() == &t1);
+    assert(user_scheduler_current_process() == &p1);
     assert(user_scheduler_exit_dispatch() == t2.kernel_resume_stack_pointer);
     assert(user_scheduler_current_thread() == &t2);
     assert(user_scheduler_current_process() == &p2);
