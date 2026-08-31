@@ -6,11 +6,6 @@
 
 #define SB_FAT32_ATTR_DIRECTORY 0x10u
 
-/* fat32.c retains a zero-fill scratch buffer in the growth transaction path. */
-#if defined(__GNUC__) || defined(__clang__)
-#define zeros __attribute__((unused)) zeros
-#endif
-
 typedef struct {
     sb_vfs_mount_t *mount;
     uint32_t bytes_per_sector;
