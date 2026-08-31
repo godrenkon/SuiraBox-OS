@@ -518,3 +518,5 @@ int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
     }
     return 1;
 }
+
+#include "fat32_path.inc"
