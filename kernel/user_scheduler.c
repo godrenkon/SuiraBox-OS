@@ -15,7 +15,7 @@ static int slot_matches(const sb_user_sched_slot_t *slot,const sb_process_t *pro
 static int thread_runnable(const sb_thread_t *thread){return thread!=0&&thread->user_context!=0&&thread->kernel_resume_stack_pointer!=0u&&(thread->state==SB_PROCESS_CREATED||thread->state==SB_PROCESS_RUNNING);}
 static int process_runnable(const sb_process_t *process){return process!=0&&(process->state==SB_PROCESS_CREATED||process->state==SB_PROCESS_RUNNING);}
 static void remove_slot_at(uint32_t index){if(index>=slot_count)return;for(uint32_t i=index+1u;i<slot_count;++i)slots[i-1u]=slots[i];slots[slot_count-1u].process=0;slots[slot_count-1u].thread=0;--slot_count;if(slot_count==0u){current_index=0u;quantum_ticks=0u;}else if(current_index>=slot_count){current_index=0u;}else if(index<current_index){--current_index;}}
-static void prune_dead_slots(void){uint32_t i=0u;while(i<slot_count){if(!thread_runnable(slots[i].thread)||!process_runnable(slots[i].process))remove_slot_at(i);else ++i;}}
+static void prune_dead_slots(void){uint32_t i=0u;while(i<slot_count){if((pending_exit_process!=slots[i].process||pending_exit_thread!=slots[i].thread)&&(!thread_runnable(slots[i].thread)||!process_runnable(slots[i].process)))remove_slot_at(i);else ++i;}}
 static int find_current_slot(sb_process_t *process,sb_thread_t *thread,uint32_t *index){if(process==0||thread==0||index==0||slot_count==0u||current_index>=slot_count)return -1;if(!slot_matches(&slots[current_index],process,thread))return -1;*index=current_index;return 0;}
 
 void user_scheduler_init(void){for(uint32_t i=0u;i<SB_MAX_USER_SCHED_THREADS;++i){slots[i].process=0;slots[i].thread=0;}slot_count=0u;current_index=0u;quantum_ticks=0u;pending_exit_process=0;pending_exit_thread=0;}
