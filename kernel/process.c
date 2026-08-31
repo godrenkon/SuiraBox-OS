@@ -173,6 +173,7 @@ int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exi
     if (runnable_thread_count(process) == 0u) {
         process->state = SB_PROCESS_EXITED;
         process->exit_code = exit_code;
+        sb_fs_release_process(process);
     }
     return 0;
 }
@@ -188,6 +189,7 @@ int process_terminate(sb_process_t *process, uint64_t exit_code) {
     }
     process->state = SB_PROCESS_EXITED;
     process->exit_code = exit_code;
+    sb_fs_release_process(process);
     return 0;
 }
 
