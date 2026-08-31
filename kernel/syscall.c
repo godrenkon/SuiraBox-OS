@@ -67,22 +67,7 @@ static int syscall_exit_current(uint64_t exit_code) {
     sb_process_t *process = user_scheduler_current_process();
     sb_thread_t *thread = user_scheduler_current_thread();
     if (process == 0 || thread == 0) return -1;
-    if (user_scheduler_request_exit(process, thread) != 0) return -1;
-    thread->state = SB_PROCESS_EXITED;
-    thread->runtime_ticks = 0u;
-    uint32_t runnable = 0u;
-    for (uint32_t i = 0u; i < process->thread_count; ++i) {
-        const sb_thread_t *candidate = &process->threads[i];
-        if (candidate != thread &&
-            (candidate->state == SB_PROCESS_CREATED || candidate->state == SB_PROCESS_RUNNING))
-            ++runnable;
-    }
-    if (runnable == 0u) {
-        process->state = SB_PROCESS_EXITED;
-        process->exit_code = exit_code;
-        sb_fs_release_process(process);
-    }
-    return 0;
+    return process_exit_thread(process, thread, exit_code);
 }
 
 static uint64_t syscall_wait_child(uint64_t child_pid, uint64_t user_exit_code) {
