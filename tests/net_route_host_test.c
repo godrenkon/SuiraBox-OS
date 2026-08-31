@@ -31,7 +31,9 @@ int main(void) {
     route = sb_net_route_lookup(sb_net_ipv4_make(192u, 168u, 1u, 99u));
     assert(route != 0 && route->metric == 10u);
     assert(sb_net_route_remove(sb_net_ipv4_make(192u, 168u, 1u, 99u), 24u, 0u, 0u) == 0);
-    assert(sb_net_route_count() == 3u);
+    assert(sb_net_route_count() == 2u);
+    route = sb_net_route_lookup(sb_net_ipv4_make(192u, 168u, 1u, 99u));
+    assert(route != 0 && route->prefix_length == 16u);
 
     assert(sb_net_arp_put(sb_net_ipv4_make(192u, 168u, 1u, 2u), mac, SB_NET_ARP_REACHABLE, 100u) == 0);
     assert(sb_net_arp_resolve(sb_net_ipv4_make(192u, 168u, 1u, 2u), resolved) == 0);
