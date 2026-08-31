@@ -171,6 +171,11 @@ int main(void) {
     if (!expect(buffer[sizeof(patch) - 1u] == 'o',
                 "post-write adjacent byte changed")) return 1;
 
+    if (!expect(sb_fat32_write_file_grow(&fs, &entry, 0u, sizeof(patch) - 1u, patch) != 0,
+                "in-place growth API write failed")) return 1;
+    if (!expect(entry.file_size == 27u,
+                "in-place growth API unexpectedly shrank file size")) return 1;
+
     if (!expect(sb_fat32_write_file(&fs, &entry, entry.file_size, 1u, patch) == 0,
                 "out-of-range write was accepted")) return 1;
     if (!expect(sb_fat32_write_file(&fs, &entry, entry.file_size - 1u, 2u, patch) == 0,
