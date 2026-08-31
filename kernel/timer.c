@@ -14,14 +14,20 @@
 #define SB_SCHED_QUANTUM_TICKS 10u
 #define SB_NET_POLL_INTERVAL 2u
 
-extern void sb_timer_irq_stub(void);
+#ifndef SB_TIMER_DEBUG
+#define SB_TIMER_DEBUG 0
+#endif
 
-struct __attribute__((packed)) debug_desc_ptr { uint16_t limit; uint64_t base; };
-struct __attribute__((packed)) debug_idt_entry { uint16_t offset_low; uint16_t selector; uint8_t ist; uint8_t type_attr; uint16_t offset_mid; uint32_t offset_high; uint32_t zero; };
+extern void sb_timer_irq_stub(void);
 
 static volatile uint64_t ticks;
 
 static void outb(uint16_t port, uint8_t value) { __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port)); }
+
+#if SB_TIMER_DEBUG
+struct __attribute__((packed)) debug_desc_ptr { uint16_t limit; uint64_t base; };
+struct __attribute__((packed)) debug_idt_entry { uint16_t offset_low; uint16_t selector; uint8_t ist; uint8_t type_attr; uint16_t offset_mid; uint32_t offset_high; uint32_t zero; };
+
 static void timer_debug_char(char c) { while (1) { uint8_t status; __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD)); if (status & 0x20u) break; } __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8)); }
 static void timer_debug(const char *s) { while (*s) timer_debug_char(*s++); }
 static void timer_debug_hex(uint64_t value) { static const char digits[]="0123456789ABCDEF"; char buf[16]; uint32_t n=0u; if(value==0u){timer_debug_char('0');return;} while(value!=0u&&n<sizeof(buf)){buf[n++]=digits[value&0xFu];value>>=4;} timer_debug("0x");while(n)timer_debug_char(buf[--n]); }
@@ -34,6 +40,10 @@ static void dump_interrupt_state(void) {
     timer_debug("[TIMER] CS=");timer_debug_hex(cs);timer_debug("\r\n"); timer_debug("[TIMER] GDTR base=");timer_debug_hex(gdtr.base);timer_debug(" limit=");timer_debug_hex(gdtr.limit);timer_debug("\r\n");
     timer_debug("[TIMER] IDTR base=");timer_debug_hex(idtr.base);timer_debug(" limit=");timer_debug_hex(idtr.limit);timer_debug("\r\n"); timer_debug("[TIMER] IDT32 selector=");timer_debug_hex(entry.selector);timer_debug(" type=");timer_debug_hex(entry.type_attr);timer_debug(" handler=");timer_debug_hex(handler);timer_debug("\r\n"); timer_debug("[TIMER] expected handler=");timer_debug_hex((uint64_t)(uintptr_t)&sb_timer_irq_stub);timer_debug("\r\n");
 }
+#else
+static inline void timer_debug(const char *s) { (void)s; }
+static inline void dump_interrupt_state(void) { }
+#endif
 
 static void pic_remap(void) {
     outb(0x21u,0xFFu);outb(0xA1u,0xFFu);outb(0x20u,0x11u);outb(0xA0u,0x11u);outb(0x21u,0x20u);outb(0xA1u,0x28u);outb(0x21u,0x04u);outb(0xA1u,0x02u);outb(0x21u,0x01u);outb(0xA0u,0x01u);outb(0x21u,0xFEu);outb(0xA1u,0xFFu);
