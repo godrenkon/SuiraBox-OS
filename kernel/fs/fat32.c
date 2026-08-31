@@ -560,6 +560,8 @@ int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
     return 1;
 }
 
+static int path_chain_tail(sb_fat32_t *fs, uint32_t first_cluster, uint32_t *tail);
+
 int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
                              uint32_t offset, uint32_t length, const void *buffer) {
     uint64_t end64;
