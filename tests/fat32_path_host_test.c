@@ -40,15 +40,18 @@ static void put32(uint8_t *p, uint32_t value) {
 static void set_short_name(uint8_t raw[11], const char *name) {
     for (uint32_t i = 0u; i < 11u; ++i) raw[i] = ' ';
     uint32_t pos = 0u;
-    for (uint32_t i = 0u; name[i] != '\0' && name[i] != '.'; ++i) raw[pos++] = name[i] >= 'a' && name[i] <= 'z' ? (uint8_t)(name[i] - 'a' + 'A') : (uint8_t)name[i];
+    for (uint32_t i = 0u; name[i] != '\0' && name[i] != '.'; ++i)
+        raw[pos++] = name[i] >= 'a' && name[i] <= 'z' ? (uint8_t)(name[i] - 'a' + 'A') : (uint8_t)name[i];
     const char *dot = strchr(name, '.');
     if (dot != 0) {
         pos = 8u;
-        for (uint32_t i = 1u; dot[i] != '\0' && i <= 3u; ++i) raw[pos++] = dot[i] >= 'a' && dot[i] <= 'z' ? (uint8_t)(dot[i] - 'a' + 'A') : (uint8_t)dot[i];
+        for (uint32_t i = 1u; dot[i] != '\0' && i <= 3u; ++i)
+            raw[pos++] = dot[i] >= 'a' && dot[i] <= 'z' ? (uint8_t)(dot[i] - 'a' + 'A') : (uint8_t)dot[i];
     }
 }
 
-static void write_dirent(uint32_t lba, uint32_t slot, const char *name, uint8_t attributes, uint32_t cluster, uint32_t size) {
+static void write_dirent(uint32_t lba, uint32_t slot, const char *name,
+                         uint8_t attributes, uint32_t cluster, uint32_t size) {
     uint8_t *entry = &image[lba * SECTOR_SIZE + slot * 32u];
     uint8_t raw[11];
     set_short_name(raw, name);
@@ -79,10 +82,9 @@ static void setup_image(void) {
     put32(&fat[12], 0x0FFFFFF8u);
     put32(&fat[16], 0x0FFFFFF8u);
 
-    write_dirent(3u, 0u, "DATA", SB_FAT32_ATTR_DIRECTORY, 3u, 0u);
-    write_dirent(3u, 1u, "ROOT.TXT", 0x20u, 4u, 4u);
-    write_dirent(4u, 0u, "HELLO.TXT", 0x20u, 5u, 5u);
-
+    write_dirent(2u, 0u, "DATA", SB_FAT32_ATTR_DIRECTORY, 3u, 0u);
+    write_dirent(2u, 1u, "ROOT.TXT", 0x20u, 4u, 4u);
+    write_dirent(3u, 0u, "HELLO.TXT", 0x20u, 5u, 5u);
     memcpy(&image[5u * SECTOR_SIZE], "hello", 5u);
 
     device = (sb_block_device_t){
@@ -109,7 +111,10 @@ int main(void) {
     assert(entry.first_cluster == 5u);
     assert((entry.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u);
     assert(sb_fat32_lookup_path(&fs, "/DATA/MISSING.TXT", &entry) == 0);
-    assert(sb_fat32_lookup_path(&fs, "/ROOT.TXT", &entry) == 0);
+    assert(sb_fat32_lookup_path(&fs, "/ROOT.TXT", &entry) == 1);
+    assert(strcmp(entry.name, "ROOT.TXT") == 0);
+    assert(sb_fat32_lookup_path(&fs, "/DATA", &entry) == 1);
+    assert((entry.attributes & SB_FAT32_ATTR_DIRECTORY) != 0u);
     assert(sb_vfs_unregister_mount(&mount) == SB_VFS_OK);
     return 0;
 }
