@@ -52,6 +52,10 @@ static int write_sector(sb_fat32_t *fs, uint64_t lba, const uint8_t *buffer) {
            sb_vfs_write_sectors(fs->mount, lba, 1u, buffer) == SB_VFS_OK;
 }
 
+static int valid_cluster(const sb_fat32_t *fs, uint32_t cluster) {
+    return fs != 0 && cluster >= 2u && cluster <= fs->max_cluster;
+}
+
 static int cluster_to_lba_checked(const sb_fat32_t *fs, uint32_t cluster, uint32_t *lba) {
     uint64_t value;
     if (fs == 0 || lba == 0 || !valid_cluster(fs, cluster)) return 0;
@@ -66,10 +70,6 @@ static uint32_t cluster_to_lba(const sb_fat32_t *fs, uint32_t cluster) {
     uint32_t lba = 0u;
     (void)cluster_to_lba_checked(fs, cluster, &lba);
     return lba;
-}
-
-static int valid_cluster(const sb_fat32_t *fs, uint32_t cluster) {
-    return fs != 0 && cluster >= 2u && cluster <= fs->max_cluster;
 }
 
 static int fat_read_entry(sb_fat32_t *fs, uint32_t cluster, uint32_t *value) {
@@ -562,62 +562,79 @@ int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
 
 int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
                              uint32_t offset, uint32_t length, const void *buffer) {
-    uint32_t cluster_size;
-    uint32_t old_count;
-    uint32_t new_count;
-    uint32_t additional;
-    uint32_t new_first = 0u;
-    uint32_t old_last = 0u;
-    uint32_t new_size;
-    sb_fat32_dirent_t pending;
-    int linked = 0;
+    uint64_t end64;
+    uint64_t cluster_size64;
+    uint64_t old_clusters64;
+    uint64_t new_clusters64;
+    uint32_t old_clusters;
+    uint32_t new_clusters;
+    uint32_t add_clusters;
+    uint32_t appended_first = 0u;
+    uint32_t tail = 0u;
+    uint8_t zeros[SB_FAT32_SECTOR_BYTES] = {0};
+    sb_fat32_dirent_t expanded;
 
     if (fs == 0 || entry == 0 || buffer == 0 ||
         (entry->attributes & SB_FAT32_ATTR_DIRECTORY) != 0u ||
-        fs->bytes_per_sector != SB_FAT32_SECTOR_BYTES || fs->sectors_per_cluster == 0u ||
-        offset > entry->file_size || length > UINT32_MAX - offset) return 0;
+        fs->bytes_per_sector != SB_FAT32_SECTOR_BYTES || fs->sectors_per_cluster == 0u) return 0;
+    if (offset > entry->file_size || length == 0u && offset > entry->file_size) return 0;
+    end64 = (uint64_t)offset + length;
+    if (end64 > UINT32_MAX) return 0;
     if (length == 0u) return 1;
-    if (fs->bytes_per_sector > UINT32_MAX / fs->sectors_per_cluster) return 0;
+    cluster_size64 = (uint64_t)fs->bytes_per_sector * fs->sectors_per_cluster;
+    if (cluster_size64 == 0u || cluster_size64 > UINT32_MAX) return 0;
 
-    new_size = offset + length;
-    cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
-    old_count = entry->file_size == 0u ? 0u : (entry->file_size + cluster_size - 1u) / cluster_size;
-    new_count = (new_size + cluster_size - 1u) / cluster_size;
-    if (new_count <= old_count) return sb_fat32_write_file(fs, entry, offset, length, buffer);
-    if (new_count > fs->max_cluster - 1u) return 0;
+    old_clusters64 = entry->file_size == 0u ? 0u : ((uint64_t)entry->file_size / cluster_size64) +
+                     ((entry->file_size % cluster_size64) != 0u ? 1u : 0u);
+    new_clusters64 = (end64 / cluster_size64) + ((end64 % cluster_size64) != 0u ? 1u : 0u);
+    if (old_clusters64 > UINT32_MAX || new_clusters64 > UINT32_MAX ||
+        old_clusters64 > new_clusters64) return 0;
+    old_clusters = (uint32_t)old_clusters64;
+    new_clusters = (uint32_t)new_clusters64;
+    if (new_clusters > fs->max_cluster - 1u) return 0;
+    add_clusters = new_clusters - old_clusters;
 
-    additional = new_count - old_count;
-    if (old_count != 0u) {
-        if (!valid_cluster(fs, entry->first_cluster)) return 0;
-        old_last = entry->first_cluster;
-        for (uint32_t i = 1u; i < old_count; ++i) {
-            uint32_t next;
-            if (!fat_next_cluster(fs, old_last, &next) || next >= SB_FAT32_EOC_MIN || !valid_cluster(fs, next)) return 0;
-            old_last = next;
+    expanded = *entry;
+    if (add_clusters != 0u) {
+        if (old_clusters == 0u) {
+            if (!allocate_cluster_chain(fs, add_clusters, &appended_first)) return 0;
+            expanded.first_cluster = appended_first;
+        } else {
+            if (!valid_cluster(fs, entry->first_cluster) || !path_chain_tail(fs, entry->first_cluster, &tail)) return 0;
+            if (!allocate_cluster_chain(fs, add_clusters, &appended_first)) return 0;
+            if (!fat_write_entry(fs, tail, appended_first)) {
+                (void)release_cluster_chain(fs, appended_first);
+                return 0;
+            }
         }
     }
+    expanded.file_size = (uint32_t)end64;
 
-    if (!allocate_cluster_chain(fs, additional, &new_first) || new_first == 0u) return 0;
-    if (old_count != 0u) {
-        if (!fat_write_entry(fs, old_last, new_first)) {
-            (void)release_cluster_chain(fs, new_first);
-            return 0;
+    if (offset > entry->file_size) {
+        uint32_t gap_offset = entry->file_size;
+        uint32_t gap = offset - entry->file_size;
+        while (gap > 0u) {
+            const uint32_t count = gap > sizeof(zeros) ? sizeof(zeros) : gap;
+            if (!sb_fat32_write_file(fs, &expanded, gap_offset, count, zeros)) goto rollback;
+            gap_offset += count;
+            gap -= count;
         }
-        linked = 1;
     }
+    if (!sb_fat32_write_file(fs, &expanded, offset, length, buffer)) goto rollback;
+    if (!update_dirent_metadata(fs, entry, expanded.first_cluster, expanded.file_size)) goto rollback;
 
-    pending = *entry;
-    pending.first_cluster = old_count == 0u ? new_first : entry->first_cluster;
-    pending.file_size = new_size;
-    if (!sb_fat32_write_file(fs, &pending, offset, length, buffer)) goto rollback;
-    if (!update_dirent_metadata(fs, entry, pending.first_cluster, pending.file_size)) goto rollback;
-
-    *entry = pending;
+    *entry = expanded;
     return 1;
 
 rollback:
-    if (linked) (void)fat_write_entry(fs, old_last, SB_FAT32_EOC_VALUE);
-    (void)release_cluster_chain(fs, new_first);
+    if (add_clusters != 0u) {
+        if (old_clusters == 0u) {
+            if (expanded.first_cluster != 0u) (void)release_cluster_chain(fs, expanded.first_cluster);
+        } else if (appended_first != 0u) {
+            if (tail != 0u) (void)fat_write_entry(fs, tail, SB_FAT32_EOC_VALUE);
+            (void)release_cluster_chain(fs, appended_first);
+        }
+    }
     return 0;
 }
 
