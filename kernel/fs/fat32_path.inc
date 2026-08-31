@@ -43,6 +43,54 @@ static int path_next_cluster(sb_fat32_t *fs, uint32_t cluster, uint32_t *next) {
     return 1;
 }
 
+static int path_write_dirent(sb_fat32_t *fs, const sb_fat32_dirent_t *entry) {
+    uint8_t sector[SB_FAT32_PATH_SECTOR_BYTES];
+    const uint32_t offset = entry != 0 ? entry->entry_offset : 0u;
+    if (fs == 0 || entry == 0 || entry->entry_lba >= fs->mount->total_sectors ||
+        offset + SB_FAT32_PATH_ENTRY_SIZE > fs->bytes_per_sector || !path_read_sector(fs, entry->entry_lba, sector)) return 0;
+    put_le16(&sector[offset + 20u], (uint16_t)(entry->first_cluster >> 16));
+    put_le16(&sector[offset + 26u], (uint16_t)entry->first_cluster);
+    put_le32(&sector[offset + 28u], entry->file_size);
+    return write_sector(fs, entry->entry_lba, sector);
+}
+
+static int path_chain_tail(sb_fat32_t *fs, uint32_t first_cluster, uint32_t *tail) {
+    uint32_t cluster = first_cluster;
+    uint32_t guard = 0u;
+    if (tail == 0 || !path_valid_cluster(fs, cluster)) return 0;
+    while (guard++ <= fs->max_cluster) {
+        uint32_t next;
+        if (!fat_next_cluster(fs, cluster, &next)) return 0;
+        if (next >= SB_FAT32_PATH_EOC_MIN) {
+            *tail = cluster;
+            return 1;
+        }
+        if (!path_valid_cluster(fs, next)) return 0;
+        cluster = next;
+    }
+    return 0;
+}
+
+static int path_format_83(const uint8_t *raw, char out[13]);
+static int path_name_equal(const char *a, const char *b);
+
+static int path_component(const char **cursor, char out[13]) {
+    const char *start;
+    uint32_t length = 0u;
+    if (cursor == 0 || *cursor == 0 || out == 0) return 0;
+    while (**cursor == '/') ++*cursor;
+    if (**cursor == '\0') return 0;
+    start = *cursor;
+    while ((*cursor)[length] != '\0' && (*cursor)[length] != '/') {
+        if (length >= 12u) return -1;
+        ++length;
+    }
+    for (uint32_t i = 0u; i < length; ++i) out[i] = start[i];
+    out[length] = '\0';
+    *cursor += length;
+    return 1;
+}
+
 static void path_format_83(const uint8_t *raw, char out[13]) {
     uint32_t pos = 0u;
     uint32_t i;
@@ -70,23 +118,6 @@ static int path_name_equal(const char *a, const char *b) {
         ++i;
     }
     return a[i] == '\0' && b[i] == '\0';
-}
-
-static int path_component(const char **cursor, char out[13]) {
-    const char *start;
-    uint32_t length = 0u;
-    if (cursor == 0 || *cursor == 0 || out == 0) return 0;
-    while (**cursor == '/') ++*cursor;
-    if (**cursor == '\0') return 0;
-    start = *cursor;
-    while ((*cursor)[length] != '\0' && (*cursor)[length] != '/') {
-        if (length >= 12u) return -1;
-        ++length;
-    }
-    for (uint32_t i = 0u; i < length; ++i) out[i] = start[i];
-    out[length] = '\0';
-    *cursor += length;
-    return 1;
 }
 
 static int path_find_in_directory(sb_fat32_t *fs, uint32_t directory_cluster,
@@ -156,6 +187,74 @@ int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *en
         }
         if ((current.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u || !path_valid_cluster(fs, current.first_cluster)) return 0;
         current_cluster = current.first_cluster;
+    }
+    return 0;
+}
+
+int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
+                             uint32_t offset, uint32_t length, const void *buffer) {
+    uint64_t end64;
+    uint64_t cluster_size64;
+    uint32_t old_clusters;
+    uint32_t new_clusters;
+    uint32_t add_clusters;
+    uint32_t appended_first = 0u;
+    uint32_t tail = 0u;
+    uint8_t zeros[SB_FAT32_PATH_SECTOR_BYTES] = {0};
+    sb_fat32_dirent_t expanded;
+
+    if (fs == 0 || entry == 0 || buffer == 0 ||
+        (entry->attributes & SB_FAT32_ATTR_DIRECTORY) != 0u) return 0;
+    if (length == 0u) return offset <= entry->file_size ? 1 : 0;
+    end64 = (uint64_t)offset + length;
+    if (end64 > UINT32_MAX) return 0;
+    cluster_size64 = (uint64_t)fs->bytes_per_sector * fs->sectors_per_cluster;
+    if (cluster_size64 == 0u || cluster_size64 > UINT32_MAX) return 0;
+
+    old_clusters = entry->file_size == 0u ? 0u : (uint32_t)(((uint64_t)entry->file_size + cluster_size64 - 1u) / cluster_size64);
+    new_clusters = (uint32_t)((end64 + cluster_size64 - 1u) / cluster_size64);
+    if (new_clusters < old_clusters) return 0;
+    add_clusters = new_clusters - old_clusters;
+
+    expanded = *entry;
+    if (add_clusters != 0u) {
+        if (old_clusters == 0u) {
+            if (!allocate_cluster_chain(fs, add_clusters, &appended_first)) return 0;
+            expanded.first_cluster = appended_first;
+        } else {
+            if (!path_chain_tail(fs, entry->first_cluster, &tail)) return 0;
+            if (!allocate_cluster_chain(fs, add_clusters, &appended_first)) return 0;
+            if (!fat_write_entry(fs, tail, appended_first)) {
+                (void)release_cluster_chain(fs, appended_first);
+                return 0;
+            }
+        }
+    }
+    expanded.file_size = (uint32_t)end64;
+
+    if (offset > entry->file_size) {
+        uint32_t gap_offset = entry->file_size;
+        uint32_t gap = offset - entry->file_size;
+        while (gap > 0u) {
+            const uint32_t count = gap > sizeof(zeros) ? sizeof(zeros) : gap;
+            if (!sb_fat32_write_file(fs, &expanded, gap_offset, count, zeros)) goto rollback;
+            gap_offset += count;
+            gap -= count;
+        }
+    }
+    if (!sb_fat32_write_file(fs, &expanded, offset, length, buffer)) goto rollback;
+    if (!path_write_dirent(fs, &expanded)) goto rollback;
+    *entry = expanded;
+    return 1;
+
+rollback:
+    if (add_clusters != 0u) {
+        if (old_clusters == 0u) {
+            if (expanded.first_cluster != 0u) (void)release_cluster_chain(fs, expanded.first_cluster);
+        } else if (appended_first != 0u) {
+            if (tail != 0u) (void)fat_write_entry(fs, tail, SB_FAT32_EOC_VALUE);
+            (void)release_cluster_chain(fs, appended_first);
+        }
     }
     return 0;
 }
