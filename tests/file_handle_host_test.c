@@ -16,6 +16,7 @@ static sb_fat32_t fake_fs;
 static sb_fat32_dirent_t hello_entry;
 static uint8_t fake_file[128];
 static uint32_t created_count;
+static uint32_t grow_count;
 static uintptr_t user_base = 0x8000000000ull;
 static size_t user_size = 0x20000u;
 
@@ -53,6 +54,7 @@ int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name, uint32_t file_si
     entry->attributes = 0x20u;
     entry->file_size = file_size;
     entry->first_cluster = 2u;
+    entry->directory_cluster = fake_fs.root_cluster;
     return 1;
 }
 
@@ -72,6 +74,20 @@ int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry, uint32_t
     assert((uintptr_t)buffer < user_base || (uintptr_t)buffer >= user_base + user_size);
     if (offset > sizeof(fake_file) || length > sizeof(fake_file) - offset) return 0;
     memcpy(fake_file + offset, buffer, length);
+    return 1;
+}
+
+int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry, uint32_t offset, uint32_t length, const void *buffer) {
+    assert(fs == &fake_fs);
+    assert(entry != 0);
+    assert(buffer != 0);
+    assert((uintptr_t)buffer < user_base || (uintptr_t)buffer >= user_base + user_size);
+    assert(offset <= entry->file_size);
+    assert(length <= sizeof(fake_file) - offset);
+    ++grow_count;
+    memcpy(fake_file + offset, buffer, length);
+    entry->file_size = offset + length > entry->file_size ? offset + length : entry->file_size;
+    hello_entry.file_size = entry->file_size;
     return 1;
 }
 
@@ -101,6 +117,7 @@ int main(void) {
     hello_entry.file_size = 5u;
     hello_entry.attributes = 0x20u;
     hello_entry.first_cluster = 2u;
+    hello_entry.directory_cluster = 2u;
     path = (char *)user_base + 0x1000u;
     buffer = (char *)user_base + 0x2000u;
     memcpy(path, "/HELLO.TXT", 10u);
@@ -131,10 +148,14 @@ int main(void) {
     memcpy(path, "/HELLO.TXT", 10u);
     const uint64_t fd1 = sb_fs_open(path, 10u, SB_FS_OPEN_READ | SB_FS_OPEN_WRITE, 0u);
     assert(fd1 == 0u);
-    assert(sb_fs_write(fd1, buffer, 0u) == 0u);
     memcpy(buffer, "world", 5u);
     assert(sb_fs_write(fd1, buffer, 5u) == 5u);
-    assert(memcmp(fake_file, "world", 5u) == 0);
+    assert(grow_count == 1u);
+    memcpy(buffer, "XYZ", 3u);
+    assert(sb_fs_write(fd1, buffer, 3u) == 3u);
+    assert(grow_count == 2u);
+    assert(hello_entry.file_size == 8u);
+    assert(memcmp(fake_file, "worldXYZ", 8u) == 0);
     assert(sb_fs_close(fd1) == 0u);
 
     memcpy(path, "/NEW.TXT", 8u);
