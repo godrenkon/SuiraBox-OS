@@ -119,7 +119,8 @@ int main(void) {
     assert(t2.state == SB_PROCESS_RUNNING);
     assert(p1.state == SB_PROCESS_RUNNING);
     assert(p2.state == SB_PROCESS_RUNNING);
-    assert(gdt_calls == 0);
+    assert(process_activate_calls == 2);
+    assert(gdt_calls == 1);
 
     setup_thread(&p1, &t1, &c1, 31u, 0x70000u);
     setup_thread(&p2, &t2, &c2, 32u, 0x80000u);
