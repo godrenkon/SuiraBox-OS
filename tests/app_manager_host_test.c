@@ -49,6 +49,7 @@ int main(void){
     current_parent=0;
     sb_app_manager_init(0x2000u);
     processes[0]=(sb_process_t){.pid=0xABCDEF1234567890ull,.state=SB_PROCESS_RUNNING};
+    process_count_value=1u;
     current_parent=&processes[0];
     assert(sb_app_launch(SB_APP_SETTINGS)==0);
     assert(process_count_value==2u);
