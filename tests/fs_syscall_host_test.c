@@ -1,10 +1,10 @@
-#define _GNU_SOURCE
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 #include "../kernel/fs_syscall.h"
+#include "../kernel/syscall.h"
 #include "../kernel/process.h"
 #include "../kernel/mm/address_space.h"
 #include "../kernel/fs/fat32.h"
@@ -56,7 +56,9 @@ int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry, uint32_t 
     return 1;
 }
 int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry, uint32_t offset, uint32_t size, const void *buffer) {
+    const uintptr_t address = (uintptr_t)buffer;
     if (fs != &fake_fs || entry == 0 || buffer == 0 || offset > sizeof(fake_file) || size > sizeof(fake_file) - offset) return 0;
+    assert(address < user_base || address >= user_base + user_size);
     memcpy(fake_file + offset, buffer, size);
     return 1;
 }
