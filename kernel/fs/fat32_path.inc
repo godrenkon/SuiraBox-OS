@@ -43,17 +43,6 @@ static int path_next_cluster(sb_fat32_t *fs, uint32_t cluster, uint32_t *next) {
     return 1;
 }
 
-static int path_write_dirent(sb_fat32_t *fs, const sb_fat32_dirent_t *entry) {
-    uint8_t sector[SB_FAT32_PATH_SECTOR_BYTES];
-    const uint32_t offset = entry != 0 ? entry->entry_offset : 0u;
-    if (fs == 0 || entry == 0 || entry->entry_lba >= fs->mount->total_sectors ||
-        offset + SB_FAT32_PATH_ENTRY_SIZE > fs->bytes_per_sector || !path_read_sector(fs, entry->entry_lba, sector)) return 0;
-    put_le16(&sector[offset + 20u], (uint16_t)(entry->first_cluster >> 16));
-    put_le16(&sector[offset + 26u], (uint16_t)entry->first_cluster);
-    put_le32(&sector[offset + 28u], entry->file_size);
-    return write_sector(fs, entry->entry_lba, sector);
-}
-
 static int path_chain_tail(sb_fat32_t *fs, uint32_t first_cluster, uint32_t *tail) {
     uint32_t cluster = first_cluster;
     uint32_t guard = 0u;
