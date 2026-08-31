@@ -98,10 +98,35 @@ int main(void) {
     assert(p2.state == SB_PROCESS_RUNNING);
     assert(process_activate_calls == 1 && gdt_calls == 1);
 
+    /* A failed exit target setup must not remove the exiting thread's slot. */
     setup_thread(&p1, &t1, &c1, 21u, 0x50000u);
     setup_thread(&p2, &t2, &c2, 22u, 0x60000u);
     iret->cs = 0x23u;
     user_scheduler_init();
+    process_activate_calls = 0;
+    gdt_calls = 0;
+    fail_next_gdt = 1;
+    assert(user_scheduler_add(&p1, &t1) == 0);
+    assert(user_scheduler_add(&p2, &t2) == 0);
+    assert(user_scheduler_set_current(&p1, &t1) == 0);
+    assert(user_scheduler_request_exit(&p1, &t1) == 0);
+    t1.state = SB_PROCESS_EXITED;
+    assert(user_scheduler_exit_dispatch() == 0u);
+    assert(user_scheduler_count() == 2u);
+    assert(user_scheduler_current_thread() == &t1);
+    assert(user_scheduler_current_process() == &p1);
+    assert(t1.state == SB_PROCESS_EXITED);
+    assert(t2.state == SB_PROCESS_RUNNING);
+    assert(p1.state == SB_PROCESS_RUNNING);
+    assert(p2.state == SB_PROCESS_RUNNING);
+    assert(gdt_calls == 0);
+
+    setup_thread(&p1, &t1, &c1, 31u, 0x70000u);
+    setup_thread(&p2, &t2, &c2, 32u, 0x80000u);
+    iret->cs = 0x23u;
+    user_scheduler_init();
+    process_activate_calls = 0;
+    gdt_calls = 0;
     assert(user_scheduler_add(&p1, &t1) == 0);
     assert(user_scheduler_add(&p2, &t2) == 0);
     assert(user_scheduler_set_current(&p1, &t1) == 0);
