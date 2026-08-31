@@ -86,9 +86,17 @@ int sb_desktop_shell_toggle_launcher(sb_desktop_shell_t *shell) {
 }
 
 int sb_desktop_shell_key(sb_desktop_shell_t *shell, uint8_t key) {
+    const char *activated_id = 0;
     if (shell == 0 || shell->initialized == 0u || shell->launcher.open == 0u) return -1;
     if (key == 0x48u) return sb_launcher_move_selection(&shell->launcher, -1);
     if (key == 0x50u) return sb_launcher_move_selection(&shell->launcher, 1);
+    if (key == 0x1Cu) {
+        if (sb_launcher_activate(&shell->launcher, &activated_id) != 0) return -1;
+#if __STDC_HOSTED__ == 0
+        request_launcher_app(activated_id);
+#endif
+        return 0;
+    }
     return -1;
 }
 
