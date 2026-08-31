@@ -60,7 +60,7 @@ static int path_chain_tail(sb_fat32_t *fs, uint32_t first_cluster, uint32_t *tai
     return 0;
 }
 
-static int path_format_83(const uint8_t *raw, char out[13]);
+static void path_format_83(const uint8_t *raw, char out[13]);
 static int path_name_equal(const char *a, const char *b);
 
 static int path_component(const char **cursor, char out[13]) {
