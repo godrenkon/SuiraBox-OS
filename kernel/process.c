@@ -4,6 +4,12 @@
 #include "user_scheduler.h"
 #include "fs_syscall.h"
 
+extern void sb_fs_release_process(void *process) __attribute__((weak));
+
+static void release_process_filesystem(void *process) {
+    if (sb_fs_release_process != 0) sb_fs_release_process(process);
+}
+
 static sb_process_t processes[SB_MAX_PROCESSES];
 static uint32_t process_count_value;
 
@@ -173,7 +179,7 @@ int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exi
     if (runnable_thread_count(process) == 0u) {
         process->state = SB_PROCESS_EXITED;
         process->exit_code = exit_code;
-        sb_fs_release_process(process);
+        release_process_filesystem(process);
     }
     return 0;
 }
@@ -189,7 +195,7 @@ int process_terminate(sb_process_t *process, uint64_t exit_code) {
     }
     process->state = SB_PROCESS_EXITED;
     process->exit_code = exit_code;
-    sb_fs_release_process(process);
+    release_process_filesystem(process);
     return 0;
 }
 
@@ -225,7 +231,7 @@ int process_activate(sb_process_t *process) {
 
 void process_destroy(sb_process_t *process) {
     if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
-    sb_fs_release_process(process);
+    release_process_filesystem(process);
     for (uint32_t i = 0u; i < process->thread_count; ++i) {
         (void)user_scheduler_remove(process, &process->threads[i]);
         if (process->threads[i].kernel_stack_base != 0u)
