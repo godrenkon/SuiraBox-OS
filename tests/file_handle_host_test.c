@@ -121,11 +121,12 @@ int main(void) {
     assert(created_count == 1u);
     assert(sb_fs_close(0u) == 0u);
 
+    current = &process_a;
+    assert(sb_fs_open(path, 8u, SB_FS_OPEN_READ | SB_FS_OPEN_WRITE, 0u) == 0u);
+    sb_fs_release_process(&process_a);
     current = &process_b;
-    memcpy(path, "/HELLO.TXT", 10u);
     assert(sb_fs_read(0u, buffer, 1u) == UINT64_MAX);
     assert(sb_fs_close(0u) == UINT64_MAX);
-    assert(sb_fs_release_process(&process_a), 1);
 
     munmap(mapped, user_size);
     return 0;
