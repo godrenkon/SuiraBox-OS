@@ -133,10 +133,10 @@ static uint64_t write_root(const char *user_name, uint32_t name_length,
     if (!sb_fat32_find_root_entry(fs, name, &entry)) return UINT64_MAX;
     if (length == 0u) return offset <= entry.file_size ? 0u : UINT64_MAX;
     if (validate_user(user_buffer, length, 0u) != 0) return UINT64_MAX;
-    if (offset > entry.file_size || length > entry.file_size - offset) return UINT64_MAX;
+    if (offset > entry.file_size || length > UINT32_MAX - offset) return UINT64_MAX;
     while (remaining > 0u) {
         const uint32_t count = remaining > SB_FS_IO_CHUNK ? SB_FS_IO_CHUNK : remaining;
-        if (copy_from_user(chunk, source, count) != 0 || !sb_fat32_write_file(fs, &entry, current_offset, count, chunk)) return UINT64_MAX;
+        if (copy_from_user(chunk, source, count) != 0 || !sb_fat32_write_file_grow(fs, &entry, current_offset, count, chunk)) return UINT64_MAX;
         source += count;
         current_offset += count;
         remaining -= count;
@@ -243,11 +243,11 @@ static uint64_t write_file_handle(uint64_t fd, const void *user_buffer, uint32_t
     if (length == 0u) return 0u;
     if (validate_user(user_buffer, length, 0u) != 0) return UINT64_MAX;
     offset = handle->offset;
-    if (offset > handle->entry.file_size || length > handle->entry.file_size - offset) return UINT64_MAX;
+    if (offset > handle->entry.file_size || length > UINT32_MAX - offset) return UINT64_MAX;
     remaining = length;
     while (remaining > 0u) {
         const uint32_t count = remaining > SB_FS_IO_CHUNK ? SB_FS_IO_CHUNK : remaining;
-        if (copy_from_user(chunk, source, count) != 0 || !sb_fat32_write_file(fs, &handle->entry, offset, count, chunk)) return UINT64_MAX;
+        if (copy_from_user(chunk, source, count) != 0 || !sb_fat32_write_file_grow(fs, &handle->entry, offset, count, chunk)) return UINT64_MAX;
         source += count;
         offset += count;
         remaining -= count;
