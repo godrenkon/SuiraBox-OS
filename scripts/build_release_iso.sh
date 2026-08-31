@@ -12,10 +12,13 @@ make -f GNUmakefile \
     USER_CFLAGS="$USER_CFLAGS_RELEASE" \
     release-iso
 
-# Release artifacts must not retain development symbol tables. Strip the
-# final ELF files, then rebuild the ISO so the shipped payload is stripped too.
+# Release artifacts must not retain development symbol tables. Strip both
+# the build outputs and the copies already staged into the release tree,
+# then rebuild the ISO so the shipped payload is stripped as well.
 strip --strip-all build/suirabox-release.elf
 strip --strip-all build/sb-desktop.elf
+strip --strip-all build/release-iso/boot/suirabox.elf
+strip --strip-all build/release-iso/boot/sb-desktop.elf
 rm -f build/suirabox-release.iso
 grub-mkrescue -o build/suirabox-release.iso build/release-iso >/dev/null
 
