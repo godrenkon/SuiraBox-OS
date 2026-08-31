@@ -2,7 +2,10 @@ name: SuiraBox CI
 
 on:
   push:
+    branches: [ main, master, 'feat/**' ]
   pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
 
 jobs:
   kernel:
@@ -13,6 +16,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
+          sudo apt-get update
           sudo apt-get install -y \
             gcc \
             binutils \
@@ -35,10 +39,11 @@ jobs:
         run: python3 tools/check_core_footprint.py
 
       - name: Validate Multiboot2 image
-        run: make check
+        run: python3 tools/check_multiboot2.py build/suirabox.elf build/suirabox.iso
 
       - name: Test filesystem syscall boundary
         run: |
+          set -e
           gcc -Wall -Wextra -Werror -std=c11 -D_GNU_SOURCE \
             -Ikernel -Ikernel/fs -Ikernel/mm -Ikernel/arch/x86_64 \
             tests/fs_syscall_host_test.c kernel/fs_syscall.c \
@@ -52,16 +57,21 @@ jobs:
       - name: Boot smoke test
         run: |
           set -o pipefail
+          rm -f qemu.log qemu-debugcon.log
           timeout 20s qemu-system-x86_64 \
             -m 256M \
             -cdrom build/suirabox.iso \
             -drive file=build/test-disk.img,format=raw,if=ide \
             -nic user,model=e1000 \
             -serial stdio \
+            -debugcon file:qemu-debugcon.log \
+            -global isa-debugcon.iobase=0x402 \
             -display none \
             -no-reboot \
             -no-shutdown \
             2>&1 | tee qemu.log || test ${PIPESTATUS[0]} -eq 124
+          cat qemu-debugcon.log
+          grep -F "ABCD" qemu-debugcon.log
           grep -F "Kernel initialized." qemu.log
           grep -F "PCI: scanning bus/device/function space..." qemu.log
           grep -F "PCI: scan complete." qemu.log
@@ -112,6 +122,7 @@ jobs:
             build/suirabox.elf
             build/test-disk.img
             qemu.log
+            qemu-debugcon.log
             qemu-gui.log
             qemu-gui-host.log
           if-no-files-found: warn
