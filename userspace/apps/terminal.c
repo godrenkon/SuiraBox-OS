@@ -42,17 +42,53 @@ static uint64_t hex_glyph(uint8_t v) { return glyph_for(v<10u?(char)('0'+v):(cha
 static void draw_hex(uint32_t x,uint32_t y,uint64_t value) { for(int32_t i=15;i>=0;--i){(void)sb_display_glyph(x,y,hex_glyph((uint8_t)(value>>((uint32_t)i*4u))),0xBFD8FFu);x+=10u;} }
 static void clear_terminal(void) { (void)sb_display_clear(0x10151Bu); draw_text(24u,24u,"SB TERMINAL",0xE9F2FFu); draw_text(24u,56u,"READY",0x7FA8D8u); }
 
+static void show_file_data(const char *path, uint32_t path_length) {
+    char data[128];
+    uint64_t fd = sb_fs_open(path, path_length, SB_FS_OPEN_READ, 0u);
+    if (fd == UINT64_MAX) { draw_text(24u,100u,"CAT ERROR",0xFF8080u); return; }
+    draw_text(24u,100u,"DATA",0xBFD8FFu);
+    uint32_t total = 0u;
+    for (;;) {
+        const uint64_t r = sb_fs_read(fd, data, sizeof(data));
+        if (r == UINT64_MAX) { draw_text(24u,128u,"READ ERROR",0xFF8080u); break; }
+        if (r == 0u) break;
+        for (uint32_t i=0u; i<(uint32_t)r && total<32u; ++i,++total) {
+            draw_char(24u+(total%8u)*90u,128u+(total/8u)*28u,data[i],0xBFD8FFu);
+        }
+        if (total >= 32u) break;
+    }
+    (void)sb_fs_close(fd);
+}
+
 static void run_command(const char *line) {
     if(line==0)return;
     (void)sb_display_rect(24u,88u,720u,380u,0x10151Bu);
     if(line[0]=='H'&&line[1]=='E'&&line[2]=='L'&&line[3]=='P'&&line[4]=='\0') draw_text(24u,100u,"HELP LS TICKS PID CLEAR CREATE WRITE CAT EXIT",0xBFD8FFu);
-    else if(line[0]=='L'&&line[1]=='S'&&line[2]=='\0') { char names[TERM_MAX_OUTPUT]; uint64_t n=sb_fs_list_root(names,sizeof(names)); if(n==UINT64_MAX) draw_text(24u,100u,"LS ERROR",0xFF8080u); else {uint32_t off=0u,row=0u;while(off<(uint32_t)n&&row<12u){uint32_t len=0u;while(off+len<(uint32_t)n&&names[off+len]!='\0')++len;if(len){for(uint32_t i=0u;i<len&&i<60u;++i)draw_char(24u+i*10u,100u+row*28u,names[off+i],0xBFD8FFu);++row;}off+=len+1u;}}}
+    else if(line[0]=='L'&&line[1]=='S'&&line[2]=='\0') {
+        char names[TERM_MAX_OUTPUT];
+        uint64_t n=sb_fs_list_root(names,sizeof(names));
+        if(n==UINT64_MAX) draw_text(24u,100u,"LS ERROR",0xFF8080u);
+        else {uint32_t off=0u,row=0u;while(off<(uint32_t)n&&row<12u){uint32_t len=0u;while(off+len<(uint32_t)n&&names[off+len]!='\0')++len;if(len){for(uint32_t i=0u;i<len&&i<60u;++i)draw_char(24u+i*10u,100u+row*28u,names[off+i],0xBFD8FFu);++row;}off+=len+1u;}}
+    }
     else if(line[0]=='T'&&line[1]=='I'&&line[2]=='C'&&line[3]=='K'&&line[4]=='S'&&line[5]=='\0'){draw_text(24u,100u,"TICKS",0xBFD8FFu);draw_hex(96u,100u,sb_get_ticks());}
     else if(line[0]=='P'&&line[1]=='I'&&line[2]=='D'&&line[3]=='\0'){draw_text(24u,100u,"PID",0xBFD8FFu);draw_hex(96u,100u,sb_process_id());}
     else if(line[0]=='C'&&line[1]=='L'&&line[2]=='E'&&line[3]=='A'&&line[4]=='R'&&line[5]=='\0')clear_terminal();
-    else if(line[0]=='C'&&line[1]=='R'&&line[2]=='E'&&line[3]=='A'&&line[4]=='T'&&line[5]=='E'&&line[6]=='\0'){const char name[]="SBCMD.TXT";const uint64_t r=sb_fs_create_root(name,9u,128u);draw_text(24u,100u,r==0u?"CREATED":"CREATE ERROR",r==0u?0x80D8A0u:0xFF8080u);}
-    else if(line[0]=='W'&&line[1]=='R'&&line[2]=='I'&&line[3]=='T'&&line[4]=='E'&&line[5]=='\0'){const char name[]="SBCMD.TXT";const char data[]="SB OK";const uint64_t r=sb_fs_write_root(name,9u,data,5u,0u);draw_text(24u,100u,r==5u?"WRITTEN":"WRITE ERROR",r==5u?0x80D8A0u:0xFF8080u);}
-    else if(line[0]=='C'&&line[1]=='A'&&line[2]=='T'&&line[3]=='\0'){const char name[]="SBCMD.TXT";char data[32]={0};const uint64_t r=sb_fs_read_root(name,9u,data,sizeof(data),0u);if(r==UINT64_MAX)draw_text(24u,100u,"CAT ERROR",0xFF8080u);else{draw_text(24u,100u,"DATA",0xBFD8FFu);for(uint32_t i=0u;i<(uint32_t)r&&i<16u;++i){(void)sb_display_glyph(74u+i*20u,100u,hex_glyph(((uint8_t)data[i])>>4),0xBFD8FFu);(void)sb_display_glyph(84u+i*20u,100u,hex_glyph(((uint8_t)data[i])&0x0Fu),0xBFD8FFu);}}}
+    else if(line[0]=='C'&&line[1]=='R'&&line[2]=='E'&&line[3]=='A'&&line[4]=='T'&&line[5]=='E'&&line[6]=='\0'){
+        const char path[]="/SBCMD.TXT";
+        const uint64_t fd=sb_fs_open(path,10u,SB_FS_OPEN_READ|SB_FS_OPEN_WRITE|SB_FS_OPEN_CREATE,128u);
+        if(fd==UINT64_MAX) draw_text(24u,100u,"CREATE ERROR",0xFF8080u);
+        else { (void)sb_fs_close(fd); draw_text(24u,100u,"CREATED",0x80D8A0u); }
+    }
+    else if(line[0]=='W'&&line[1]=='R'&&line[2]=='I'&&line[3]=='T'&&line[4]=='E'&&line[5]=='\0'){
+        const char path[]="/SBCMD.TXT", data[]="SB OK";
+        const uint64_t fd=sb_fs_open(path,10u,SB_FS_OPEN_WRITE,0u);
+        if(fd==UINT64_MAX) draw_text(24u,100u,"OPEN ERROR",0xFF8080u);
+        else { const uint64_t r=sb_fs_write(fd,data,5u); (void)sb_fs_close(fd); draw_text(24u,100u,r==5u?"WRITTEN":"WRITE ERROR",r==5u?0x80D8A0u:0xFF8080u); }
+    }
+    else if(line[0]=='C'&&line[1]=='A'&&line[2]=='T'&&line[3]=='\0'){
+        const char path[]="/SBCMD.TXT";
+        show_file_data(path,10u);
+    }
     else draw_text(24u,100u,"UNKNOWN COMMAND",0xFFB070u);
 }
 
