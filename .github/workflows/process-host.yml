@@ -16,7 +16,7 @@ jobs:
           mkdir -p build
           gcc -Wall -Wextra -Werror \
             -Ikernel -Ikernel/mm -Ikernel/arch/x86_64 \
-            tests/process_host_test.c kernel/process.c \
+            tests/process_host_test.c tests/process_host_fs_stub.c kernel/process.c \
             -o build/process-host-test
 
       - name: Run process host test
