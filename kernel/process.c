@@ -166,7 +166,10 @@ int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exi
     thread->state = SB_PROCESS_EXITED;
     thread->runtime_ticks = 0u;
     if (user_scheduler_current_process() == process && user_scheduler_current_thread() == thread) {
-        if (user_scheduler_request_exit(process, thread) != 0) return -1;
+        if (user_scheduler_request_exit(process, thread) != 0) {
+            thread->state = SB_PROCESS_RUNNING;
+            return -1;
+        }
     } else {
         (void)user_scheduler_remove(process, thread);
     }
