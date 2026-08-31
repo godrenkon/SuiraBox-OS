@@ -7,6 +7,8 @@ static uint8_t page_used[64];
 static int rebind_calls;
 static sb_thread_t *rebind_old;
 static sb_thread_t *rebind_new;
+static sb_process_t *current_process_for_test;
+static sb_thread_t *current_thread_for_test;
 
 int address_space_create(sb_address_space_t *space) { if (space == 0) return -1; space->pml4_physical = 1u; return 0; }
 void address_space_destroy(sb_address_space_t *space) { if (space != 0) space->pml4_physical = 0u; }
@@ -16,8 +18,8 @@ void pmm_free_page(void *page) { for(uint32_t i=0u;i<64u;++i) if((void*)pages[i]
 int user_scheduler_remove(sb_process_t *process, sb_thread_t *thread){(void)process;(void)thread;return 0;}
 int user_scheduler_rebind_thread(sb_process_t *process,sb_thread_t *old_thread,sb_thread_t *new_thread){(void)process;rebind_old=old_thread;rebind_new=new_thread;++rebind_calls;return 0;}
 int user_scheduler_request_exit(sb_process_t *process,sb_thread_t *thread){(void)process;(void)thread;return -1;}
-sb_process_t *user_scheduler_current_process(void){return 0;}
-sb_thread_t *user_scheduler_current_thread(void){return 0;}
+sb_process_t *user_scheduler_current_process(void){return current_process_for_test;}
+sb_thread_t *user_scheduler_current_thread(void){return current_thread_for_test;}
 int sb_user_context_init(sb_user_context_t *context,uint64_t entry_point,uint64_t user_stack_top){(void)entry_point;(void)user_stack_top;if(context!=0)*context=(sb_user_context_t){0};return 0;}
 int sb_user_context_validate(const sb_user_context_t *context){return context!=0?0:-1;}
 void sb_fs_release_process(void *process){(void)process;}
@@ -50,6 +52,25 @@ int main(void) {
         assert(a!=0&&b!=0); assert(process_terminate(&terminated,99u)==0); assert(terminated.state==SB_PROCESS_EXITED&&terminated.exit_code==99u);
         assert(a->state==SB_PROCESS_EXITED&&b->state==SB_PROCESS_EXITED); assert(process_terminate(&terminated,100u)!=0);
         assert(process_destroy_thread(&terminated,&terminated.threads[0])==0); assert(process_destroy_thread(&terminated,&terminated.threads[0])==0);
+    }
+
+    {
+        sb_process_t rollback={0};
+        sb_thread_t *thread;
+        rollback.state=SB_PROCESS_RUNNING;
+        thread=process_create_thread(&rollback,30u,30u);
+        assert(thread!=0);
+        thread->state=SB_PROCESS_RUNNING;
+        thread->runtime_ticks=77u;
+        current_process_for_test=&rollback;
+        current_thread_for_test=thread;
+        assert(process_exit_thread(&rollback,thread,55u)!=0);
+        assert(thread->state==SB_PROCESS_RUNNING);
+        assert(thread->runtime_ticks==77u);
+        assert(rollback.state==SB_PROCESS_RUNNING);
+        current_process_for_test=0;
+        current_thread_for_test=0;
+        assert(process_destroy_thread(&rollback,thread)==0);
     }
 
     process_init();
