@@ -163,11 +163,14 @@ int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exi
     if (!thread_belongs_to_process(process, thread) || process->state == SB_PROCESS_UNUSED ||
         process->state == SB_PROCESS_EXITED || thread->state == SB_PROCESS_UNUSED ||
         thread->state == SB_PROCESS_EXITED) return -1;
+    const sb_process_state_t old_state = thread->state;
+    const uint64_t old_runtime_ticks = thread->runtime_ticks;
     thread->state = SB_PROCESS_EXITED;
     thread->runtime_ticks = 0u;
     if (user_scheduler_current_process() == process && user_scheduler_current_thread() == thread) {
         if (user_scheduler_request_exit(process, thread) != 0) {
-            thread->state = SB_PROCESS_RUNNING;
+            thread->state = old_state;
+            thread->runtime_ticks = old_runtime_ticks;
             return -1;
         }
     } else {
