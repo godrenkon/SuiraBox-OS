@@ -163,24 +163,28 @@ int process_exit_thread(sb_process_t *process, sb_thread_t *thread, uint64_t exi
     if (!thread_belongs_to_process(process, thread) || process->state == SB_PROCESS_UNUSED ||
         process->state == SB_PROCESS_EXITED || thread->state == SB_PROCESS_UNUSED ||
         thread->state == SB_PROCESS_EXITED) return -1;
+
+    sb_process_t *current_process = user_scheduler_current_process();
+    sb_thread_t *current_thread = current_process == process ? user_scheduler_current_thread() : 0;
+    const int is_current_thread = current_process == process && current_thread == thread;
     const sb_process_state_t old_state = thread->state;
     const uint64_t old_runtime_ticks = thread->runtime_ticks;
+
+    /* Request the context switch while the thread is still runnable. Once its
+     * state becomes EXITED, user_scheduler_current_*() may legitimately prune it. */
+    if (is_current_thread && user_scheduler_request_exit(process, thread) != 0) return -1;
+
     thread->state = SB_PROCESS_EXITED;
     thread->runtime_ticks = 0u;
-    if (user_scheduler_current_process() == process && user_scheduler_current_thread() == thread) {
-        if (user_scheduler_request_exit(process, thread) != 0) {
-            thread->state = old_state;
-            thread->runtime_ticks = old_runtime_ticks;
-            return -1;
-        }
-    } else {
-        (void)user_scheduler_remove(process, thread);
-    }
+    if (!is_current_thread) (void)user_scheduler_remove(process, thread);
+
     if (runnable_thread_count(process) == 0u) {
         process->state = SB_PROCESS_EXITED;
         process->exit_code = exit_code;
         sb_fs_release_process(process);
     }
+    (void)old_state;
+    (void)old_runtime_ticks;
     return 0;
 }
 
