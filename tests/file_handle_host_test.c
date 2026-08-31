@@ -36,6 +36,15 @@ int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t
     return 1;
 }
 
+int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *entry) {
+    if (fs != &fake_fs || path == 0 || entry == 0) return 0;
+    if (strcmp(path, "/HELLO.TXT") == 0 || strcmp(path, "/DATA/HELLO.TXT") == 0) {
+        *entry = hello_entry;
+        return 1;
+    }
+    return 0;
+}
+
 int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name, uint32_t file_size, sb_fat32_dirent_t *entry) {
     if (fs != &fake_fs || name == 0 || entry == 0 || strcmp(name, "NEW.TXT") != 0) return 0;
     ++created_count;
@@ -111,6 +120,13 @@ int main(void) {
     assert(sb_fs_write(fd0, buffer, 0u) == UINT64_MAX);
     assert(sb_fs_close(fd0) == 0u);
     assert(sb_fs_close(fd0) == UINT64_MAX);
+
+    memcpy(path, "/DATA/HELLO.TXT", 15u);
+    const uint64_t nested_fd = sb_fs_open(path, 15u, SB_FS_OPEN_READ, 0u);
+    assert(nested_fd == 0u);
+    assert(sb_fs_read(nested_fd, buffer, 5u) == 5u);
+    assert(memcmp(buffer, "hello", 5u) == 0);
+    assert(sb_fs_close(nested_fd) == 0u);
 
     memcpy(path, "/HELLO.TXT", 10u);
     const uint64_t fd1 = sb_fs_open(path, 10u, SB_FS_OPEN_READ | SB_FS_OPEN_WRITE, 0u);
