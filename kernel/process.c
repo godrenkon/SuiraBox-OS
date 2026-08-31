@@ -78,6 +78,7 @@ sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t
 int process_destroy_thread(sb_process_t *process, sb_thread_t *thread) {
     uint32_t index = process != 0 ? process->thread_count : 0u;
     if (process == 0 || thread == 0 || process->thread_count == 0u) return -1;
+    if (user_scheduler_current_process() == process && user_scheduler_current_thread() == thread) return -2;
     for (uint32_t i = 0u; i < process->thread_count; ++i) {
         if (&process->threads[i] == thread) {
             index = i;
