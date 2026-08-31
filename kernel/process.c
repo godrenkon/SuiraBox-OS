@@ -235,6 +235,7 @@ int process_activate(sb_process_t *process) {
 
 void process_destroy(sb_process_t *process) {
     if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
+    if (user_scheduler_current_process() == process) return;
     sb_fs_release_process(process);
     for (uint32_t i = 0u; i < process->thread_count; ++i) {
         (void)user_scheduler_remove(process, &process->threads[i]);
