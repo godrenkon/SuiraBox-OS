@@ -23,6 +23,9 @@ typedef struct {
     uint32_t first_cluster;
     uint32_t file_size;
     uint32_t root_index;
+    uint32_t directory_cluster;
+    uint32_t entry_lba;
+    uint16_t entry_offset;
 } sb_fat32_dirent_t;
 
 int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs);
@@ -35,5 +38,7 @@ int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
                        uint32_t offset, uint32_t length, void *buffer);
 int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
                         uint32_t offset, uint32_t length, const void *buffer);
+int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
+                             uint32_t offset, uint32_t length, const void *buffer);
 
 #endif
