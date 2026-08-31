@@ -28,6 +28,7 @@ typedef struct {
 int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs);
 int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *entry);
 int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t *entry);
+int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *entry);
 int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name,
                               uint32_t file_size, sb_fat32_dirent_t *entry);
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
