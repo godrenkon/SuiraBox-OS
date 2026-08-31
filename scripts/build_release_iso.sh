@@ -12,6 +12,13 @@ make -f GNUmakefile \
     USER_CFLAGS="$USER_CFLAGS_RELEASE" \
     release-iso
 
+# Release artifacts must not retain development symbol tables. Strip the
+# final ELF files, then rebuild the ISO so the shipped payload is stripped too.
+strip --strip-all build/suirabox-release.elf
+strip --strip-all build/sb-desktop.elf
+rm -f build/suirabox-release.iso
+grub-mkrescue -o build/suirabox-release.iso build/release-iso >/dev/null
+
 sh scripts/check_base_image.sh build/release-iso
 
 printf 'Release ISO: %s bytes\n' "$(wc -c < build/suirabox-release.iso)"
