@@ -2,6 +2,7 @@
 #include "mm/pmm.h"
 #include "arch/x86_64/irq_frame.h"
 #include "user_scheduler.h"
+#include "fs_syscall.h"
 
 static sb_process_t processes[SB_MAX_PROCESSES];
 static uint32_t process_count_value;
@@ -222,6 +223,7 @@ int process_activate(sb_process_t *process) {
 
 void process_destroy(sb_process_t *process) {
     if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
+    sb_fs_release_process(process);
     for (uint32_t i = 0u; i < process->thread_count; ++i) {
         (void)user_scheduler_remove(process, &process->threads[i]);
         if (process->threads[i].kernel_stack_base != 0u)
