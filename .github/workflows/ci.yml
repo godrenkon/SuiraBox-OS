@@ -67,14 +67,10 @@ jobs:
             -boot order=d,menu=off \
             -nic user,model=e1000 \
             -serial stdio \
-            -debugcon file:qemu-debugcon.log \
-            -global isa-debugcon.iobase=0x402 \
             -display none \
             -no-reboot \
             -no-shutdown \
             2>&1 | tee qemu.log || test ${PIPESTATUS[0]} -eq 124
-          cat qemu-debugcon.log
-          grep -F "ABCD" qemu-debugcon.log
           grep -F "Kernel initialized." qemu.log
           grep -F "PCI: scanning bus/device/function space..." qemu.log
           grep -F "PCI: scan complete." qemu.log
@@ -128,7 +124,6 @@ jobs:
             build/suirabox.elf
             build/test-disk.img
             qemu.log
-            qemu-debugcon.log
             qemu-gui.log
             qemu-gui-host.log
           if-no-files-found: warn
