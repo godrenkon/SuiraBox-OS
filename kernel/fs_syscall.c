@@ -94,7 +94,8 @@ static uint64_t read_root(const char *user_name, uint32_t name_length,
     uint32_t current_offset = offset;
     uint32_t remaining;
     uint8_t *destination = (uint8_t *)(uintptr_t)user_buffer;
-    if (fs == 0 || user_buffer == 0 || capacity == 0u || copy_user_name(user_name, name_length, name) != 0) return UINT64_MAX;
+    if (fs == 0 || user_buffer == 0 || copy_user_name(user_name, name_length, name) != 0) return UINT64_MAX;
+    if (capacity == 0u) return 0u;
     if (validate_user(user_buffer, capacity, 1u) != 0) return UINT64_MAX;
     if (!sb_fat32_find_root_entry(fs, name, &entry) || offset > entry.file_size) return UINT64_MAX;
     if (capacity > entry.file_size - offset) capacity = entry.file_size - offset;
@@ -128,9 +129,11 @@ static uint64_t write_root(const char *user_name, uint32_t name_length,
     const uint8_t *source = (const uint8_t *)(uintptr_t)user_buffer;
     uint32_t current_offset = offset;
     uint32_t remaining = length;
-    if (fs == 0 || user_buffer == 0 || length == 0u || copy_user_name(user_name, name_length, name) != 0) return UINT64_MAX;
+    if (fs == 0 || user_buffer == 0 || copy_user_name(user_name, name_length, name) != 0) return UINT64_MAX;
+    if (!sb_fat32_find_root_entry(fs, name, &entry)) return UINT64_MAX;
+    if (length == 0u) return offset <= entry.file_size ? 0u : UINT64_MAX;
     if (validate_user(user_buffer, length, 0u) != 0) return UINT64_MAX;
-    if (!sb_fat32_find_root_entry(fs, name, &entry) || offset > entry.file_size || length > entry.file_size - offset) return UINT64_MAX;
+    if (offset > entry.file_size || length > entry.file_size - offset) return UINT64_MAX;
     while (remaining > 0u) {
         const uint32_t count = remaining > SB_FS_IO_CHUNK ? SB_FS_IO_CHUNK : remaining;
         if (copy_from_user(chunk, source, count) != 0 || !sb_fat32_write_file(fs, &entry, current_offset, count, chunk)) return UINT64_MAX;
@@ -203,8 +206,10 @@ static uint64_t read_file_handle(uint64_t fd, void *user_buffer, uint32_t length
     uint8_t *destination = (uint8_t *)(uintptr_t)user_buffer;
     uint32_t offset;
     uint32_t remaining;
-    if (process == 0 || fs == 0 || handle == 0 || user_buffer == 0 || length == 0u ||
-        (handle->flags & SB_FS_OPEN_READ) == 0u || validate_user(user_buffer, length, 1u) != 0) return UINT64_MAX;
+    if (process == 0 || fs == 0 || handle == 0 || user_buffer == 0 ||
+        (handle->flags & SB_FS_OPEN_READ) == 0u) return UINT64_MAX;
+    if (length == 0u) return 0u;
+    if (validate_user(user_buffer, length, 1u) != 0) return UINT64_MAX;
     offset = handle->offset;
     if (offset >= handle->entry.file_size) return 0u;
     if (length > handle->entry.file_size - offset) length = handle->entry.file_size - offset;
@@ -228,8 +233,10 @@ static uint64_t write_file_handle(uint64_t fd, const void *user_buffer, uint32_t
     const uint8_t *source = (const uint8_t *)(uintptr_t)user_buffer;
     uint32_t offset;
     uint32_t remaining;
-    if (process == 0 || fs == 0 || handle == 0 || user_buffer == 0 || length == 0u ||
-        (handle->flags & SB_FS_OPEN_WRITE) == 0u || validate_user(user_buffer, length, 0u) != 0) return UINT64_MAX;
+    if (process == 0 || fs == 0 || handle == 0 || user_buffer == 0 ||
+        (handle->flags & SB_FS_OPEN_WRITE) == 0u) return UINT64_MAX;
+    if (length == 0u) return 0u;
+    if (validate_user(user_buffer, length, 0u) != 0) return UINT64_MAX;
     offset = handle->offset;
     if (offset > handle->entry.file_size || length > handle->entry.file_size - offset) return UINT64_MAX;
     remaining = length;
@@ -271,22 +278,24 @@ uint64_t sb_fs_syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             if (arg0 == 0u || arg1 == 0u || arg1 > UINT32_MAX) return UINT64_MAX;
             return stat_root((const char *)(uintptr_t)arg0, (uint32_t)arg1);
         case SB_SYS_FS_READ_ROOT:
-            if (arg0 == 0u || arg1 == 0u || arg1 > UINT32_MAX || arg2 == 0u || arg3 == 0u || arg3 > UINT32_MAX || arg4 > UINT32_MAX) return UINT64_MAX;
+            if (arg0 == 0u || arg1 == 0u || arg1 > UINT32_MAX || arg2 == 0u || arg3 > UINT32_MAX || arg4 > UINT32_MAX) return UINT64_MAX;
+            if (arg3 == 0u) return 0u;
             return read_root((const char *)(uintptr_t)arg0, (uint32_t)arg1, (void *)(uintptr_t)arg2, (uint32_t)arg3, (uint32_t)arg4);
         case SB_SYS_FS_CREATE_ROOT:
             if (arg0 == 0u || arg1 == 0u || arg1 > UINT32_MAX || arg2 > UINT32_MAX) return UINT64_MAX;
             return create_root((const char *)(uintptr_t)arg0, (uint32_t)arg1, (uint32_t)arg2);
         case SB_SYS_FS_WRITE_ROOT:
-            if (arg0 == 0u || arg1 == 0u || arg1 > UINT32_MAX || arg2 == 0u || arg3 == 0u || arg3 > UINT32_MAX || arg4 > UINT32_MAX) return UINT64_MAX;
+            if (arg0 == 0u || arg1 == 0u || arg1 > UINT32_MAX || arg2 == 0u || arg3 > UINT32_MAX || arg4 > UINT32_MAX) return UINT64_MAX;
+            if (arg3 == 0u) return 0u;
             return write_root((const char *)(uintptr_t)arg0, (uint32_t)arg1, (const void *)(uintptr_t)arg2, (uint32_t)arg3, (uint32_t)arg4);
         case SB_SYS_FS_OPEN:
             if (arg0 == 0u || arg1 == 0u || arg1 >= SB_VFS_MAX_PATH || arg2 > UINT32_MAX || arg3 > UINT32_MAX) return UINT64_MAX;
             return open_file((const char *)(uintptr_t)arg0, (uint32_t)arg1, (uint32_t)arg2, (uint32_t)arg3);
         case SB_SYS_FS_READ:
-            if (arg1 == 0u || arg2 == 0u || arg2 > UINT32_MAX) return UINT64_MAX;
+            if (arg1 == 0u || arg2 > UINT32_MAX) return UINT64_MAX;
             return read_file_handle(arg0, (void *)(uintptr_t)arg1, (uint32_t)arg2);
         case SB_SYS_FS_WRITE:
-            if (arg1 == 0u || arg2 == 0u || arg2 > UINT32_MAX) return UINT64_MAX;
+            if (arg1 == 0u || arg2 > UINT32_MAX) return UINT64_MAX;
             return write_file_handle(arg0, (const void *)(uintptr_t)arg1, (uint32_t)arg2);
         case SB_SYS_FS_CLOSE:
             return close_file_handle(arg0);
