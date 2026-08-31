@@ -132,6 +132,25 @@ int main(void) {
         assert(process_destroy_thread(&terminate_rollback,&terminate_rollback.threads[0])==0);
     }
 
+    {
+        sb_process_t current_destroy={0};
+        sb_thread_t *thread;
+        current_destroy.state=SB_PROCESS_RUNNING;
+        thread=process_create_thread(&current_destroy,50u,50u);
+        assert(thread!=0);
+        thread->state=SB_PROCESS_RUNNING;
+        current_process_for_test=&current_destroy;
+        current_thread_for_test=thread;
+        assert(process_destroy_thread(&current_destroy,thread)==-2);
+        assert(current_destroy.thread_count==1u);
+        assert(thread->tid==50u&&thread->state==SB_PROCESS_RUNNING);
+        assert(page_used[0]==1u);
+        current_process_for_test=0;
+        current_thread_for_test=0;
+        assert(process_destroy_thread(&current_destroy,thread)==0);
+        assert(page_used[0]==0u);
+    }
+
     process_init();
     {
         const uint64_t child_pid=0x100000001ull;
