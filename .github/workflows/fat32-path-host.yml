@@ -1,0 +1,40 @@
+name: SuiraBox FAT32 Path Host Test
+
+on:
+  push:
+    paths:
+      - 'kernel/fs/fat32.c'
+      - 'kernel/fs/fat32.h'
+      - 'kernel/fs/fat32_path.c'
+      - 'kernel/vfs.c'
+      - 'kernel/vfs.h'
+      - 'kernel/block.h'
+      - 'tests/fat32_path_host_test.c'
+      - '.github/workflows/fat32-path-host.yml'
+  pull_request:
+    paths:
+      - 'kernel/fs/fat32.c'
+      - 'kernel/fs/fat32.h'
+      - 'kernel/fs/fat32_path.c'
+      - 'kernel/vfs.c'
+      - 'kernel/vfs.h'
+      - 'kernel/block.h'
+      - 'tests/fat32_path_host_test.c'
+      - '.github/workflows/fat32-path-host.yml'
+  workflow_dispatch:
+
+jobs:
+  fat32-path-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Compile FAT32 path test
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror \
+            -Ikernel -Ikernel/fs \
+            tests/fat32_path_host_test.c \
+            kernel/fs/fat32.c kernel/fs/fat32_path.c kernel/vfs.c \
+            -o fat32-path-host-test
+      - name: Run FAT32 path test
+        run: ./fat32-path-host-test
