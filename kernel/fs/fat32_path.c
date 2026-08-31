@@ -79,7 +79,7 @@ static int path_component(const char **cursor, char out[13]) {
     if (**cursor == '\0') return 0;
     start = *cursor;
     while ((*cursor)[length] != '\0' && (*cursor)[length] != '/') {
-        if (length >= 12u) return 0;
+        if (length >= 12u) return -1;
         ++length;
     }
     for (uint32_t i = 0u; i < length; ++i) out[i] = start[i];
@@ -110,8 +110,7 @@ static int path_find_in_directory(sb_fat32_t *fs, uint32_t directory_cluster,
             char candidate_name[13];
             path_format_83(raw, candidate_name);
             if (!path_name_equal(candidate_name, name)) continue;
-            entry->name[0] = '\0';
-            for (uint32_t i = 0u; i < sizeof(entry->name); ++i) entry->name[i] = i < sizeof(candidate_name) ? candidate_name[i] : '\0';
+            for (uint32_t i = 0u; i < sizeof(entry->name); ++i) entry->name[i] = candidate_name[i];
             entry->attributes = raw[11];
             entry->first_cluster = ((uint32_t)le16_path(&raw[20]) << 16) | le16_path(&raw[26]);
             entry->file_size = le32_path(&raw[28]);
@@ -135,10 +134,13 @@ int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *en
     sb_fat32_dirent_t current;
 
     if (fs == 0 || path == 0 || entry == 0 || path[0] != '/') return 0;
-    while (path_component(&cursor, components[count])) {
-        if (count + 1u >= SB_FAT32_PATH_MAX_COMPONENTS) return 0;
+    while (count < SB_FAT32_PATH_MAX_COMPONENTS) {
+        const int result = path_component(&cursor, components[count]);
+        if (result < 0) return 0;
+        if (result == 0) break;
         ++count;
     }
+    if (*cursor != '\0' || count == SB_FAT32_PATH_MAX_COMPONENTS) return 0;
     if (count == 0u) return 0;
 
     current_cluster = fs->root_cluster;
