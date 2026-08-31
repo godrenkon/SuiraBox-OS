@@ -573,7 +573,6 @@ int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
     uint32_t add_clusters;
     uint32_t appended_first = 0u;
     uint32_t tail = 0u;
-    uint8_t zeros[SB_FAT32_SECTOR_BYTES] = {0};
     sb_fat32_dirent_t expanded;
 
     if (fs == 0 || entry == 0 || buffer == 0 ||
