@@ -36,6 +36,12 @@ int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t
     *entry = fake_entry;
     return 1;
 }
+int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *entry) {
+    if (fs != &fake_fs || path == 0 || entry == 0) return 0;
+    if (strcmp(path, "/HELLO.TXT") != 0 && strcmp(path, "/DATA/HELLO.TXT") != 0) return 0;
+    *entry = fake_entry;
+    return 1;
+}
 int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name, uint32_t file_size, sb_fat32_dirent_t *entry) {
     if (fs != &fake_fs || name == 0 || entry == 0 || strcmp(name, "NEW.TXT") != 0) return 0;
     fake_created_size = file_size;
@@ -61,6 +67,11 @@ int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry, uint32_t
     assert(address < user_base || address >= user_base + user_size);
     memcpy(fake_file + offset, buffer, size);
     return 1;
+}
+int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry, uint32_t offset, uint32_t size, const void *buffer) {
+    if (fs != &fake_fs || entry == 0 || buffer == 0 || offset > sizeof(fake_file) || size > sizeof(fake_file) - offset) return 0;
+    if (offset + size > entry->file_size) entry->file_size = offset + size;
+    return sb_fat32_write_file(fs, entry, offset, size, buffer);
 }
 
 static void *map_user(void) {
