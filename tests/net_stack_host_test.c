@@ -74,8 +74,10 @@ int main(void) {
     write16be(ip + 2u, 100u);
     assert(sb_net_parse_ipv4(ip, 32u, &ipv4) != 0);
     write16be(ip + 2u, 32u);
-    ip[20u] ^= 1u;
+    ip[1] ^= 1u;
     assert(sb_net_parse_ipv4(ip, 32u, &ipv4) != 0);
+    ip[1] ^= 1u;
+    assert(sb_net_parse_ipv4(ip, 32u, &ipv4) == 0);
     write16be(udp_payload + 4u, 13u);
     assert(sb_net_parse_udp(udp_payload, 12u, &udp) != 0);
     assert(sb_net_parse_ethernet(frame, 13u, destination, source, &ethertype, &payload, &payload_length) != 0);
