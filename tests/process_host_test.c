@@ -23,7 +23,6 @@ int user_scheduler_rebind_thread(sb_process_t *process,sb_thread_t *old_thread,s
 int user_scheduler_request_exit(sb_process_t *process,sb_thread_t *thread){(void)process;++request_exit_calls;request_exit_saw_runnable = thread != 0 && (thread->state == SB_PROCESS_CREATED || thread->state == SB_PROCESS_RUNNING);return request_exit_result;}
 sb_process_t *user_scheduler_current_process(void){return current_process_for_test;}
 sb_thread_t *user_scheduler_current_thread(void){return current_thread_for_test;}
-void sb_fs_release_process(sb_process_t *process){(void)process;}
 int sb_user_context_init(sb_user_context_t *context,uint64_t entry_point,uint64_t user_stack_top){(void)entry_point;(void)user_stack_top;if(context!=0)*context=(sb_user_context_t){0};return 0;}
 int sb_user_context_validate(const sb_user_context_t *context){return context!=0?0:-1;}
 
@@ -42,7 +41,7 @@ int main(void) {
 
     {
         sb_process_t lifecycle={0}; sb_thread_t *a,*b;
-        lifecycle.state=SB_PROCESS_CREATED; a=process_create_thread(&lifecycle,10u,10u); b=process_create_thread(&lifecycle,11u,10u);
+        lifecycle.state=SB_PROCESS_CREATED; a=process_create_thread(&lifecycle,10u,10u); b=process_create_thread(&lifecycle,11u,11u);
         assert(a!=0&&b!=0); assert(process_exit_thread(&lifecycle,a,41u)==0); assert(a->state==SB_PROCESS_EXITED&&b->state==SB_PROCESS_CREATED);
         assert(lifecycle.state==SB_PROCESS_CREATED&&lifecycle.exit_code==0u); assert(process_exit_thread(&lifecycle,b,42u)==0);
         assert(b->state==SB_PROCESS_EXITED&&lifecycle.state==SB_PROCESS_EXITED&&lifecycle.exit_code==42u);
