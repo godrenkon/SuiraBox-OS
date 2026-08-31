@@ -1,0 +1,26 @@
+name: SuiraBox File Handle Host Test
+
+on:
+  push:
+    branches: [ main, master, 'feat/**' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  file-handle-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile file handle host test
+        run: |
+          gcc -Wall -Wextra -Werror -std=c11 -D_GNU_SOURCE \
+            -Ikernel -Ikernel/fs -Ikernel/mm -Ikernel/arch/x86_64 \
+            tests/file_handle_host_test.c \
+            kernel/fs_syscall.c kernel/vfs.c \
+            -o build-file-handle-host-test
+
+      - name: Run file handle host test
+        run: ./build-file-handle-host-test
