@@ -585,6 +585,8 @@ int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
     if (end64 > UINT32_MAX) return 0;
     cluster_size64 = (uint64_t)fs->bytes_per_sector * fs->sectors_per_cluster;
     if (cluster_size64 == 0u || cluster_size64 > UINT32_MAX) return 0;
+    if (end64 <= entry->file_size)
+        return sb_fat32_write_file(fs, entry, offset, length, buffer);
 
     old_clusters64 = entry->file_size == 0u ? 0u : ((uint64_t)entry->file_size / cluster_size64) +
                      ((entry->file_size % cluster_size64) != 0u ? 1u : 0u);
@@ -612,16 +614,6 @@ int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
     }
     expanded.file_size = (uint32_t)end64;
 
-    if (offset > entry->file_size) {
-        uint32_t gap_offset = entry->file_size;
-        uint32_t gap = offset - entry->file_size;
-        while (gap > 0u) {
-            const uint32_t count = gap > sizeof(zeros) ? sizeof(zeros) : gap;
-            if (!sb_fat32_write_file(fs, &expanded, gap_offset, count, zeros)) goto rollback;
-            gap_offset += count;
-            gap -= count;
-        }
-    }
     if (!sb_fat32_write_file(fs, &expanded, offset, length, buffer)) goto rollback;
     if (!update_dirent_metadata(fs, entry, expanded.first_cluster, expanded.file_size)) goto rollback;
 
