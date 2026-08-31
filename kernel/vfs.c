@@ -126,16 +126,26 @@ sb_vfs_mount_t *sb_vfs_find_mount(const char *path) {
 }
 
 sb_vfs_status_t sb_vfs_normalize_path(const char *input, char *output, uint32_t output_size) {
+    char input_copy[SB_VFS_MAX_PATH];
+    const char *source = input;
     uint32_t input_length;
     uint32_t component_offsets[SB_VFS_MAX_PATH / 2u];
     uint32_t component_lengths[SB_VFS_MAX_PATH / 2u];
     uint32_t component_count = 0u;
     uint32_t i = 0u;
     uint32_t out_length = 1u;
-    const int absolute = input != 0 && input[0] == '/';
+    int absolute;
 
     if (input == 0 || output == 0 || output_size < 2u) return SB_VFS_INVALID_ARGUMENT;
-    input_length = sb_strlen_bounded(input, SB_VFS_MAX_PATH);
+    if (input == output) {
+        uint32_t copy_length = sb_strlen_bounded(input, SB_VFS_MAX_PATH);
+        if (copy_length >= SB_VFS_MAX_PATH) return SB_VFS_NAME_TOO_LONG;
+        for (uint32_t n = 0u; n <= copy_length; ++n) input_copy[n] = input[n];
+        source = input_copy;
+    }
+
+    absolute = source[0] == '/';
+    input_length = sb_strlen_bounded(source, SB_VFS_MAX_PATH);
     if (input_length >= SB_VFS_MAX_PATH) return SB_VFS_NAME_TOO_LONG;
     output[0] = '/';
     output[1] = '\0';
@@ -143,10 +153,10 @@ sb_vfs_status_t sb_vfs_normalize_path(const char *input, char *output, uint32_t 
 
     while (i <= input_length) {
         const uint32_t start = i;
-        while (i < input_length && input[i] != '/') ++i;
+        while (i < input_length && source[i] != '/') ++i;
         const uint32_t length = i - start;
         if (length != 0u) {
-            const char *component = input + start;
+            const char *component = source + start;
             if (component_is_dot(component, length)) {
                 /* Ignore current-directory components. */
             } else if (component_is_dotdot(component, length)) {
@@ -166,7 +176,7 @@ sb_vfs_status_t sb_vfs_normalize_path(const char *input, char *output, uint32_t 
 
     for (uint32_t n = 0u; n < component_count; ++n) {
         sb_vfs_status_t status = append_component(output, output_size, &out_length,
-                                                  input + component_offsets[n],
+                                                  source + component_offsets[n],
                                                   component_lengths[n]);
         if (status != SB_VFS_OK) return status;
     }
