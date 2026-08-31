@@ -579,10 +579,10 @@ int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
     if (fs == 0 || entry == 0 || buffer == 0 ||
         (entry->attributes & SB_FAT32_ATTR_DIRECTORY) != 0u ||
         fs->bytes_per_sector != SB_FAT32_SECTOR_BYTES || fs->sectors_per_cluster == 0u) return 0;
-    if (offset > entry->file_size || length == 0u && offset > entry->file_size) return 0;
+    if (offset > entry->file_size) return 0;
+    if (length == 0u) return 1;
     end64 = (uint64_t)offset + length;
     if (end64 > UINT32_MAX) return 0;
-    if (length == 0u) return 1;
     cluster_size64 = (uint64_t)fs->bytes_per_sector * fs->sectors_per_cluster;
     if (cluster_size64 == 0u || cluster_size64 > UINT32_MAX) return 0;
 
