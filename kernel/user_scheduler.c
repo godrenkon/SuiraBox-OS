@@ -29,6 +29,45 @@ sb_process_t *user_scheduler_current_process(void){prune_dead_slots();if(slot_co
 uint32_t user_scheduler_count(void){prune_dead_slots();return slot_count;}
 
 static int frame_is_user_mode(const sb_timer_saved_gpr_t *gpr,sb_x86_64_user_iret_frame_t **iret_out){if(gpr==0||iret_out==0)return 0;const uint64_t *hardware_frame=(const uint64_t *)((const uint8_t *)gpr+sizeof(*gpr));const uint64_t cs=hardware_frame[1];if((cs&SB_USER_CS_RPL_MASK)!=SB_USER_CS_RPL_MASK)return 0;*iret_out=(sb_x86_64_user_iret_frame_t *)(uintptr_t)hardware_frame;return 1;}
-static uintptr_t switch_after_current_exit(void){if(pending_exit_process==0||pending_exit_thread==0||slot_count==0u||current_index>=slot_count)return 0u;if(!slot_matches(&slots[current_index],pending_exit_process,pending_exit_thread))return 0u;remove_slot_at(current_index);pending_exit_process=0;pending_exit_thread=0;if(slot_count==0u)return 0u;if(current_index>=slot_count)current_index=0u;sb_process_t *next_process=slots[current_index].process;sb_thread_t *next_thread=slots[current_index].thread;if(!thread_runnable(next_thread)||!process_runnable(next_process))return 0u;if(process_prepare_user_resume_frame(next_thread)!=0)return 0u;if(process_activate(next_process)!=0)return 0u;if(gdt_try_set_kernel_stack(next_thread->kernel_stack_top)!=0)return 0u;next_thread->state=SB_PROCESS_RUNNING;next_process->state=SB_PROCESS_RUNNING;quantum_ticks=0u;return (uintptr_t)next_thread->kernel_resume_stack_pointer;}
+static uintptr_t switch_after_current_exit(void){
+    if(pending_exit_process==0||pending_exit_thread==0||slot_count<2u||current_index>=slot_count)return 0u;
+    if(!slot_matches(&slots[current_index],pending_exit_process,pending_exit_thread))return 0u;
+    const uint32_t old_index=current_index;
+    sb_process_t *old_process=pending_exit_process;
+    sb_thread_t *old_thread=pending_exit_thread;
+    uint32_t candidate_index=slot_count;
+    for(uint32_t step=1u;step<=slot_count;++step){
+        const uint32_t candidate=(old_index+step)%slot_count;
+        sb_user_sched_slot_t *slot=&slots[candidate];
+        if(slot->process==old_process&&slot->thread==old_thread)continue;
+        if(!thread_runnable(slot->thread)||!process_runnable(slot->process))continue;
+        candidate_index=candidate;
+        break;
+    }
+    if(candidate_index>=slot_count)return 0u;
+    sb_process_t *next_process=slots[candidate_index].process;
+    sb_thread_t *next_thread=slots[candidate_index].thread;
+    if(process_prepare_user_resume_frame(next_thread)!=0)return 0u;
+    if(process_activate(next_process)!=0)return 0u;
+    if(gdt_try_set_kernel_stack(next_thread->kernel_stack_top)!=0){
+        (void)process_activate(old_process);
+        (void)gdt_try_set_kernel_stack(old_thread->kernel_stack_top);
+        return 0u;
+    }
+    remove_slot_at(old_index);
+    pending_exit_process=0;
+    pending_exit_thread=0;
+    if(slot_count==0u)return 0u;
+    if(candidate_index>old_index)--candidate_index;
+    if(candidate_index>=slot_count)candidate_index=0u;
+    current_index=candidate_index;
+    next_process=slots[current_index].process;
+    next_thread=slots[current_index].thread;
+    if(!thread_runnable(next_thread)||!process_runnable(next_process))return 0u;
+    next_thread->state=SB_PROCESS_RUNNING;
+    next_process->state=SB_PROCESS_RUNNING;
+    quantum_ticks=0u;
+    return (uintptr_t)next_thread->kernel_resume_stack_pointer;
+}
 uintptr_t user_scheduler_exit_dispatch(void){return switch_after_current_exit();}
 uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr){if(gpr==0)return 0u;sb_x86_64_user_iret_frame_t *iret=0;if(!frame_is_user_mode(gpr,&iret))return (uintptr_t)gpr;if(pending_exit_process!=0&&pending_exit_thread!=0){const uintptr_t next_rsp=switch_after_current_exit();if(next_rsp!=0u)return next_rsp;if(pending_exit_process==0&&pending_exit_thread==0)return 0u;}prune_dead_slots();if(slot_count==0u||current_index>=slot_count)return (uintptr_t)gpr;sb_thread_t *current_thread=slots[current_index].thread;sb_process_t *current_process=slots[current_index].process;if(!thread_runnable(current_thread)||!process_runnable(current_process))return (uintptr_t)gpr;if(sb_user_context_from_timer_frame(current_thread->user_context,gpr,iret)!=0)return (uintptr_t)gpr;++quantum_ticks;if(slot_count<=1u||(quantum_ticks%SB_USER_SCHED_QUANTUM_TICKS)!=0u)return (uintptr_t)gpr;for(uint32_t step=1u;step<=slot_count;++step){const uint32_t candidate=(current_index+step)%slot_count;sb_process_t *next_process=slots[candidate].process;sb_thread_t *next_thread=slots[candidate].thread;if(!thread_runnable(next_thread)||!process_runnable(next_process)||next_thread==current_thread)continue;if(process_prepare_user_resume_frame(next_thread)!=0)continue;if(process_activate(next_process)!=0)continue;if(gdt_try_set_kernel_stack(next_thread->kernel_stack_top)!=0){(void)process_activate(current_process);(void)gdt_try_set_kernel_stack(current_thread->kernel_stack_top);continue;}current_thread->state=SB_PROCESS_CREATED;next_thread->state=SB_PROCESS_RUNNING;if(current_process!=next_process)current_process->state=SB_PROCESS_CREATED;next_process->state=SB_PROCESS_RUNNING;current_index=candidate;quantum_ticks=0u;return (uintptr_t)next_thread->kernel_resume_stack_pointer;}return (uintptr_t)gpr;}
