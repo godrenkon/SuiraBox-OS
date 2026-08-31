@@ -24,6 +24,10 @@
 #define SB_SYS_FS_CREATE_ROOT     17u
 #define SB_SYS_FS_WRITE_ROOT      18u
 #define SB_SYS_WAIT_CHILD         19u
+#define SB_SYS_FS_OPEN            20u
+#define SB_SYS_FS_READ            21u
+#define SB_SYS_FS_WRITE           22u
+#define SB_SYS_FS_CLOSE           23u
 #define SB_CONFIG_SET_VOLATILE    1u
 
 void syscall_init(void);
