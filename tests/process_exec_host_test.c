@@ -44,6 +44,8 @@ int gdt_try_set_kernel_stack(uint64_t stack_pointer) {
     return stack_pointer != 0u ? 0 : -1;
 }
 
+void sb_fs_release_process(void *process) { (void)process; }
+
 int main(void) {
     sb_process_t process = {0};
     sb_process_image_t image = { .entry_point = SB_USER_BASE,
