@@ -64,6 +64,7 @@ jobs:
             -vga std \
             -cdrom build/suirabox.iso \
             -drive file=build/test-disk.img,format=raw,if=ide \
+            -boot order=d,menu=off \
             -nic user,model=e1000 \
             -serial stdio \
             -debugcon file:qemu-debugcon.log \
@@ -102,6 +103,7 @@ jobs:
             -vga std \
             -cdrom build/suirabox.iso \
             -drive file=build/test-disk.img,format=raw,if=ide \
+            -boot order=d,menu=off \
             -nic user,model=e1000 \
             -serial file:qemu-gui.log \
             -display none \
