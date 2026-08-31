@@ -57,8 +57,11 @@ jobs:
         run: |
           set -o pipefail
           rm -f qemu.log qemu-debugcon.log
-          timeout 20s qemu-system-x86_64 \
-            -m 256M \
+          timeout 30s qemu-system-x86_64 \
+            -machine q35 \
+            -cpu max \
+            -m 512M \
+            -vga std \
             -cdrom build/suirabox.iso \
             -drive file=build/test-disk.img,format=raw,if=ide \
             -nic user,model=e1000 \
@@ -92,14 +95,16 @@ jobs:
       - name: Framebuffer smoke test
         run: |
           set -o pipefail
-          timeout 20s qemu-system-x86_64 \
-            -m 256M \
+          timeout 30s qemu-system-x86_64 \
+            -machine q35 \
+            -cpu max \
+            -m 512M \
+            -vga std \
             -cdrom build/suirabox.iso \
             -drive file=build/test-disk.img,format=raw,if=ide \
             -nic user,model=e1000 \
             -serial file:qemu-gui.log \
             -display none \
-            -vga std \
             -no-reboot \
             -no-shutdown \
             2>&1 | tee qemu-gui-host.log || test ${PIPESTATUS[0]} -eq 124
