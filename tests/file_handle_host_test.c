@@ -96,20 +96,26 @@ int main(void) {
     buffer = (char *)user_base + 0x2000u;
     memcpy(path, "/HELLO.TXT", 10u);
 
+    assert(sb_fs_read(UINT64_MAX, buffer, 1u) == UINT64_MAX);
+    assert(sb_fs_close(UINT64_MAX) == UINT64_MAX);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path, 10u, UINT64_MAX, 0u, 0u) == UINT64_MAX);
+
     const uint64_t fd0 = sb_fs_open(path, 10u, SB_FS_OPEN_READ, 0u);
     assert(fd0 == 0u);
+    assert(sb_fs_read(fd0, buffer, 0u) == 0u);
     assert(sb_fs_read(fd0, buffer, 2u) == 2u);
     assert(memcmp(buffer, "he", 2u) == 0);
     assert(sb_fs_read(fd0, buffer, 3u) == 3u);
     assert(memcmp(buffer, "llo", 3u) == 0);
     assert(sb_fs_read(fd0, buffer, 1u) == 0u);
-    assert(sb_fs_write(fd0, buffer, 1u) == UINT64_MAX);
+    assert(sb_fs_write(fd0, buffer, 0u) == UINT64_MAX);
     assert(sb_fs_close(fd0) == 0u);
     assert(sb_fs_close(fd0) == UINT64_MAX);
 
     memcpy(path, "/HELLO.TXT", 10u);
     const uint64_t fd1 = sb_fs_open(path, 10u, SB_FS_OPEN_READ | SB_FS_OPEN_WRITE, 0u);
     assert(fd1 == 0u);
+    assert(sb_fs_write(fd1, buffer, 0u) == 0u);
     memcpy(buffer, "world", 5u);
     assert(sb_fs_write(fd1, buffer, 5u) == 5u);
     assert(memcmp(fake_file, "world", 5u) == 0);
