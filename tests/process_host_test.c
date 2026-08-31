@@ -51,7 +51,7 @@ int main(void) {
 
     {
         sb_process_t terminated={0}; sb_thread_t *a,*b;
-        terminated.state=SB_PROCESS_RUNNING; a=process_create_thread(&terminated,20u,20u); b=process_create_thread(&terminated,21u,20u);
+        terminated.state=SB_PROCESS_RUNNING; a=process_create_thread(&terminated,20u,20u); b=process_create_thread(&terminated,21u,21u);
         assert(a!=0&&b!=0); assert(process_terminate(&terminated,99u)==0); assert(terminated.state==SB_PROCESS_EXITED&&terminated.exit_code==99u);
         assert(a->state==SB_PROCESS_EXITED&&b->state==SB_PROCESS_EXITED); assert(process_terminate(&terminated,100u)!=0);
         assert(process_destroy_thread(&terminated,&terminated.threads[0])==0); assert(process_destroy_thread(&terminated,&terminated.threads[0])==0);
@@ -165,6 +165,26 @@ int main(void) {
         assert(process_create(child_pid)!=0);
         process_destroy(parent); assert(process_count()==1u);
         process_destroy(process_get(child_pid)); assert(process_count()==0u);
+    }
+
+    process_init();
+    {
+        sb_process_t *active = process_create(2000u);
+        sb_thread_t *thread = active != 0 ? process_create_thread(active, 60u, 60u) : 0;
+        assert(active != 0 && thread != 0);
+        thread->state = SB_PROCESS_RUNNING;
+        current_process_for_test = active;
+        current_thread_for_test = thread;
+        process_destroy(active);
+        assert(process_count() == 1u);
+        assert(active->state == SB_PROCESS_CREATED);
+        assert(active->thread_count == 1u);
+        assert(page_used[0] == 1u);
+        current_process_for_test = 0;
+        current_thread_for_test = 0;
+        process_destroy(active);
+        assert(process_count() == 0u);
+        assert(page_used[0] == 0u);
     }
     return 0;
 }
