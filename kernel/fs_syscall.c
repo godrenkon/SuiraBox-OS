@@ -181,12 +181,17 @@ static uint64_t open_file(const char *user_path, uint32_t path_length,
         (flags & (SB_FS_OPEN_READ | SB_FS_OPEN_WRITE)) == 0u || (flags & ~0x07u) != 0u) return UINT64_MAX;
     if (copy_from_user(path, user_path, path_length) != 0) return UINT64_MAX;
     path[path_length] = '\0';
-    status = sb_vfs_split_path(path, parent, sizeof(parent), name, sizeof(name));
-    if (status != SB_VFS_OK || parent[0] != '/' || parent[1] != '\0') return UINT64_MAX;
-    if (!sb_fat32_find_root_entry(fs, name, &entry)) {
-        if ((flags & SB_FS_OPEN_CREATE) == 0u || !sb_fat32_create_root_file(fs, name, initial_size, &entry)) return UINT64_MAX;
+    status = sb_vfs_normalize_path(path, path, sizeof(path));
+    if (status != SB_VFS_OK) return UINT64_MAX;
+
+    if (!sb_fat32_lookup_path(fs, path, &entry)) {
+        if ((flags & SB_FS_OPEN_CREATE) == 0u) return UINT64_MAX;
+        status = sb_vfs_split_path(path, parent, sizeof(parent), name, sizeof(name));
+        if (status != SB_VFS_OK || parent[0] != '/' || parent[1] != '\0') return UINT64_MAX;
+        if (!sb_fat32_create_root_file(fs, name, initial_size, &entry)) return UINT64_MAX;
         if (sb_storage_sync() != SB_BLOCK_OK) return UINT64_MAX;
     }
+    if ((entry.attributes & SB_FAT32_ATTR_DIRECTORY) != 0u) return UINT64_MAX;
     row = handle_row_for(process, 1u);
     if (row < 0) return UINT64_MAX;
     for (uint32_t fd = 0u; fd < SB_FS_MAX_HANDLES_PER_PROCESS; ++fd) {
