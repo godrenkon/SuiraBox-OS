@@ -20,7 +20,8 @@ static char fake_created_name[13];
 
 sb_process_t *user_scheduler_current_process(void) { return &process; }
 int address_space_validate_user_range(const sb_address_space_t *space, uint64_t address, uint64_t size, uint8_t write_access) {
-    (void)space; (void)write_access;
+    (void)space;
+    (void)write_access;
     if (address < user_base || size == 0u || address > UINT64_MAX - size || address + size > user_base + user_size) return -1;
     return 0;
 }
@@ -70,6 +71,7 @@ int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry, uint32_t
 }
 int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry, uint32_t offset, uint32_t size, const void *buffer) {
     if (fs != &fake_fs || entry == 0 || buffer == 0 || offset > sizeof(fake_file) || size > sizeof(fake_file) - offset) return 0;
+    if (offset > entry->file_size) return 0;
     if (offset + size > entry->file_size) entry->file_size = offset + size;
     return sb_fat32_write_file(fs, entry, offset, size, buffer);
 }
@@ -117,13 +119,19 @@ int main(void) {
                                    (uint64_t)(uintptr_t)payload, 5u, 0u) == 5u);
     assert(memcmp(fake_file, "world", 5u) == 0);
 
+    memcpy(payload, "world!", 6u);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   (uint64_t)(uintptr_t)payload, 6u, 0u) == 6u);
+    assert(memcmp(fake_file, "world!", 6u) == 0);
+    assert(fake_entry.file_size == 6u);
+
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_CREATE_ROOT, 1u, 7u, 16u, 0u, 0u) == UINT64_MAX);
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
                                    1u, 5u, 0u) == UINT64_MAX);
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
-                                   (uint64_t)(uintptr_t)payload, 6u, 0u) == UINT64_MAX);
+                                   (uint64_t)(uintptr_t)payload, 1u, 7u) == UINT64_MAX);
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
-                                   (uint64_t)(uintptr_t)payload, 1u, 5u) == UINT64_MAX);
+                                   (uint64_t)(uintptr_t)payload, 0u, 7u) == 0u);
 
     munmap(mapped, user_size);
     return 0;
