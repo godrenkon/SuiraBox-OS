@@ -116,6 +116,9 @@ static int path_find_in_directory(sb_fat32_t *fs, uint32_t directory_cluster,
             entry->first_cluster = ((uint32_t)le16_path(&raw[20]) << 16) | le16_path(&raw[26]);
             entry->file_size = le32_path(&raw[28]);
             entry->root_index = index;
+            entry->directory_cluster = cluster;
+            entry->entry_lba = lba;
+            entry->entry_offset = (uint16_t)offset;
             return 1;
         }
         uint32_t next;
