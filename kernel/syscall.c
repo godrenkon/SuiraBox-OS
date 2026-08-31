@@ -80,6 +80,7 @@ static int syscall_exit_current(uint64_t exit_code) {
     if (runnable == 0u) {
         process->state = SB_PROCESS_EXITED;
         process->exit_code = exit_code;
+        sb_fs_release_process(process);
     }
     return 0;
 }
