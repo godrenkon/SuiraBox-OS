@@ -11,7 +11,7 @@
 #define MMIO_WINDOW_LIMIT 0x0000011000000000ull
 
 #ifndef SB_KERNEL_DEBUG
-#define SB_KERNEL_DEBUG 1
+#define SB_KERNEL_DEBUG 0
 #endif
 
 extern uint64_t pml4[PT_ENTRIES];
