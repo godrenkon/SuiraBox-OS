@@ -280,7 +280,7 @@ uint64_t sb_fs_syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             if (arg0 == 0u || arg1 == 0u || arg1 > UINT32_MAX || arg2 == 0u || arg3 == 0u || arg3 > UINT32_MAX || arg4 > UINT32_MAX) return UINT64_MAX;
             return write_root((const char *)(uintptr_t)arg0, (uint32_t)arg1, (const void *)(uintptr_t)arg2, (uint32_t)arg3, (uint32_t)arg4);
         case SB_SYS_FS_OPEN:
-            if (arg0 == 0u || arg1 == 0u || arg1 >= SB_VFS_MAX_PATH || arg3 > UINT32_MAX) return UINT64_MAX;
+            if (arg0 == 0u || arg1 == 0u || arg1 >= SB_VFS_MAX_PATH || arg2 > UINT32_MAX || arg3 > UINT32_MAX) return UINT64_MAX;
             return open_file((const char *)(uintptr_t)arg0, (uint32_t)arg1, (uint32_t)arg2, (uint32_t)arg3);
         case SB_SYS_FS_READ:
             if (arg1 == 0u || arg2 == 0u || arg2 > UINT32_MAX) return UINT64_MAX;
