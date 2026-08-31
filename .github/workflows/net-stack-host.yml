@@ -14,11 +14,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Compile Network Stack host test
-        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_stack_host_test.c kernel/net_stack.c kernel/dhcp.c kernel/net_arp.c kernel/net_device.c -o /tmp/net-stack-host-test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_stack_host_test.c kernel/net_stack.c kernel/dhcp.c kernel/net_arp.c -o /tmp/net-stack-host-test
       - name: Compile Network Routing host test
-        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_route_host_test.c kernel/net_route.c kernel/net_stack.c kernel/dhcp.c kernel/net_arp.c kernel/net_device.c -o /tmp/net-route-host-test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_route_host_test.c kernel/net_route.c kernel/net_stack.c kernel/dhcp.c kernel/net_arp.c -o /tmp/net-route-host-test
       - name: Compile ARP host test
-        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_arp_host_test.c kernel/net_arp.c kernel/net_stack.c kernel/dhcp.c kernel/net_device.c -o /tmp/net-arp-host-test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/net_arp_host_test.c kernel/net_arp.c kernel/net_stack.c kernel/dhcp.c -o /tmp/net-arp-host-test
       - name: Run Network Stack host test
         run: /tmp/net-stack-host-test
       - name: Run Network Routing host test
