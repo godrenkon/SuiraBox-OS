@@ -43,9 +43,16 @@ int main(void){
     fail_scheduler=1; assert(sb_app_launch(4u)!=0); fail_scheduler=0; assert(sb_app_count()==3u); assert(sb_app_launch(SB_APP_TERMINAL)!=0); assert(sb_app_count()==3u);
     processes[0].state=SB_PROCESS_EXITED; assert(sb_app_reap_exited()==1u); assert(sb_app_count()==2u); assert(sb_app_launch(SB_APP_SETTINGS)==0); assert(sb_app_count()==3u);
 
+    /* Start a genuinely fresh mock process table for the second lifecycle. */
+    for (uint32_t i=0u;i<16u;++i) { processes[i]=(sb_process_t){0}; threads[i]=(sb_thread_t){0}; }
+    process_count_value=0u;
+    current_parent=0;
     sb_app_manager_init(0x2000u);
-    current_parent=&processes[0]; processes[0]=(sb_process_t){.pid=0xABCDEF1234567890ull,.state=SB_PROCESS_RUNNING};
-    assert(sb_app_launch(SB_APP_SETTINGS)==0); assert(processes[1].parent_pid==processes[0].pid);
+    processes[0]=(sb_process_t){.pid=0xABCDEF1234567890ull,.state=SB_PROCESS_RUNNING};
+    current_parent=&processes[0];
+    assert(sb_app_launch(SB_APP_SETTINGS)==0);
+    assert(process_count_value==2u);
+    assert(processes[1].parent_pid==processes[0].pid);
     current_parent=0;
     return 0;
 }
