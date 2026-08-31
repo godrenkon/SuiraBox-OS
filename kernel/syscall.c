@@ -8,6 +8,8 @@
 #include "input.h"
 #include "app_manager.h"
 #include "fs_syscall.h"
+#include "process.h"
+#include "mm/address_space.h"
 
 #define SB_SYSCALL_EXIT_SWITCH (UINT64_MAX - 1u)
 
@@ -149,6 +151,10 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_FS_READ_ROOT:
         case SB_SYS_FS_CREATE_ROOT:
         case SB_SYS_FS_WRITE_ROOT:
+        case SB_SYS_FS_OPEN:
+        case SB_SYS_FS_READ:
+        case SB_SYS_FS_WRITE:
+        case SB_SYS_FS_CLOSE:
             return sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
         case SB_SYS_WAIT_CHILD:
             return syscall_wait_child(arg0, arg1);
