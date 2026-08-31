@@ -20,6 +20,7 @@ sb_process_t *user_scheduler_current_process(void){return 0;}
 sb_thread_t *user_scheduler_current_thread(void){return 0;}
 int sb_user_context_init(sb_user_context_t *context,uint64_t entry_point,uint64_t user_stack_top){(void)entry_point;(void)user_stack_top;if(context!=0)*context=(sb_user_context_t){0};return 0;}
 int sb_user_context_validate(const sb_user_context_t *context){return context!=0?0:-1;}
+void sb_fs_release_process(void *process){(void)process;}
 
 int main(void) {
     sb_process_t process = {0};
