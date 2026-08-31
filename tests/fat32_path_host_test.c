@@ -65,27 +65,33 @@ static void write_dirent(uint32_t lba, uint32_t slot, const char *name,
 
 static void setup_image(void) {
     uint8_t *boot = image;
+    uint8_t *fat1 = &image[1u * SECTOR_SIZE];
+    uint8_t *fat2 = &image[2u * SECTOR_SIZE];
     memset(image, 0, sizeof(image));
     put16(&boot[11], 512u);
     boot[13] = 1u;
     put16(&boot[14], 1u);
-    boot[16] = 1u;
+    boot[16] = 2u;
     put32(&boot[32], TEST_SECTORS);
     put32(&boot[36], 1u);
     put32(&boot[44], 2u);
     put16(&boot[510], 0xAA55u);
 
-    uint8_t *fat = &image[SECTOR_SIZE];
-    put32(&fat[0], 0x0FFFFFF8u);
-    put32(&fat[4], 0xFFFFFFFFu);
-    put32(&fat[8], 0x0FFFFFF8u);
-    put32(&fat[12], 0x0FFFFFF8u);
-    put32(&fat[16], 0x0FFFFFF8u);
+    for (uint8_t *fat = fat1; fat <= fat2; fat += SECTOR_SIZE) {
+        put32(&fat[0], 0x0FFFFFF8u);
+        put32(&fat[4], 0xFFFFFFFFu);
+        put32(&fat[8], 0x0FFFFFF8u);
+        put32(&fat[12], 0x0FFFFFF8u);
+        put32(&fat[16], 0x0FFFFFF8u);
+        put32(&fat[20], 0x0FFFFFF8u);
+    }
 
-    write_dirent(2u, 0u, "DATA", SB_FAT32_ATTR_DIRECTORY, 3u, 0u);
-    write_dirent(2u, 1u, "ROOT.TXT", 0x20u, 4u, 4u);
-    write_dirent(3u, 0u, "HELLO.TXT", 0x20u, 5u, 5u);
-    memcpy(&image[5u * SECTOR_SIZE], "hello", 5u);
+    /* With 2 FATs and 1 reserved sector, data starts at LBA 3:
+     * cluster 2 = sector 3, cluster 3 = sector 4, cluster 5 = sector 6. */
+    write_dirent(3u, 0u, "DATA", SB_FAT32_ATTR_DIRECTORY, 3u, 0u);
+    write_dirent(3u, 1u, "ROOT.TXT", 0x20u, 4u, 4u);
+    write_dirent(4u, 0u, "HELLO.TXT", 0x20u, 5u, 5u);
+    memcpy(&image[6u * SECTOR_SIZE], "hello", 5u);
 
     device = (sb_block_device_t){
         .name = "fat32-path-test",
