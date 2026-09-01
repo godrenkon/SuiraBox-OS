@@ -12,6 +12,7 @@
 #include "mm/address_space.h"
 
 #define SB_SYSCALL_EXIT_SWITCH (UINT64_MAX - 1u)
+#define SB_SYSCALL_SLEEP_SWITCH (UINT64_MAX - 2u)
 
 static uint8_t syscall_user_smoke_seen;
 static uint8_t syscall_user_draw_seen;
@@ -68,6 +69,13 @@ static int syscall_exit_current(uint64_t exit_code) {
     sb_thread_t *thread = user_scheduler_current_thread();
     if (process == 0 || thread == 0) return -1;
     return process_exit_thread(process, thread, exit_code);
+}
+
+static uint64_t syscall_sleep(uint64_t duration_ticks) {
+    if (duration_ticks == 0u) return 0u;
+    const uint64_t now = timer_ticks();
+    if (duration_ticks > UINT64_MAX - now) return UINT64_MAX;
+    return user_scheduler_request_sleep(now + duration_ticks) == 0 ? SB_SYSCALL_SLEEP_SWITCH : UINT64_MAX;
 }
 
 static uint64_t syscall_wait_child(uint64_t child_pid, uint64_t user_exit_code) {
@@ -144,6 +152,8 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             return sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
         case SB_SYS_WAIT_CHILD:
             return syscall_wait_child(arg0, arg1);
+        case SB_SYS_SLEEP:
+            return syscall_sleep(arg0);
         default: return UINT64_MAX;
     }
 }

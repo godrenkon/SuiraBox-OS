@@ -14,6 +14,7 @@ static uint32_t current_index;
 static uint64_t quantum_ticks;
 static sb_process_t *pending_exit_process;
 static sb_thread_t *pending_exit_thread;
+static uint64_t pending_sleep_wake_tick;
 
 static int slot_matches(const sb_user_sched_slot_t *slot,
                         const sb_process_t *process,
@@ -72,6 +73,19 @@ static int find_current_slot(sb_process_t *process, sb_thread_t *thread, uint32_
     return 0;
 }
 
+static int find_next_runnable(uint32_t old_index, uint32_t *candidate_index) {
+    if (candidate_index == 0 || slot_count < 2u || old_index >= slot_count) return -1;
+    for (uint32_t step = 1u; step <= slot_count; ++step) {
+        const uint32_t candidate = (old_index + step) % slot_count;
+        sb_user_sched_slot_t *slot = &slots[candidate];
+        if (!thread_runnable(slot->thread) || !process_runnable(slot->process)) continue;
+        if (candidate == old_index) continue;
+        *candidate_index = candidate;
+        return 0;
+    }
+    return -1;
+}
+
 void user_scheduler_init(void) {
     for (uint32_t i = 0u; i < SB_MAX_USER_SCHED_THREADS; ++i) {
         slots[i].process = 0;
@@ -82,6 +96,7 @@ void user_scheduler_init(void) {
     quantum_ticks = 0u;
     pending_exit_process = 0;
     pending_exit_thread = 0;
+    pending_sleep_wake_tick = 0u;
 }
 
 int user_scheduler_add(sb_process_t *process, sb_thread_t *thread) {
@@ -139,7 +154,7 @@ int user_scheduler_set_current(sb_process_t *process, sb_thread_t *thread) {
 int user_scheduler_request_exit(sb_process_t *process, sb_thread_t *thread) {
     uint32_t index;
     if (find_current_slot(process, thread, &index) != 0) return -1;
-    if (pending_exit_process != 0 || pending_exit_thread != 0) return -2;
+    if (pending_exit_process != 0 || pending_exit_thread != 0 || pending_sleep_wake_tick != 0u) return -2;
     pending_exit_process = process;
     pending_exit_thread = thread;
     (void)index;
@@ -149,6 +164,7 @@ int user_scheduler_request_exit(sb_process_t *process, sb_thread_t *thread) {
 int user_scheduler_sleep_thread(sb_process_t *process, sb_thread_t *thread, uint64_t wake_tick) {
     if (process == 0 || thread == 0 || wake_tick == 0u) return -1;
     if (!process_runnable(process)) return -2;
+    if (pending_sleep_wake_tick != 0u) return -6;
     for (uint32_t i = 0u; i < slot_count; ++i) {
         if (!slot_matches(&slots[i], process, thread)) continue;
         if (i == current_index) return -3;
@@ -158,6 +174,21 @@ int user_scheduler_sleep_thread(sb_process_t *process, sb_thread_t *thread, uint
         return 0;
     }
     return -5;
+}
+
+int user_scheduler_request_sleep(uint64_t wake_tick) {
+    sb_process_t *process;
+    sb_thread_t *thread;
+    uint32_t candidate_index;
+    if (wake_tick == 0u || pending_sleep_wake_tick != 0u ||
+        pending_exit_process != 0 || pending_exit_thread != 0) return -1;
+    process = user_scheduler_current_process();
+    thread = user_scheduler_current_thread();
+    if (process == 0 || thread == 0 || !thread_runnable(thread) || !process_runnable(process)) return -2;
+    if (find_next_runnable(current_index, &candidate_index) != 0) return -3;
+    pending_sleep_wake_tick = wake_tick;
+    (void)candidate_index;
+    return 0;
 }
 
 uint32_t user_scheduler_wake_expired(uint64_t now_tick) {
@@ -213,15 +244,7 @@ static uintptr_t switch_after_current_exit(void) {
     sb_thread_t *old_thread = pending_exit_thread;
     uint32_t candidate_index = slot_count;
 
-    for (uint32_t step = 1u; step <= slot_count; ++step) {
-        const uint32_t candidate = (old_index + step) % slot_count;
-        sb_user_sched_slot_t *slot = &slots[candidate];
-        if (slot->process == old_process && slot->thread == old_thread) continue;
-        if (!thread_runnable(slot->thread) || !process_runnable(slot->process)) continue;
-        candidate_index = candidate;
-        break;
-    }
-    if (candidate_index >= slot_count) return 0u;
+    if (find_next_runnable(old_index, &candidate_index) != 0) return 0u;
 
     sb_process_t *next_process = slots[candidate_index].process;
     sb_thread_t *next_thread = slots[candidate_index].thread;
@@ -248,6 +271,68 @@ static uintptr_t switch_after_current_exit(void) {
     next_process->state = SB_PROCESS_RUNNING;
     quantum_ticks = 0u;
     return (uintptr_t)next_thread->kernel_resume_stack_pointer;
+}
+
+static void capture_syscall_user_context(sb_thread_t *thread, uintptr_t saved_gpr_base) {
+    const uint64_t *saved = (const uint64_t *)saved_gpr_base;
+    const sb_x86_64_user_iret_frame_t *iret =
+        (const sb_x86_64_user_iret_frame_t *)(saved + 9u);
+    sb_user_context_t *context = thread != 0 ? thread->user_context : 0;
+    if (context == 0) return;
+    context->rax = 0u;
+    context->rdi = saved[1];
+    context->rsi = saved[2];
+    context->rdx = saved[3];
+    context->rcx = saved[4];
+    context->r8 = saved[5];
+    context->r9 = saved[6];
+    context->r10 = saved[7];
+    context->r11 = saved[8];
+    context->rip = iret->rip;
+    context->cs = iret->cs;
+    context->rflags = iret->rflags;
+    context->rsp = iret->rsp;
+    context->ss = iret->ss;
+}
+
+static uintptr_t switch_after_current_sleep(uintptr_t saved_gpr_base) {
+    if (pending_sleep_wake_tick == 0u || saved_gpr_base == 0u ||
+        slot_count < 2u || current_index >= slot_count) return 0u;
+    if (pending_exit_process != 0 || pending_exit_thread != 0) return 0u;
+
+    const uint32_t old_index = current_index;
+    sb_process_t *old_process = slots[old_index].process;
+    sb_thread_t *old_thread = slots[old_index].thread;
+    uint32_t candidate_index = slot_count;
+    if (!thread_runnable(old_thread) || !process_runnable(old_process)) return 0u;
+    if (find_next_runnable(old_index, &candidate_index) != 0) return 0u;
+
+    sb_process_t *next_process = slots[candidate_index].process;
+    sb_thread_t *next_thread = slots[candidate_index].thread;
+    capture_syscall_user_context(old_thread, saved_gpr_base);
+    if (process_prepare_user_resume_frame(next_thread) != 0) return 0u;
+    if (process_activate(next_process) != 0) return 0u;
+    if (gdt_try_set_kernel_stack(next_thread->kernel_stack_top) != 0) {
+        (void)process_activate(old_process);
+        (void)gdt_try_set_kernel_stack(old_thread->kernel_stack_top);
+        return 0u;
+    }
+
+    old_thread->state = SB_PROCESS_SLEEPING;
+    old_thread->wake_tick = pending_sleep_wake_tick;
+    if (old_process->thread_count != 0u && old_process != next_process)
+        old_process->state = SB_PROCESS_CREATED;
+    next_thread->state = SB_PROCESS_RUNNING;
+    next_thread->wake_tick = 0u;
+    next_process->state = SB_PROCESS_RUNNING;
+    current_index = candidate_index;
+    pending_sleep_wake_tick = 0u;
+    quantum_ticks = 0u;
+    return (uintptr_t)next_thread->kernel_resume_stack_pointer;
+}
+
+uintptr_t user_scheduler_sleep_dispatch(uintptr_t saved_gpr_base) {
+    return switch_after_current_sleep(saved_gpr_base);
 }
 
 uintptr_t user_scheduler_exit_dispatch(void) {

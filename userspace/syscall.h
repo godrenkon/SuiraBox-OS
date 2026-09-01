@@ -27,6 +27,7 @@
 #define SB_SYS_FS_READ            21u
 #define SB_SYS_FS_WRITE           22u
 #define SB_SYS_FS_CLOSE           23u
+#define SB_SYS_SLEEP              24u
 
 #define SB_FS_OPEN_READ   0x01u
 #define SB_FS_OPEN_WRITE  0x02u
@@ -63,6 +64,7 @@ uint64_t sb_fs_read(uint64_t fd, void *buffer, uint32_t length);
 uint64_t sb_fs_write(uint64_t fd, const void *buffer, uint32_t length);
 uint64_t sb_fs_close(uint64_t fd);
 uint64_t sb_wait_child(uint64_t child_pid, uint64_t *exit_code);
+uint64_t sb_sleep(uint64_t ticks);
 static inline uint64_t sb_config_set(uint32_t language) { return sb_config_set_with_options(language, SB_CONFIG_SET_KEEP_OPTIONS); }
 uint64_t sb_yield(void);
 #else
@@ -95,6 +97,7 @@ static inline uint64_t sb_fs_read(uint64_t fd,void *buffer,uint32_t length){retu
 static inline uint64_t sb_fs_write(uint64_t fd,const void *buffer,uint32_t length){return sb_syscall3(SB_SYS_FS_WRITE,fd,(uint64_t)(uintptr_t)buffer,length);}
 static inline uint64_t sb_fs_close(uint64_t fd){return sb_syscall1(SB_SYS_FS_CLOSE,fd);}
 static inline uint64_t sb_wait_child(uint64_t child_pid,uint64_t *exit_code){return sb_syscall2(SB_SYS_WAIT_CHILD,child_pid,(uint64_t)(uintptr_t)exit_code);}
+static inline uint64_t sb_sleep(uint64_t ticks){return sb_syscall1(SB_SYS_SLEEP,ticks);}
 static inline uint64_t sb_yield(void){return sb_syscall0(SB_SYS_YIELD);}
 #endif
 

@@ -1,0 +1,28 @@
+name: syscall-sleep-host
+
+on:
+  push:
+    branches:
+      - feat/gui-framebuffer-bootstrap
+  pull_request:
+    branches:
+      - feat/gui-framebuffer-bootstrap
+
+jobs:
+  syscall-sleep-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile syscall sleep host test
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Ikernel \
+            tests/syscall_sleep_host_test.c \
+            kernel/user_scheduler.c \
+            -o /tmp/syscall-sleep-host-test
+      - name: Run syscall sleep host test
+        run: /tmp/syscall-sleep-host-test
+      - name: Compile syscall assembly ABI
+        run: |
+          gcc -c -m64 -ffreestanding -fno-stack-protector \
+            kernel/arch/x86_64/syscall.S \
+            -o /tmp/syscall-sleep-abi.o

@@ -28,6 +28,7 @@
 #define SB_SYS_FS_READ            21u
 #define SB_SYS_FS_WRITE           22u
 #define SB_SYS_FS_CLOSE           23u
+#define SB_SYS_SLEEP              24u
 #define SB_CONFIG_SET_VOLATILE    1u
 
 void syscall_init(void);

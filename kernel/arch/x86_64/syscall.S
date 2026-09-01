@@ -5,9 +5,12 @@
 .type sb_syscall_int80_stub, @function
 .extern sb_syscall_dispatch_entry
 .extern user_scheduler_exit_dispatch
+.extern user_scheduler_sleep_dispatch
 .extern sb_resume_user_from_kernel_stack
 
 .set SB_SYSCALL_EXIT_SWITCH, -2
+.set SB_SYSCALL_SLEEP_SWITCH, -3
+.set SB_SYSCALL_ERROR, -1
 
 /*
  * Compatibility syscall entry through IDT vector 0x80.
@@ -66,12 +69,31 @@ sb_syscall_int80_stub:
 
     /* A successful exit syscall never returns to the exiting userspace thread. */
     cmpq $SB_SYSCALL_EXIT_SWITCH, %rax
-    jne .Lsyscall_normal_return
+    je .Lsyscall_exit_switch
+    cmpq $SB_SYSCALL_SLEEP_SWITCH, %rax
+    je .Lsyscall_sleep_switch
+    jmp .Lsyscall_normal_return
+
+.Lsyscall_exit_switch:
     call user_scheduler_exit_dispatch
     testq %rax, %rax
     jz .Lsyscall_fault
     movq %rax, %rdi
     jmp sb_resume_user_from_kernel_stack
+
+.Lsyscall_sleep_switch:
+    /* Reuse the saved syscall frame: C needs the original user registers
+     * and the hardware iret frame to preserve the suspended context. */
+    movq (%rsp), %rdi
+    call user_scheduler_sleep_dispatch
+    testq %rax, %rax
+    jz .Lsyscall_sleep_failed
+    movq %rax, %rdi
+    jmp sb_resume_user_from_kernel_stack
+
+.Lsyscall_sleep_failed:
+    movq $SB_SYSCALL_ERROR, %rax
+    jmp .Lsyscall_normal_return
 
 .Lsyscall_normal_return:
     /* Keep dispatcher result in RAX while recovering the saved-GPR base. */
