@@ -106,6 +106,7 @@ static inline uint64_t sb_syscall_abi_version(void) { return sb_syscall0(SB_SYS_
 static inline uint64_t sb_display_info(void) {
 #ifdef SB_RUNTIME_SMOKE
     static uint8_t attempted;
+    static uint8_t smoke_ok;
     if (attempted == 0u) {
         char path[] = "/SBRUN.TST";
         char write_data[] = "SBOK";
@@ -119,8 +120,11 @@ static inline uint64_t sb_display_info(void) {
             sb_syscall3(SB_SYS_FS_READ, fd, (uint64_t)(uintptr_t)read_data, 4u) == 4u &&
             read_data[0] == 'S' && read_data[1] == 'B' && read_data[2] == 'O' && read_data[3] == 'K' &&
             sb_syscall1(SB_SYS_FS_CLOSE, fd) == 0u) {
+            smoke_ok = 1u;
         }
+        if (smoke_ok == 0u && fd != UINT64_MAX) (void)sb_syscall1(SB_SYS_FS_CLOSE, fd);
     }
+    if (smoke_ok == 0u) return 0u;
 #endif
     return sb_syscall0(SB_SYS_DISPLAY_INFO);
 }
