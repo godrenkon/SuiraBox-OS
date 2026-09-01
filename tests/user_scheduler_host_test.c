@@ -138,5 +138,27 @@ int main(void) {
     assert(user_scheduler_rebind_thread(&p1, &t1, &t2) == 1);
     assert(user_scheduler_remove(&p1, &t2) == 0);
 
+    /* Sleeping keeps the scheduler slot, is not runnable before its deadline,
+     * and wakes exactly once when the deadline is reached. */
+    setup_thread(&p1, &t1, &c1, 41u, 0x90000u);
+    setup_thread(&p2, &t2, &c2, 42u, 0xA0000u);
+    iret->cs = 0x23u;
+    user_scheduler_init();
+    assert(user_scheduler_add(&p1, &t1) == 0);
+    assert(user_scheduler_add(&p2, &t2) == 0);
+    assert(user_scheduler_set_current(&p1, &t1) == 0);
+    assert(user_scheduler_sleep_thread(&p1, &t1, 100u) == -3);
+    assert(t1.state == SB_PROCESS_RUNNING && t1.wake_tick == 0u);
+    assert(user_scheduler_sleep_thread(&p2, &t2, 100u) == 0);
+    assert(t2.state == SB_PROCESS_SLEEPING && t2.wake_tick == 100u);
+    assert(user_scheduler_count() == 2u);
+    assert(user_scheduler_current_thread() == &t1);
+    assert(user_scheduler_wake_expired(99u) == 0u);
+    assert(t2.state == SB_PROCESS_SLEEPING && t2.wake_tick == 100u);
+    assert(user_scheduler_wake_expired(100u) == 1u);
+    assert(t2.state == SB_PROCESS_CREATED && t2.wake_tick == 0u);
+    assert(user_scheduler_wake_expired(100u) == 0u);
+    assert(user_scheduler_current_thread() == &t1);
+
     return 0;
 }
