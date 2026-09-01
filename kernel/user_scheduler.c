@@ -297,31 +297,46 @@ static void capture_syscall_user_context(sb_thread_t *thread, uintptr_t saved_gp
 
 static uintptr_t switch_after_current_sleep(uintptr_t saved_gpr_base) {
     if (pending_sleep_wake_tick == 0u || saved_gpr_base == 0u ||
-        slot_count < 2u || current_index >= slot_count) return 0u;
-    if (pending_exit_process != 0 || pending_exit_thread != 0) return 0u;
+        slot_count < 2u || current_index >= slot_count) {
+        pending_sleep_wake_tick = 0u;
+        return 0u;
+    }
+    if (pending_exit_process != 0 || pending_exit_thread != 0) {
+        pending_sleep_wake_tick = 0u;
+        return 0u;
+    }
 
     const uint32_t old_index = current_index;
     sb_process_t *old_process = slots[old_index].process;
     sb_thread_t *old_thread = slots[old_index].thread;
     uint32_t candidate_index = slot_count;
-    if (!thread_runnable(old_thread) || !process_runnable(old_process)) return 0u;
-    if (find_next_runnable(old_index, &candidate_index) != 0) return 0u;
+    if (!thread_runnable(old_thread) || !process_runnable(old_process) ||
+        find_next_runnable(old_index, &candidate_index) != 0) {
+        pending_sleep_wake_tick = 0u;
+        return 0u;
+    }
 
     sb_process_t *next_process = slots[candidate_index].process;
     sb_thread_t *next_thread = slots[candidate_index].thread;
     capture_syscall_user_context(old_thread, saved_gpr_base);
-    if (process_prepare_user_resume_frame(next_thread) != 0) return 0u;
-    if (process_activate(next_process) != 0) return 0u;
+    if (process_prepare_user_resume_frame(next_thread) != 0) {
+        pending_sleep_wake_tick = 0u;
+        return 0u;
+    }
+    if (process_activate(next_process) != 0) {
+        pending_sleep_wake_tick = 0u;
+        return 0u;
+    }
     if (gdt_try_set_kernel_stack(next_thread->kernel_stack_top) != 0) {
         (void)process_activate(old_process);
         (void)gdt_try_set_kernel_stack(old_thread->kernel_stack_top);
+        pending_sleep_wake_tick = 0u;
         return 0u;
     }
 
     old_thread->state = SB_PROCESS_SLEEPING;
     old_thread->wake_tick = pending_sleep_wake_tick;
-    if (old_process->thread_count != 0u && old_process != next_process)
-        old_process->state = SB_PROCESS_CREATED;
+    if (old_process != next_process) old_process->state = SB_PROCESS_CREATED;
     next_thread->state = SB_PROCESS_RUNNING;
     next_thread->wake_tick = 0u;
     next_process->state = SB_PROCESS_RUNNING;
