@@ -30,12 +30,6 @@ int address_space_validate_user_range(const sb_address_space_t *space, uint64_t 
 sb_fat32_t *sb_storage_fat32(void) { return &fake_fs; }
 sb_block_status_t sb_storage_sync(void) { return SB_BLOCK_OK; }
 
-int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *entry) {
-    if (fs != &fake_fs || entry == 0 || index != 0u) return 0;
-    *entry = hello_entry;
-    return 1;
-}
-
 int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t *entry) {
     if (fs != &fake_fs || name == 0 || entry == 0) return 0;
     if (strcmp(name, "HELLO.TXT") != 0) return 0;
