@@ -19,6 +19,7 @@ jobs:
             tests/syscall_sleep_host_test.c \
             kernel/user_scheduler.c \
             kernel/arch/x86_64/user_context.c \
+            kernel/arch/x86_64/irq_frame.c \
             -o /tmp/syscall-sleep-host-test
       - name: Run syscall sleep host test
         run: /tmp/syscall-sleep-host-test
