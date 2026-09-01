@@ -73,6 +73,13 @@ static void draw_u32(uint32_t x, uint32_t y, uint32_t value, uint32_t rgb) {
     } while (divisor != 0u);
 }
 
+static int record_name(const sb_fs_dir_record_t *entry, char out[13]) {
+    if (entry == 0 || out == 0 || entry->name_length == 0u || entry->name_length >= 13u) return -1;
+    for (uint32_t i = 0u; i < entry->name_length; ++i) out[i] = entry->name[i];
+    out[entry->name_length] = '\0';
+    return 0;
+}
+
 static int name_length(const char *name, uint32_t *length) {
     uint32_t value = 0u;
     if (name == 0 || length == 0) return -1;
@@ -134,26 +141,26 @@ static int load_entries(const char *path, sb_fs_dir_record_t entries[], uint32_t
     if (result == UINT64_MAX || result > capacity || result % SB_FS_DIR_RECORD_SIZE != 0u) return -1;
     *count = (uint32_t)(result / SB_FS_DIR_RECORD_SIZE);
     for (uint32_t i = 0u; i < *count; ++i) {
-        if (entries[i].name_length > sizeof(entries[i].name) || entries[i].name_length == 0u) return -1;
-        entries[i].name[entries[i].name_length] = '\0';
+        if (entries[i].name_length == 0u || entries[i].name_length > sizeof(entries[i].name)) return -1;
     }
     return 0;
 }
 
 static void draw_preview(const char *base_path, const sb_fs_dir_record_t *entry) {
     char path[FILES_MAX_PATH];
+    char name[13];
     char data[FILES_MAX_PREVIEW];
-    if (base_path == 0 || entry == 0) return;
+    if (base_path == 0 || entry == 0 || record_name(entry, name) != 0) return;
     (void)sb_display_rect(432u, 72u, 328u, 360u, 0x202A38u);
     draw_text(448u, 92u, "PREVIEW", 0x7FA8D8u);
-    draw_text(448u, 120u, entry->name, 0xE9F2FFu);
+    draw_text(448u, 120u, name, 0xE9F2FFu);
     if (entry->type == SB_FS_DIR_TYPE_DIRECTORY) {
         draw_text(448u, 160u, "DIRECTORY", 0xBFD8FFu);
         draw_text(448u, 192u, "ENTER TO OPEN", 0xBFD8FFu);
         return;
     }
-    if (join_path(base_path, entry->name, path) != 0) return;
-    const uint32_t path_len = (uint32_t)__builtin_strlen(path);
+    if (join_path(base_path, name, path) != 0) return;
+    const uint32_t path_len = name_length(path, &(uint32_t){0}) == 0 ? (uint32_t)__builtin_strlen(path) : 0u;
     const uint64_t fd = sb_fs_open(path, path_len, SB_FS_OPEN_READ, 0u);
     if (fd == UINT64_MAX) { draw_text(448u, 152u, "OPEN ERROR", 0xFF8080u); return; }
 
@@ -187,13 +194,15 @@ static void draw_preview(const char *base_path, const sb_fs_dir_record_t *entry)
 static void draw_rows(const sb_fs_dir_record_t entries[], uint32_t count, uint32_t selected) {
     (void)sb_display_rect(32u, 72u, 376u, 360u, 0x202A38u);
     for (uint32_t row = 0u; row < count && row < FILES_MAX_ENTRIES; ++row) {
+        char name[13];
+        if (record_name(&entries[row], name) != 0) continue;
         const uint32_t y = 92u + row * 40u;
         const uint32_t bg = row == selected ? 0x36536Eu : (row & 1u ? 0x27313Eu : 0x242D39u);
         const uint64_t icon = entries[row].type == SB_FS_DIR_TYPE_DIRECTORY ? FILES_ICON : FILE_ICON;
         (void)sb_display_rect(44u, y - 4u, 352u, 34u, bg);
         (void)sb_display_glyph(52u, y, icon, row == selected ? 0xFFFFFFu : 0xE9F2FFu);
         draw_u32(88u, y, row + 1u, 0xE9F2FFu);
-        draw_text(180u, y, entries[row].name, row == selected ? 0xFFFFFFu : 0xB8C4D4u);
+        draw_text(180u, y, name, row == selected ? 0xFFFFFFu : 0xB8C4D4u);
         if (entries[row].type == SB_FS_DIR_TYPE_DIRECTORY) draw_text(330u, y, "DIR", 0x7FA8D8u);
     }
     (void)sb_display_rect(32u, 448u, 728u, 40u, 0x27313Eu);
@@ -229,8 +238,9 @@ uint64_t sb_app_main(void) {
         } else if (key == 0x1Cu) {
             if (count == 0u) continue;
             if (entries[selected].type == SB_FS_DIR_TYPE_DIRECTORY) {
+                char name[13];
                 char next_path[FILES_MAX_PATH];
-                if (join_path(current_path, entries[selected].name, next_path) != 0) continue;
+                if (record_name(&entries[selected], name) != 0 || join_path(current_path, name, next_path) != 0) continue;
                 for (uint32_t i = 0u; i < sizeof(current_path); ++i) current_path[i] = next_path[i];
                 if (load_entries(current_path, entries, &count) != 0) { count = 0u; }
                 selected = 0u;
