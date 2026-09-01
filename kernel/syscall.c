@@ -93,6 +93,10 @@ static uint64_t syscall_wait_child(uint64_t child_pid, uint64_t user_exit_code) 
     return result;
 }
 
+static uint64_t syscall_abi_version(void) {
+    return ((uint64_t)SB_SYSCALL_ABI_MAJOR << 32) | (uint64_t)SB_SYSCALL_ABI_MINOR;
+}
+
 static void syscall_idle(void) {
     __asm__ volatile ("sti\n\thlt\n\tcli" ::: "memory");
 }
@@ -154,6 +158,8 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             return syscall_wait_child(arg0, arg1);
         case SB_SYS_SLEEP:
             return syscall_sleep(arg0);
+        case SB_SYS_ABI_VERSION:
+            return syscall_abi_version();
         default: return UINT64_MAX;
     }
 }
