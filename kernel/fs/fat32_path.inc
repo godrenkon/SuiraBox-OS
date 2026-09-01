@@ -171,7 +171,6 @@ int sb_fat32_read_directory_entry(sb_fat32_t *fs, uint32_t directory_cluster,
         const uint32_t entries_per_cluster = entries_per_sector * fs->sectors_per_cluster;
         if (entries_per_cluster == 0u || entries_per_cluster > SB_FAT32_PATH_MAX_ENTRIES_PER_CLUSTER ||
             cluster_lba64 >= fs->mount->total_sectors) return 0;
-        const uint32_t cluster_lba = (uint32_t)cluster_lba64;
 
         for (uint32_t slot = 0u; slot < entries_per_cluster; ++slot) {
             const uint64_t lba64 = cluster_lba64 + slot / entries_per_sector;
