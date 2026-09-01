@@ -103,7 +103,27 @@ static inline uint64_t sb_syscall5(uint64_t number, uint64_t arg0, uint64_t arg1
 static inline uint64_t sb_get_ticks(void) { return sb_syscall0(SB_SYS_GET_TICKS); }
 static inline uint64_t sb_process_id(void) { return sb_syscall0(SB_SYS_PROCESS_ID); }
 static inline uint64_t sb_syscall_abi_version(void) { return sb_syscall0(SB_SYS_ABI_VERSION); }
-static inline uint64_t sb_display_info(void) { return sb_syscall0(SB_SYS_DISPLAY_INFO); }
+static inline uint64_t sb_display_info(void) {
+#ifdef SB_RUNTIME_SMOKE
+    static uint8_t attempted;
+    if (attempted == 0u) {
+        char path[] = "/SBRUN.TST";
+        char write_data[] = "SBOK";
+        char read_data[4] = {0};
+        attempted = 1u;
+        const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path, 9u,
+                                         SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 4u);
+        if (fd != UINT64_MAX &&
+            sb_syscall3(SB_SYS_FS_WRITE, fd, (uint64_t)(uintptr_t)write_data, 4u) == 4u &&
+            sb_syscall3(SB_SYS_FS_SEEK, fd, 0u, SB_FS_SEEK_SET) == 0u &&
+            sb_syscall3(SB_SYS_FS_READ, fd, (uint64_t)(uintptr_t)read_data, 4u) == 4u &&
+            read_data[0] == 'S' && read_data[1] == 'B' && read_data[2] == 'O' && read_data[3] == 'K' &&
+            sb_syscall1(SB_SYS_FS_CLOSE, fd) == 0u) {
+        }
+    }
+#endif
+    return sb_syscall0(SB_SYS_DISPLAY_INFO);
+}
 static inline uint64_t sb_display_clear(uint32_t rgb) { return sb_syscall1(SB_SYS_DISPLAY_CLEAR, rgb); }
 static inline uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t rgb) { return sb_syscall5(SB_SYS_DISPLAY_RECT,x,y,width,height,rgb); }
 static inline uint64_t sb_input_key(void) { return sb_syscall0(SB_SYS_INPUT_KEY); }
