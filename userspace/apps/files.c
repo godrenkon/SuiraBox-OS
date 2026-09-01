@@ -80,23 +80,23 @@ static int record_name(const sb_fs_dir_record_t *entry, char out[13]) {
     return 0;
 }
 
-static int name_length(const char *name, uint32_t *length) {
+static int string_length_bounded(const char *text, uint32_t capacity, uint32_t *length) {
     uint32_t value = 0u;
-    if (name == 0 || length == 0) return -1;
-    while (value < 12u && name[value] != '\0') ++value;
-    if (name[value] != '\0') return -1;
+    if (text == 0 || length == 0u || capacity == 0u) return -1;
+    while (value < capacity && text[value] != '\0') ++value;
+    if (value == capacity) return -1;
     *length = value;
     return 0;
+}
+
+static int name_length(const char *name, uint32_t *length) {
+    return string_length_bounded(name, 12u, length);
 }
 
 static int join_path(const char *base, const char *name, char out[FILES_MAX_PATH]) {
     uint32_t base_len = 0u;
     uint32_t name_len = 0u;
-    if (base == 0 || name == 0 || out == 0 || name_length(name, &name_len) != 0) return -1;
-    while (base[base_len] != '\0') {
-        if (base_len + 1u >= FILES_MAX_PATH) return -1;
-        ++base_len;
-    }
+    if (base == 0 || name == 0 || out == 0 || string_length_bounded(base, FILES_MAX_PATH, &base_len) != 0 || name_length(name, &name_len) != 0) return -1;
     if (base_len == 1u && base[0] == '/') {
         if (1u + name_len + 1u > FILES_MAX_PATH) return -1;
         out[0] = '/';
@@ -133,16 +133,12 @@ static int load_entries(const char *path, sb_fs_dir_record_t entries[], uint32_t
     uint32_t path_len = 0u;
     uint64_t result;
     if (path == 0 || entries == 0 || count == 0) return -1;
-    while (path[path_len] != '\0') {
-        if (path_len + 1u >= FILES_MAX_PATH) return -1;
-        ++path_len;
-    }
+    if (string_length_bounded(path, FILES_MAX_PATH, &path_len) != 0) return -1;
     result = sb_fs_list(path, path_len, entries, capacity);
     if (result == UINT64_MAX || result > capacity || result % SB_FS_DIR_RECORD_SIZE != 0u) return -1;
     *count = (uint32_t)(result / SB_FS_DIR_RECORD_SIZE);
-    for (uint32_t i = 0u; i < *count; ++i) {
+    for (uint32_t i = 0u; i < *count; ++i)
         if (entries[i].name_length == 0u || entries[i].name_length > sizeof(entries[i].name)) return -1;
-    }
     return 0;
 }
 
@@ -150,6 +146,7 @@ static void draw_preview(const char *base_path, const sb_fs_dir_record_t *entry)
     char path[FILES_MAX_PATH];
     char name[13];
     char data[FILES_MAX_PREVIEW];
+    uint32_t path_len = 0u;
     if (base_path == 0 || entry == 0 || record_name(entry, name) != 0) return;
     (void)sb_display_rect(432u, 72u, 328u, 360u, 0x202A38u);
     draw_text(448u, 92u, "PREVIEW", 0x7FA8D8u);
@@ -159,8 +156,7 @@ static void draw_preview(const char *base_path, const sb_fs_dir_record_t *entry)
         draw_text(448u, 192u, "ENTER TO OPEN", 0xBFD8FFu);
         return;
     }
-    if (join_path(base_path, name, path) != 0) return;
-    const uint32_t path_len = name_length(path, &(uint32_t){0}) == 0 ? (uint32_t)__builtin_strlen(path) : 0u;
+    if (join_path(base_path, name, path) != 0 || string_length_bounded(path, FILES_MAX_PATH, &path_len) != 0) return;
     const uint64_t fd = sb_fs_open(path, path_len, SB_FS_OPEN_READ, 0u);
     if (fd == UINT64_MAX) { draw_text(448u, 152u, "OPEN ERROR", 0xFF8080u); return; }
 
