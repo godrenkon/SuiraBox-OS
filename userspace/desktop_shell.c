@@ -18,11 +18,20 @@ static void draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t r
 static void draw_glyph(uint32_t x, uint32_t y, uint64_t glyph) { (void)sb_display_glyph(x, y, glyph, 0xE9F2FFu); }
 static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) { (void)sb_display_glyph_pair(x, y, a, b, 0xE9F2FFu); }
 
+static int launcher_id_equals(const char *id, const char *literal) {
+    uint32_t i = 0u;
+    if (id == 0 || literal == 0) return 0;
+    while (literal[i] != '\0') {
+        if (id[i] != literal[i]) return 0;
+        ++i;
+    }
+    return id[i] == '\0';
+}
+
 static uint32_t launcher_app_id(const char *id) {
-    if (id == 0) return 0u;
-    if (id[0] == 's' && id[1] == 'e' && id[2] == 't' && id[3] == 't' && id[4] == 'i' && id[5] == 'n' && id[6] == 'g' && id[7] == 's' && id[8] == '\0') return 1u;
-    if (id[0] == 'f' && id[1] == 'i' && id[2] == 'l' && id[3] == 'e' && id[4] == 's' && id[5] == '\0') return 2u;
-    if (id[0] == 't' && id[1] == 'e' && id[2] == 'r' && id[3] == 'm' && id[4] == 'i' && id[5] == 'n' && id[6] == 'a' && id[7] == 'l' && id[8] == '\0') return 3u;
+    if (launcher_id_equals(id, "settings")) return 1u;
+    if (launcher_id_equals(id, "files")) return 2u;
+    if (launcher_id_equals(id, "terminal")) return 3u;
     return 0u;
 }
 
