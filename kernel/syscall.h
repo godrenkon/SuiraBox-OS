@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include "storage.h"
 
+#define SB_SYSCALL_ABI_MAJOR   1u
+#define SB_SYSCALL_ABI_MINOR   0u
 #define SB_SYS_GET_TICKS          0u
 #define SB_SYS_PROCESS_ID         1u
 #define SB_SYS_EXIT               2u
@@ -29,7 +31,10 @@
 #define SB_SYS_FS_WRITE           22u
 #define SB_SYS_FS_CLOSE           23u
 #define SB_SYS_SLEEP              24u
+#define SB_SYS_ABI_VERSION        25u
 #define SB_CONFIG_SET_VOLATILE    1u
+
+_Static_assert(SB_SYS_ABI_VERSION == 25u, "syscall ABI version query number changed");
 
 void syscall_init(void);
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
