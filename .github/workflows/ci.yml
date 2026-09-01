@@ -123,6 +123,30 @@ jobs:
           grep -F "Userspace: GUI framebuffer draw reached" qemu-gui.log
           grep -F "Memory: VMM map/translate/unmap OK" qemu-gui.log
 
+      - name: Persistent storage smoke test on legacy IDE
+        run: |
+          set -o pipefail
+          rm -f qemu-storage.log
+          timeout 30s qemu-system-x86_64 \
+            -machine pc \
+            -cpu max \
+            -m 512M \
+            -vga std \
+            -cdrom build/suirabox.iso \
+            -drive file=build/test-disk.img,format=raw,if=ide \
+            -boot order=d,menu=off \
+            -nic user,model=e1000 \
+            -serial file:qemu-storage.log \
+            -display none \
+            -no-reboot \
+            -no-shutdown \
+            2>&1 | tee qemu-storage-host.log || test ${PIPESTATUS[0]} -eq 124
+          grep -F "Storage: ATA primary master registered" qemu-storage.log
+          grep -F "Storage: persistent filesystem mounted" qemu-storage.log
+          grep -F "Storage: real block device + FAT32 mount OK" qemu-storage.log
+          grep -F "Userspace: ring3 syscall reached" qemu-storage.log
+          grep -F "Userspace: GUI framebuffer draw reached" qemu-storage.log
+
       - name: Upload kernel artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
@@ -135,4 +159,6 @@ jobs:
             qemu.log
             qemu-gui.log
             qemu-gui-host.log
+            qemu-storage.log
+            qemu-storage-host.log
           if-no-files-found: warn
