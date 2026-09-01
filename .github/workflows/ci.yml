@@ -53,7 +53,8 @@ jobs:
         run: |
           gcc -Wall -Wextra -Werror -std=c11 -D_GNU_SOURCE \
             -Ikernel -Ikernel/fs -Ikernel/mm -Ikernel/arch/x86_64 \
-            tests/file_handle_host_test.c kernel/fs_syscall.c kernel/vfs.c \
+            tests/file_handle_host_test.c tests/file_handle_host_fat32_stub.c \
+            kernel/fs_syscall.c kernel/vfs.c \
             -o build/file-handle-host-test
           ./build/file-handle-host-test
 
