@@ -46,10 +46,17 @@
 #define SB_CONFIG_SET_VOLATILE    1u
 #define SB_CONFIG_SET_KEEP_OPTIONS 0xFFFFFFFFu
 
+typedef struct __attribute__((packed)) {
+    uint8_t type;
+    uint8_t name_length;
+    uint16_t reserved;
+    char name[12];
+} sb_fs_dir_record_t;
+
 _Static_assert(SB_SYS_ABI_VERSION == 25u, "syscall ABI version query number changed");
 _Static_assert(SB_SYSCALL_ABI_MAJOR == 1u, "syscall ABI major changed");
 _Static_assert(SB_SYSCALL_ABI_MINOR == 2u, "syscall ABI minor changed");
-_Static_assert(SB_FS_DIR_RECORD_SIZE == 16u, "directory record ABI size changed");
+_Static_assert(sizeof(sb_fs_dir_record_t) == SB_FS_DIR_RECORD_SIZE, "directory record ABI layout changed");
 
 #ifdef SB_HOST_TEST
 uint64_t sb_syscall0(uint64_t number);
