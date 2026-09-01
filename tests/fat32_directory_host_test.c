@@ -62,7 +62,7 @@ static void build_image(void) {
     static const char data_name[11] = {'D','A','T','A',' ',' ',' ',' ',' ',' ',' '};
     static const char root_file_name[11] = {'R','O','O','T',' ',' ',' ',' ','T','X','T'};
     static const char nested_name[11] = {'N','E','S','T','E','D',' ',' ','T','X','T'};
-    static const char lfn_name[11] = {0x41, 'N','E','S','T','E','D',' ',' ',' ',' ',' '};
+    static const char lfn_name[11] = {0x41, 'N','E','S','T','E','D',' ',' ',' ',' '};
     uint8_t *boot = &disk[0u * SECTOR_SIZE];
     uint8_t *fat1 = &disk[1u * SECTOR_SIZE];
     uint8_t *fat2 = &disk[2u * SECTOR_SIZE];
