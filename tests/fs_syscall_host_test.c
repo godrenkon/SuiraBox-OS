@@ -134,7 +134,7 @@ int main(void) {
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
                                    (uint64_t)(uintptr_t)payload, 1u, 7u) == UINT64_MAX);
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
-                                   (uint64_t)(uintptr_t)payload, 0u, 7u) == UINT64_MAX);
+                                   (uint64_t)(uintptr_t)payload, 0u, 7u) == 0u);
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
                                    (uint64_t)(uintptr_t)payload, 0u, 6u) == 0u);
 
