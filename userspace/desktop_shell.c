@@ -34,9 +34,10 @@ static uint32_t launcher_app_id(const char *id) {
     return 0u;
 }
 
-static void request_launcher_app(const char *id) {
+static int request_launcher_app(const char *id) {
     const uint32_t app_id = launcher_app_id(id);
-    if (app_id != 0u) (void)sb_app_launch(app_id);
+    if (app_id == 0u) return -1;
+    return sb_app_launch(app_id) == 0u ? 0 : -1;
 }
 #endif
 
@@ -85,18 +86,28 @@ int sb_desktop_shell_toggle_launcher(sb_desktop_shell_t *shell) {
     return sb_launcher_set_open(&shell->launcher, shell->launcher.open == 0u ? 1u : 0u);
 }
 
-int sb_desktop_shell_key(sb_desktop_shell_t *shell, uint8_t key) {
-    const char *activated_id = 0;
+int sb_desktop_shell_move_selection(sb_desktop_shell_t *shell, int32_t delta) {
     if (shell == 0 || shell->initialized == 0u || shell->launcher.open == 0u) return -1;
-    if (key == 0x48u) return sb_launcher_move_selection(&shell->launcher, -1);
-    if (key == 0x50u) return sb_launcher_move_selection(&shell->launcher, 1);
-    if (key == 0x1Cu) {
-        if (sb_launcher_activate(&shell->launcher, &activated_id) != 0) return -1;
+    return sb_launcher_move_selection(&shell->launcher, delta);
+}
+
+int sb_desktop_shell_activate_selected(sb_desktop_shell_t *shell, const char **activated_id) {
+    const char *id = 0;
+    if (activated_id != 0) *activated_id = 0;
+    if (shell == 0 || shell->initialized == 0u || shell->launcher.open == 0u || activated_id == 0) return -1;
+    if (sb_launcher_activate(&shell->launcher, &id) != 0) return -1;
 #if __STDC_HOSTED__ == 0
-        request_launcher_app(activated_id);
+    if (request_launcher_app(id) != 0) return -1;
 #endif
-        return 0;
-    }
+    *activated_id = id;
+    return 0;
+}
+
+int sb_desktop_shell_key(sb_desktop_shell_t *shell, uint8_t key) {
+    if (shell == 0 || shell->initialized == 0u || shell->launcher.open == 0u) return -1;
+    if (key == 0x48u) return sb_desktop_shell_move_selection(shell, -1);
+    if (key == 0x50u) return sb_desktop_shell_move_selection(shell, 1);
+    if (key == 0x1Cu) return sb_desktop_shell_activate_selected(shell, &(const char *){0});
     return -1;
 }
 
@@ -122,11 +133,7 @@ int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
                              (uint32_t)menu_top,
                              SB_SHELL_MENU_W, SB_SHELL_MENU_ROW_H, &index) != 0) return -1;
     shell->launcher.selected = index;
-    if (sb_launcher_activate(&shell->launcher, activated_id) != 0) return -1;
-#if __STDC_HOSTED__ == 0
-    request_launcher_app(*activated_id);
-#endif
-    return 0;
+    return sb_desktop_shell_activate_selected(shell, activated_id);
 }
 
 void sb_desktop_shell_present_launcher(void) {
