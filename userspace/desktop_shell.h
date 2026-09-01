@@ -21,6 +21,8 @@ void sb_desktop_shell_init(sb_desktop_shell_t *shell,
                            uint32_t screen_width, uint32_t screen_height);
 int sb_desktop_shell_register_default_apps(sb_desktop_shell_t *shell);
 int sb_desktop_shell_toggle_launcher(sb_desktop_shell_t *shell);
+int sb_desktop_shell_move_selection(sb_desktop_shell_t *shell, int32_t delta);
+int sb_desktop_shell_activate_selected(sb_desktop_shell_t *shell, const char **activated_id);
 int sb_desktop_shell_key(sb_desktop_shell_t *shell, uint8_t key);
 int sb_desktop_shell_click(sb_desktop_shell_t *shell, int32_t x, int32_t y,
                            const char **activated_id);
