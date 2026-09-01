@@ -14,6 +14,8 @@ int user_scheduler_remove(sb_process_t *process, sb_thread_t *thread);
 int user_scheduler_rebind_thread(sb_process_t *process, sb_thread_t *old_thread, sb_thread_t *new_thread);
 int user_scheduler_set_current(sb_process_t *process, sb_thread_t *thread);
 int user_scheduler_request_exit(sb_process_t *process, sb_thread_t *thread);
+int user_scheduler_sleep_thread(sb_process_t *process, sb_thread_t *thread, uint64_t wake_tick);
+uint32_t user_scheduler_wake_expired(uint64_t now_tick);
 sb_thread_t *user_scheduler_current_thread(void);
 sb_process_t *user_scheduler_current_process(void);
 uint32_t user_scheduler_count(void);
