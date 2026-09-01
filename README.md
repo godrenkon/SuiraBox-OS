@@ -1,3 +1,4 @@
+https://github.com/godrenkon/SuiraBox-OS/issues/7#issue-5307409508
 # SuiraBox OS
 
 **Minecraftに特化しながら、普段使いもできるオープンソースOSを目指すプロジェクト。**
