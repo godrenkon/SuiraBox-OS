@@ -1,127 +1,29 @@
-#include <stdint.h>
-#include "pci.h"
+#include "kernel.h"
+#include "serial.h"
+#include "interrupts.h"
 #include "device.h"
-#include "hardware.h"
-#include "block.h"
-#include "vfs.h"
+#include "pci.h"
+#include "framebuffer.h"
+#include "desktop_bootstrap.h"
+#include "storage_selftest.h"
 #include "ata_pio.h"
 #include "mm/pmm.h"
 #include "mm/vmm.h"
 #include "mm/heap.h"
-#include "mm/multiboot_memory.h"
-#include "timer.h"
+#include "arch/x86_64/gdt.h"
 #include "scheduler.h"
+#include "user_scheduler.h"
 #include "process.h"
 #include "process_exec.h"
-#include "user_launch.h"
 #include "syscall.h"
-#include "app_manager.h"
+#include "fs_syscall.h"
+#include "user_launch.h"
+#include "hardware.h"
 #include "net_device.h"
 #include "net_stack.h"
-#include "arch/x86_64/interrupts.h"
-#include "arch/x86_64/gdt.h"
-#include "framebuffer.h"
-#include "desktop_bootstrap.h"
+#include "app_manager.h"
 
-extern int scheduler_add_kernel_task(uint64_t id, uint32_t priority);
-extern sb_task_t *scheduler_pick_next(void);
-extern uint32_t scheduler_task_count(void);
 extern void sb_syscall_int80_stub(void);
-extern int sb_storage_selftest(void);
-
-static void serial_init(void) {
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x80), "Nd"((uint16_t)0x3FB));
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x03), "Nd"((uint16_t)0x3F8));
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x03), "Nd"((uint16_t)0x3FB));
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0xC7), "Nd"((uint16_t)0x3FA));
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x0B), "Nd"((uint16_t)0x3FC));
-}
-
-static void serial_write_char(char c) {
-    while (1) {
-        uint8_t status;
-        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
-        if ((status & 0x20u) != 0u) break;
-    }
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
-}
-
-static void serial_write(const char *s) {
-    if (s == 0) return;
-    while (*s != '\0') serial_write_char(*s++);
-}
-
-static void serial_write_u64(uint64_t value) {
-    static const char digits[] = "0123456789ABCDEF";
-    char buffer[16];
-    uint32_t pos = 0u;
-    if (value == 0u) { serial_write_char('0'); return; }
-    while (value != 0u && pos < sizeof(buffer)) {
-        buffer[pos++] = digits[value & 0xFu];
-        value >>= 4;
-    }
-    serial_write("0x");
-    while (pos != 0u) serial_write_char(buffer[--pos]);
-}
-
-static void report_multiboot_modules(uint64_t multiboot_info) {
-    if (multiboot_info == 0u) return;
-    const uint32_t total_size = *(const uint32_t *)(uintptr_t)multiboot_info;
-    uint32_t offset = 8u;
-    uint32_t count = 0u;
-    if (total_size < 16u || total_size > 64u * 1024u) return;
-    while (offset <= total_size - 8u && count < 32u) {
-        const struct multiboot2_tag *tag =
-            (const struct multiboot2_tag *)(uintptr_t)(multiboot_info + offset);
-        if (tag->size < 8u || tag->size > total_size - offset) return;
-        if (tag->type == MULTIBOOT2_TAG_TYPE_END) return;
-        if (tag->type == MULTIBOOT2_TAG_TYPE_MODULE && tag->size >= sizeof(struct multiboot2_module_tag)) {
-            const struct multiboot2_module_tag *module = (const struct multiboot2_module_tag *)tag;
-            serial_write("Boot module: start=");
-            serial_write_u64(module->mod_start);
-            serial_write(" end=");
-            serial_write_u64(module->mod_end);
-            serial_write("\r\n");
-        }
-        const uint32_t next = (tag->size + 7u) & ~7u;
-        if (next < tag->size || offset > total_size - next) return;
-        offset += next;
-        ++count;
-    }
-}
-
-static int vmm_selftest(void) {
-    const uint64_t test_virtual = 0x0000004000000000ull;
-    void *page = pmm_alloc_page();
-    if (page == 0) return 0;
-    if (vmm_map_page(test_virtual, (uint64_t)(uintptr_t)page, SB_VMM_WRITABLE) != 0) {
-        pmm_free_page(page);
-        return 0;
-    }
-    const uint64_t translated = vmm_translate(test_virtual);
-    const uint64_t mask = ~(uint64_t)(SB_PAGE_SIZE - 1u);
-    if ((translated & mask) != ((uint64_t)(uintptr_t)page & mask)) {
-        (void)vmm_unmap_page(test_virtual, 0);
-        pmm_free_page(page);
-        return 0;
-    }
-    *(volatile uint64_t *)(uintptr_t)test_virtual = 0x5342554D4D544553ull;
-    if (*(volatile uint64_t *)(uintptr_t)test_virtual != 0x5342554D4D544553ull) {
-        (void)vmm_unmap_page(test_virtual, 0);
-        pmm_free_page(page);
-        return 0;
-    }
-    uint64_t unmapped = 0u;
-    if (vmm_unmap_page(test_virtual, &unmapped) != 0 ||
-        (unmapped & mask) != ((uint64_t)(uintptr_t)page & mask)) {
-        pmm_free_page(page);
-        return 0;
-    }
-    pmm_free_page(page);
-    return 1;
-}
 
 static int heap_selftest(void) {
     const uint64_t before = pmm_free_pages();
@@ -291,6 +193,7 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     timer_init();
     serial_write("Timer: IRQ0 enabled\r\n");
     serial_write("Hardware I/O foundation initialized.\r\n");
+    serial_write("Phase 1 bootstrap complete.\r\n");
     serial_write("Userspace: entering SB Desktop ring3 from prepared user frame\r\n");
     if (process_start_user_thread(init_process, init_thread) != 0) { serial_write("Userspace: prepared ring3 transition FAILED\r\n"); halt_forever(); }
     halt_forever();
