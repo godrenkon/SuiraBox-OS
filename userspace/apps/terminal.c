@@ -60,34 +60,64 @@ static void show_file_data(const char *path, uint32_t path_length) {
     (void)sb_fs_close(fd);
 }
 
+static uint64_t parse_decimal(const char *text, uint32_t start, uint32_t length) {
+    uint64_t value = 0u;
+    if (text == 0 || start >= length) return UINT64_MAX;
+    for (uint32_t i=start; i<length; ++i) {
+        const char c = text[i];
+        if (c < '0' || c > '9') return UINT64_MAX;
+        const uint64_t digit = (uint64_t)(c - '0');
+        if (value > (UINT64_MAX - digit) / 10u) return UINT64_MAX;
+        value = value * 10u + digit;
+    }
+    return value;
+}
+
+static int command_is(const char *line, const char *command, uint32_t length) {
+    uint32_t command_length = 0u;
+    while (command[command_length] != '\0') ++command_length;
+    if (length != command_length) return 0;
+    for (uint32_t i=0u; i<length; ++i) if (line[i] != command[i]) return 0;
+    return 1;
+}
+
 static void run_command(const char *line) {
     if(line==0)return;
     (void)sb_display_rect(24u,88u,720u,380u,0x10151Bu);
-    if(line[0]=='H'&&line[1]=='E'&&line[2]=='L'&&line[3]=='P'&&line[4]=='\0') draw_text(24u,100u,"HELP LS TICKS PID CLEAR CREATE WRITE CAT EXIT",0xBFD8FFu);
-    else if(line[0]=='L'&&line[1]=='S'&&line[2]=='\0') {
+    uint32_t length=0u; while(length<TERM_MAX_LINE&&line[length]!='\0') ++length;
+    if(command_is(line,"HELP",length)) draw_text(24u,100u,"HELP LS TICKS PID CLEAR CREATE WRITE CAT SLEEP EXIT",0xBFD8FFu);
+    else if(command_is(line,"LS",length)) {
         char names[TERM_MAX_OUTPUT];
         uint64_t n=sb_fs_list_root(names,sizeof(names));
         if(n==UINT64_MAX) draw_text(24u,100u,"LS ERROR",0xFF8080u);
         else {uint32_t off=0u,row=0u;while(off<(uint32_t)n&&row<12u){uint32_t len=0u;while(off+len<(uint32_t)n&&names[off+len]!='\0')++len;if(len){for(uint32_t i=0u;i<len&&i<60u;++i)draw_char(24u+i*10u,100u+row*28u,names[off+i],0xBFD8FFu);++row;}off+=len+1u;}}
     }
-    else if(line[0]=='T'&&line[1]=='I'&&line[2]=='C'&&line[3]=='K'&&line[4]=='S'&&line[5]=='\0'){draw_text(24u,100u,"TICKS",0xBFD8FFu);draw_hex(96u,100u,sb_get_ticks());}
-    else if(line[0]=='P'&&line[1]=='I'&&line[2]=='D'&&line[3]=='\0'){draw_text(24u,100u,"PID",0xBFD8FFu);draw_hex(96u,100u,sb_process_id());}
-    else if(line[0]=='C'&&line[1]=='L'&&line[2]=='E'&&line[3]=='A'&&line[4]=='R'&&line[5]=='\0')clear_terminal();
-    else if(line[0]=='C'&&line[1]=='R'&&line[2]=='E'&&line[3]=='A'&&line[4]=='T'&&line[5]=='E'&&line[6]=='\0'){
+    else if(command_is(line,"TICKS",length)){draw_text(24u,100u,"TICKS",0xBFD8FFu);draw_hex(96u,100u,sb_get_ticks());}
+    else if(command_is(line,"PID",length)){draw_text(24u,100u,"PID",0xBFD8FFu);draw_hex(96u,100u,sb_process_id());}
+    else if(command_is(line,"CLEAR",length))clear_terminal();
+    else if(command_is(line,"CREATE",length)){
         const char path[]="/SBCMD.TXT";
         const uint64_t fd=sb_fs_open(path,10u,SB_FS_OPEN_READ|SB_FS_OPEN_WRITE|SB_FS_OPEN_CREATE,128u);
         if(fd==UINT64_MAX) draw_text(24u,100u,"CREATE ERROR",0xFF8080u);
         else { (void)sb_fs_close(fd); draw_text(24u,100u,"CREATED",0x80D8A0u); }
     }
-    else if(line[0]=='W'&&line[1]=='R'&&line[2]=='I'&&line[3]=='T'&&line[4]=='E'&&line[5]=='\0'){
+    else if(command_is(line,"WRITE",length)){
         const char path[]="/SBCMD.TXT", data[]="SB OK";
         const uint64_t fd=sb_fs_open(path,10u,SB_FS_OPEN_WRITE,0u);
         if(fd==UINT64_MAX) draw_text(24u,100u,"OPEN ERROR",0xFF8080u);
         else { const uint64_t r=sb_fs_write(fd,data,5u); (void)sb_fs_close(fd); draw_text(24u,100u,r==5u?"WRITTEN":"WRITE ERROR",r==5u?0x80D8A0u:0xFF8080u); }
     }
-    else if(line[0]=='C'&&line[1]=='A'&&line[2]=='T'&&line[3]=='\0'){
+    else if(command_is(line,"CAT",length)){
         const char path[]="/SBCMD.TXT";
         show_file_data(path,10u);
+    }
+    else if(length>=7u && line[0]=='S'&&line[1]=='L'&&line[2]=='E'&&line[3]=='E'&&line[4]=='P'&&line[5]==' '){
+        const uint64_t ticks=parse_decimal(line,6u,length);
+        if(ticks==UINT64_MAX || ticks==0u || ticks>1000000u){draw_text(24u,100u,"SLEEP ERROR",0xFF8080u);return;}
+        draw_text(24u,100u,"SLEEPING",0xBFD8FFu);
+        const uint64_t result=sb_sleep(ticks);
+        if(result!=0u) draw_text(24u,128u,"SLEEP ERROR",0xFF8080u);
+        else {draw_text(24u,128u,"AWAKE",0x80D8A0u);draw_hex(96u,128u,sb_get_ticks());}
     }
     else draw_text(24u,100u,"UNKNOWN COMMAND",0xFFB070u);
 }
