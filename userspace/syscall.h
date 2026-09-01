@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define SB_SYSCALL_ABI_MAJOR   1u
-#define SB_SYSCALL_ABI_MINOR   1u
+#define SB_SYSCALL_ABI_MINOR   2u
 #define SB_SYS_GET_TICKS          0u
 #define SB_SYS_PROCESS_ID         1u
 #define SB_SYS_EXIT               2u
@@ -32,7 +32,11 @@
 #define SB_SYS_SLEEP              24u
 #define SB_SYS_ABI_VERSION        25u
 #define SB_SYS_FS_SEEK             26u
+#define SB_SYS_FS_LIST             27u
 
+#define SB_FS_DIR_RECORD_SIZE     16u
+#define SB_FS_DIR_TYPE_FILE       0u
+#define SB_FS_DIR_TYPE_DIRECTORY  1u
 #define SB_FS_OPEN_READ   0x01u
 #define SB_FS_OPEN_WRITE  0x02u
 #define SB_FS_OPEN_CREATE 0x04u
@@ -44,7 +48,8 @@
 
 _Static_assert(SB_SYS_ABI_VERSION == 25u, "syscall ABI version query number changed");
 _Static_assert(SB_SYSCALL_ABI_MAJOR == 1u, "syscall ABI major changed");
-_Static_assert(SB_SYSCALL_ABI_MINOR == 1u, "syscall ABI minor changed");
+_Static_assert(SB_SYSCALL_ABI_MINOR == 2u, "syscall ABI minor changed");
+_Static_assert(SB_FS_DIR_RECORD_SIZE == 16u, "directory record ABI size changed");
 
 #ifdef SB_HOST_TEST
 uint64_t sb_syscall0(uint64_t number);
@@ -67,6 +72,7 @@ uint64_t sb_config_get(void);
 uint64_t sb_config_set_with_options(uint32_t language, uint32_t optional_enabled_mask);
 uint64_t sb_app_launch(uint32_t app_id);
 uint64_t sb_fs_list_root(char *buffer, uint32_t capacity);
+uint64_t sb_fs_list(const char *path, uint32_t path_length, void *buffer, uint32_t capacity);
 uint64_t sb_fs_stat_root(const char *name, uint32_t name_length);
 uint64_t sb_fs_read_root(const char *name, uint32_t name_length, void *buffer, uint32_t capacity, uint32_t offset);
 uint64_t sb_fs_create_root(const char *name, uint32_t name_length, uint32_t file_size);
@@ -102,6 +108,7 @@ static inline uint64_t sb_config_set_with_options(uint32_t language,uint32_t opt
 static inline uint64_t sb_config_set(uint32_t language){return sb_config_set_with_options(language,SB_CONFIG_SET_KEEP_OPTIONS);}
 static inline uint64_t sb_app_launch(uint32_t app_id){return sb_syscall1(SB_SYS_APP_LAUNCH,app_id);}
 static inline uint64_t sb_fs_list_root(char *buffer,uint32_t capacity){return sb_syscall2(SB_SYS_FS_LIST_ROOT,(uint64_t)(uintptr_t)buffer,capacity);}
+static inline uint64_t sb_fs_list(const char *path,uint32_t path_length,void *buffer,uint32_t capacity){return sb_syscall4(SB_SYS_FS_LIST,(uint64_t)(uintptr_t)path,path_length,(uint64_t)(uintptr_t)buffer,capacity);}
 static inline uint64_t sb_fs_stat_root(const char *name,uint32_t name_length){return sb_syscall2(SB_SYS_FS_STAT_ROOT,(uint64_t)(uintptr_t)name,name_length);}
 static inline uint64_t sb_fs_read_root(const char *name,uint32_t name_length,void *buffer,uint32_t capacity,uint32_t offset){return sb_syscall5(SB_SYS_FS_READ_ROOT,(uint64_t)(uintptr_t)name,name_length,(uint64_t)(uintptr_t)buffer,capacity,offset);}
 static inline uint64_t sb_fs_create_root(const char *name,uint32_t name_length,uint32_t file_size){return sb_syscall3(SB_SYS_FS_CREATE_ROOT,(uint64_t)(uintptr_t)name,name_length,file_size);}
