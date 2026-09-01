@@ -28,6 +28,7 @@ extern sb_task_t *scheduler_pick_next(void);
 extern uint32_t scheduler_task_count(void);
 extern void sb_syscall_int80_stub(void);
 extern int sb_storage_selftest(void);
+extern int sb_storage_init(void);
 
 static void serial_init(void) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
@@ -233,6 +234,7 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Storage: probing legacy ATA primary master...\r\n");
     if (sb_ata_pio_init() == SB_BLOCK_OK) serial_write("Storage: ATA primary master registered\r\n");
     else serial_write("Storage: ATA primary master unavailable; continuing without it\r\n");
+    serial_write(sb_storage_init() ? "Storage: persistent filesystem mounted\r\n" : "Storage: persistent filesystem unavailable; continuing in fallback mode\r\n");
 
     serial_write("Memory: PMM init begin\r\n");
     pmm_init_from_multiboot(multiboot_info);
