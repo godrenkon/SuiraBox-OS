@@ -232,7 +232,7 @@ int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *en
             *entry = current;
             return 1;
         }
-        if ((current.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u || !path_valid_cluster(fs, current.first_cluster)) return 0;
+        if ((current.attributes & 0x10u) == 0u || !path_valid_cluster(fs, current.first_cluster)) return 0;
         current_cluster = current.first_cluster;
     }
     return 0;
