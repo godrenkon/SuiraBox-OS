@@ -10,9 +10,12 @@
 #include "fs_syscall.h"
 #include "process.h"
 #include "mm/address_space.h"
+#include "vfs.h"
+#include "fs/fat32.h"
 
 #define SB_SYSCALL_EXIT_SWITCH (UINT64_MAX - 1u)
 #define SB_SYSCALL_SLEEP_SWITCH (UINT64_MAX - 2u)
+#define SB_SYSCALL_FS_LIST_MAX_PATH (SB_VFS_MAX_PATH - 1u)
 
 static uint8_t syscall_user_smoke_seen;
 static uint8_t syscall_user_draw_seen;
@@ -93,6 +96,60 @@ static uint64_t syscall_wait_child(uint64_t child_pid, uint64_t user_exit_code) 
     return result;
 }
 
+static uint64_t syscall_fs_list(uint64_t user_path, uint64_t path_length,
+                                uint64_t user_buffer, uint64_t capacity) {
+    sb_process_t *process = user_scheduler_current_process();
+    sb_fat32_t *fs = sb_storage_fat32();
+    char path[SB_VFS_MAX_PATH];
+    sb_fat32_dirent_t directory;
+    uint32_t directory_cluster;
+    uint32_t path_len;
+    uint32_t buffer_capacity;
+    uint32_t record_capacity;
+    uint32_t written = 0u;
+
+    if (process == 0 || fs == 0 || user_path == 0u || path_length == 0u ||
+        path_length > SB_SYSCALL_FS_LIST_MAX_PATH || user_buffer == 0u ||
+        capacity > UINT32_MAX) return UINT64_MAX;
+    path_len = (uint32_t)path_length;
+    buffer_capacity = (uint32_t)capacity;
+    if (address_space_validate_user_range(&process->address_space, user_path, path_len, 0u) != 0) return UINT64_MAX;
+    if (buffer_capacity != 0u &&
+        address_space_validate_user_range(&process->address_space, user_buffer, buffer_capacity, 1u) != 0) return UINT64_MAX;
+    for (uint32_t i = 0u; i < path_len; ++i) path[i] = ((const char *)(uintptr_t)user_path)[i];
+    path[path_len] = '\0';
+    if (sb_vfs_normalize_path(path, path, sizeof(path)) != SB_VFS_OK) return UINT64_MAX;
+
+    if (path[0] == '/' && path[1] == '\0') {
+        directory_cluster = fs->root_cluster;
+    } else {
+        if (!sb_fat32_lookup_path(fs, path, &directory)) return UINT64_MAX;
+        if ((directory.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u || directory.first_cluster < 2u) return UINT64_MAX;
+        directory_cluster = directory.first_cluster;
+    }
+
+    record_capacity = buffer_capacity / SB_FS_DIR_RECORD_SIZE;
+    for (uint32_t index = 0u; index < record_capacity; ++index) {
+        sb_fat32_dirent_t entry;
+        sb_fs_dir_record_t record = {0};
+        if (!sb_fat32_read_directory_entry(fs, directory_cluster, index, &entry)) break;
+        uint32_t name_length = 0u;
+        while (name_length < sizeof(entry.name) && entry.name[name_length] != '\0') ++name_length;
+        if (name_length > sizeof(record.name)) return UINT64_MAX;
+        record.type = (entry.attributes & SB_FAT32_ATTR_DIRECTORY) != 0u ?
+                      SB_FS_DIR_TYPE_DIRECTORY : SB_FS_DIR_TYPE_FILE;
+        record.name_length = (uint8_t)name_length;
+        for (uint32_t i = 0u; i < name_length; ++i) record.name[i] = entry.name[i];
+        for (uint32_t i = 0u; i < sizeof(record.name); ++i) {
+            if (i >= name_length) record.name[i] = '\0';
+        }
+        for (uint32_t i = 0u; i < sizeof(record); ++i)
+            ((uint8_t *)(uintptr_t)user_buffer)[written + i] = ((const uint8_t *)&record)[i];
+        written += sizeof(record);
+    }
+    return written;
+}
+
 static uint64_t syscall_abi_version(void) {
     return ((uint64_t)SB_SYSCALL_ABI_MAJOR << 32) | (uint64_t)SB_SYSCALL_ABI_MINOR;
 }
@@ -155,6 +212,8 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_FS_CLOSE:
         case SB_SYS_FS_SEEK:
             return sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
+        case SB_SYS_FS_LIST:
+            return syscall_fs_list(arg0, arg1, arg2, arg3);
         case SB_SYS_WAIT_CHILD:
             return syscall_wait_child(arg0, arg1);
         case SB_SYS_SLEEP:
