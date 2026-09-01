@@ -1,5 +1,4 @@
-[https://github.com/godrenkon/SuiraBox-OS/issues/7#issue-5307409508](https://github.com/godrenkon/SuiraBox-OS/issues/7)
-# SuiraBox OS
+<img width="350" alt="Image" src="https://github.com/user-attachments/assets/adccd9ec-bbdb-457c-b32c-2c8ea1ca9d5c" />
 
 **Minecraftに特化しながら、普段使いもできるオープンソースOSを目指すプロジェクト。**
 
