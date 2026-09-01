@@ -37,11 +37,6 @@ _start:
     movl %eax, multiboot_magic_saved
     movl %ebx, multiboot_info_saved
 
-    /* QEMU debugcon breadcrumb: unlike UART, this requires no UART setup. */
-    movw $0x402, %dx
-    movb $'A', %al
-    outb %al, %dx
-
     /* Initialize COM1 so the kernel's normal serial console is usable. */
     movw $0x3F9, %dx
     xorb %al, %al
@@ -63,9 +58,6 @@ _start:
     outb %al, %dx
     movw $0x3FC, %dx
     movb $0x0B, %al
-    outb %al, %dx
-    movw $0x3F8, %dx
-    movb $'A', %al
     outb %al, %dx
 
     movl $stack_top, %esp
@@ -109,14 +101,6 @@ _start:
     orl $0x80000000, %eax
     movl %eax, %cr0
 
-    /* Re-use both diagnostic channels after paging is established. */
-    movw $0x402, %dx
-    movb $'B', %al
-    outb %al, %dx
-    movw $0x3F8, %dx
-    movb $'B', %al
-    outb %al, %dx
-
     lgdt gdt64_descriptor
     ljmp $0x18, $long_mode_entry
 
@@ -130,22 +114,9 @@ long_mode_entry:
     movw %ax, %fs
     movw %ax, %gs
 
-    movw $0x402, %dx
-    movb $'C', %al
-    outb %al, %dx
-    movw $0x3F8, %dx
-    movb $'C', %al
-    outb %al, %dx
-
     movl multiboot_magic_saved, %edi
     movl multiboot_info_saved, %esi
     cld
-    movw $0x402, %dx
-    movb $'D', %al
-    outb %al, %dx
-    movw $0x3F8, %dx
-    movb $'D', %al
-    outb %al, %dx
     call kmain
 
 .hang:
