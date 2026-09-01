@@ -17,3 +17,7 @@ jobs:
         run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel -Ikernel/fs tests/fat32_host_test.c kernel/block.c kernel/vfs.c kernel/fs/fat32.c -o /tmp/fat32-host-test
       - name: Run FAT32 host test
         run: /tmp/fat32-host-test
+      - name: Compile FAT32 directory host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel -Ikernel/fs tests/fat32_directory_host_test.c kernel/block.c kernel/vfs.c kernel/fs/fat32.c -o /tmp/fat32-directory-host-test
+      - name: Run FAT32 directory host test
+        run: /tmp/fat32-directory-host-test
