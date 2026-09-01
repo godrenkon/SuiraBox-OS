@@ -1,0 +1,23 @@
+name: user-scheduler-host
+
+on:
+  push:
+    branches:
+      - feat/gui-framebuffer-bootstrap
+  pull_request:
+    branches:
+      - feat/gui-framebuffer-bootstrap
+
+jobs:
+  user-scheduler-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile user scheduler host test
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Ikernel \
+            tests/user_scheduler_host_test.c \
+            kernel/user_scheduler.c \
+            -o /tmp/user-scheduler-host-test
+      - name: Run user scheduler host test
+        run: /tmp/user-scheduler-host-test
