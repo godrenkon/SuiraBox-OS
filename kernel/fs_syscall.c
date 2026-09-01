@@ -257,6 +257,33 @@ static uint64_t write_file_handle(uint64_t fd, const void *user_buffer, uint32_t
     return length;
 }
 
+static uint64_t seek_file_handle(uint64_t fd, int64_t offset, uint32_t whence) {
+    sb_process_t *process = current_process();
+    sb_fs_handle_t *handle = handle_for(process, fd);
+    int64_t base;
+    int64_t position;
+    if (handle == 0) return UINT64_MAX;
+    switch (whence) {
+        case SB_FS_SEEK_SET:
+            base = 0;
+            break;
+        case SB_FS_SEEK_CUR:
+            base = (int64_t)handle->offset;
+            break;
+        case SB_FS_SEEK_END:
+            base = (int64_t)handle->entry.file_size;
+            break;
+        default:
+            return UINT64_MAX;
+    }
+    if ((offset > 0 && base > INT64_MAX - offset) ||
+        (offset < 0 && base < INT64_MIN - offset)) return UINT64_MAX;
+    position = base + offset;
+    if (position < 0 || (uint64_t)position > handle->entry.file_size) return UINT64_MAX;
+    handle->offset = (uint32_t)position;
+    return (uint64_t)handle->offset;
+}
+
 static uint64_t close_file_handle(uint64_t fd) {
     sb_process_t *process = current_process();
     sb_fs_handle_t *handle = handle_for(process, fd);
@@ -304,6 +331,9 @@ uint64_t sb_fs_syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             return write_file_handle(arg0, (const void *)(uintptr_t)arg1, (uint32_t)arg2);
         case SB_SYS_FS_CLOSE:
             return close_file_handle(arg0);
+        case SB_SYS_FS_SEEK:
+            if (arg2 > 2u) return UINT64_MAX;
+            return seek_file_handle(arg0, (int64_t)arg1, (uint32_t)arg2);
         default:
             return UINT64_MAX;
     }
