@@ -104,26 +104,26 @@ static void draw_listing(const char *path) {
     if(bounded_length(path,TERM_MAX_PATH,&path_length)!=0)return;
     const uint64_t bytes=sb_fs_list(path,path_length,records,sizeof(records));
     if(bytes==UINT64_MAX){draw_text(24u,100u,"LS ERROR",0xFF8080u);return;}
-    uint32_t count=(uint32_t)(bytes/SB_FS_DIR_RECORD_SIZE);
+    const uint32_t count=(uint32_t)(bytes/SB_FS_DIR_RECORD_SIZE);
     for(uint32_t i=0u;i<count;++i){
-        uint32_t y=100u+i*28u;
+        const uint32_t y=100u+i*28u;
         draw_text(24u,y,records[i].type==SB_FS_DIR_TYPE_DIRECTORY?"DIR":"FILE",0x7FA8D8u);
-        for(uint32_t j=0u;j<records[i].name_length;++j)draw_char(86u+j*10u, y, records[i].name[j],0xBFD8FFu);
+        for(uint32_t j=0u;j<records[i].name_length;++j)draw_char(86u+j*10u,y,records[i].name[j],0xBFD8FFu);
     }
 }
 
 static void show_file_data(const char *path, uint32_t path_length) {
     char data[128];
-    uint64_t fd = sb_fs_open(path, path_length, SB_FS_OPEN_READ, 0u);
-    if (fd == UINT64_MAX) { draw_text(24u,100u,"CAT ERROR",0xFF8080u); return; }
+    uint64_t fd=sb_fs_open(path,path_length,SB_FS_OPEN_READ,0u);
+    if(fd==UINT64_MAX){draw_text(24u,100u,"CAT ERROR",0xFF8080u);return;}
     draw_text(24u,100u,"DATA",0xBFD8FFu);
-    uint32_t total = 0u;
-    for (;;) {
-        const uint64_t r = sb_fs_read(fd, data, sizeof(data));
-        if (r == UINT64_MAX) { draw_text(24u,128u,"READ ERROR",0xFF8080u); break; }
-        if (r == 0u) break;
-        for (uint32_t i=0u;i<(uint32_t)r && total<32u;++i,++total) draw_char(24u+(total%8u)*90u,128u+(total/8u)*28u,data[i],0xBFD8FFu);
-        if (total >= 32u) break;
+    uint32_t total=0u;
+    for(;;){
+        const uint64_t r=sb_fs_read(fd,data,sizeof(data));
+        if(r==UINT64_MAX){draw_text(24u,128u,"READ ERROR",0xFF8080u);break;}
+        if(r==0u)break;
+        for(uint32_t i=0u;i<(uint32_t)r&&total<32u;++i,++total)draw_char(24u+(total%8u)*90u,128u+(total/8u)*28u,data[i],0xBFD8FFu);
+        if(total>=32u)break;
     }
     (void)sb_fs_close(fd);
 }
@@ -144,15 +144,12 @@ static void run_command(const char *line, char cwd[TERM_MAX_PATH]) {
         if(build_path(cwd,arg_copy,path)!=0){draw_text(24u,100u,"LS ERROR",0xFF8080u);return;} draw_listing(path);
     }
     else if(length>=3u&&line[0]=='C'&&line[1]=='D'&&line[2]==' '){
-        char path[TERM_MAX_PATH];const char *arg;uint32_t arg_len;
+        char path[TERM_MAX_PATH];const char *arg;uint32_t arg_len;uint32_t path_len=0u;
         if(command_argument(line,"CD",length,&arg,&arg_len)!=0||arg_len+1u>TERM_MAX_PATH){draw_text(24u,100u,"CD ERROR",0xFF8080u);return;}
         char arg_copy[TERM_MAX_PATH];for(uint32_t i=0u;i<arg_len;++i)arg_copy[i]=arg[i];arg_copy[arg_len]='\0';
-        if(build_path(cwd,arg_copy,path)!=0){draw_text(24u,100u,"CD ERROR",0xFF8080u);return;}
-        uint64_t probe=sb_fs_list(path,(uint32_t)arg_len,(void*)0u,0u);
-        (void)probe;
+        if(build_path(cwd,arg_copy,path)!=0||bounded_length(path,TERM_MAX_PATH,&path_len)!=0){draw_text(24u,100u,"CD ERROR",0xFF8080u);return;}
         sb_fs_dir_record_t probe_record[1];
-        const uint64_t listed=sb_fs_list(path,(uint32_t)bounded_length(path,TERM_MAX_PATH,&arg_len)==0?arg_len:0u,probe_record,sizeof(probe_record));
-        if(listed==UINT64_MAX&&arg_copy[0]!='/'&&arg_copy[0]!='.') {draw_text(24u,100u,"CD ERROR",0xFF8080u);return;}
+        const uint64_t listed=sb_fs_list(path,path_len,probe_record,sizeof(probe_record));
         if(listed==UINT64_MAX){draw_text(24u,100u,"CD ERROR",0xFF8080u);return;}
         for(uint32_t i=0u;i<TERM_MAX_PATH;++i)cwd[i]=path[i];
         draw_text(24u,100u,"CHANGED",0x80D8A0u);
