@@ -17,13 +17,12 @@ int main(void) {
     uint64_t *saved = frame_words;
     sb_x86_64_user_iret_frame_t *iret = (sb_x86_64_user_iret_frame_t *)(void *)(saved + 9u);
 
-    p1.pid = 1u; p1.state = SB_PROCESS_RUNNING; p1.thread_count = 1u; p1.threads[0] = t1;
-    p2.pid = 2u; p2.state = SB_PROCESS_RUNNING; p2.thread_count = 1u; p2.threads[0] = t2;
     t1.tid = 1u; t1.state = SB_PROCESS_RUNNING; t1.user_context = &c1;
     t1.kernel_stack_base = 0x1000u; t1.kernel_stack_top = 0x2000u; t1.kernel_resume_stack_pointer = 0x1F00u;
     t2.tid = 2u; t2.state = SB_PROCESS_RUNNING; t2.user_context = &c2;
     t2.kernel_stack_base = 0x3000u; t2.kernel_stack_top = 0x4000u; t2.kernel_resume_stack_pointer = 0x3F00u;
-    p1.threads[0] = t1; p2.threads[0] = t2;
+    p1.pid = 1u; p1.state = SB_PROCESS_RUNNING; p1.thread_count = 1u; p1.threads[0] = t1;
+    p2.pid = 2u; p2.state = SB_PROCESS_RUNNING; p2.thread_count = 1u; p2.threads[0] = t2;
     c1.r12 = 0x1212u; c1.rbp = 0xBEEFu; c1.rbx = 0xCAFEu; c1.r13 = 0x1313u; c1.r14 = 0x1414u; c1.r15 = 0x1515u;
 
     saved[1] = 0x1111u; saved[2] = 0x2222u; saved[3] = 0x3333u; saved[4] = 0x4444u;
@@ -37,8 +36,8 @@ int main(void) {
     activate_calls = 0; gdt_calls = 0;
     assert(user_scheduler_request_sleep(100u) == 0);
     assert(user_scheduler_sleep_dispatch((uintptr_t)saved) == p2.threads[0].kernel_resume_stack_pointer);
-    assert(t1.state == SB_PROCESS_SLEEPING);
-    assert(t1.wake_tick == 100u);
+    assert(p1.threads[0].state == SB_PROCESS_SLEEPING);
+    assert(p1.threads[0].wake_tick == 100u);
     assert(c1.rax == 0u);
     assert(c1.r12 == 0x1212u && c1.rbp == 0xBEEFu && c1.rbx == 0xCAFEu);
     assert(c1.rdi == 0x1111u && c1.rsi == 0x2222u && c1.rdx == 0x3333u && c1.rcx == 0x4444u);
@@ -48,9 +47,9 @@ int main(void) {
     assert(user_scheduler_current_process() == &p2);
     assert(activate_calls == 1 && gdt_calls == 1);
     assert(user_scheduler_wake_expired(99u) == 0u);
-    assert(t1.state == SB_PROCESS_SLEEPING);
+    assert(p1.threads[0].state == SB_PROCESS_SLEEPING);
     assert(user_scheduler_wake_expired(100u) == 1u);
-    assert(t1.state == SB_PROCESS_CREATED && t1.wake_tick == 0u);
+    assert(p1.threads[0].state == SB_PROCESS_CREATED && p1.threads[0].wake_tick == 0u);
     assert(user_scheduler_wake_expired(100u) == 0u);
     return 0;
 }
