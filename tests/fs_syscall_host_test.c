@@ -57,7 +57,8 @@ int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name, uint32_t file_si
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry, uint32_t offset, uint32_t size, void *buffer) {
     static const char payload[] = "hello";
     const uintptr_t address = (uintptr_t)buffer;
-    if (fs != &fake_fs || entry == 0 || buffer == 0 || offset > 5u || size > 5u - offset) return 0;
+    (void)entry;
+    if (fs != &fake_fs || buffer == 0 || offset > 5u || size > 5u - offset) return 0;
     assert(address < user_base || address >= user_base + user_size);
     memcpy(buffer, payload + offset, size);
     return 1;
@@ -73,7 +74,9 @@ int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry, uint32_t 
     if (fs != &fake_fs || entry == 0 || buffer == 0 || offset > sizeof(fake_file) || size > sizeof(fake_file) - offset) return 0;
     if (offset > entry->file_size) return 0;
     if (offset + size > entry->file_size) entry->file_size = offset + size;
-    return sb_fat32_write_file(fs, entry, offset, size, buffer);
+    if (!sb_fat32_write_file(fs, entry, offset, size, buffer)) return 0;
+    fake_entry = *entry;
+    return 1;
 }
 
 static void *map_user(void) {
