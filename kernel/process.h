@@ -22,6 +22,7 @@ typedef enum {
 typedef struct {
     uint64_t tid;
     uint64_t runtime_ticks;
+    uint64_t wake_tick;
     uint32_t priority;
     sb_process_state_t state;
     sb_user_context_t *user_context;
