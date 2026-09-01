@@ -12,6 +12,8 @@
 static sb_process_t process;
 static sb_fat32_t fake_fs;
 static sb_fat32_dirent_t fake_entry;
+static sb_fat32_dirent_t fake_root_entries[2];
+static sb_fat32_dirent_t fake_data_entries[1];
 static uintptr_t user_base = 0x8000000000ull;
 static size_t user_size = 0x20000u;
 static uint8_t fake_file[128];
@@ -39,9 +41,33 @@ int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t
 }
 int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *entry) {
     if (fs != &fake_fs || path == 0 || entry == 0) return 0;
-    if (strcmp(path, "/HELLO.TXT") != 0 && strcmp(path, "/DATA/HELLO.TXT") != 0) return 0;
-    *entry = fake_entry;
-    return 1;
+    if (strcmp(path, "/HELLO.TXT") == 0) {
+        *entry = fake_entry;
+        return 1;
+    }
+    if (strcmp(path, "/DATA") == 0) {
+        memset(entry, 0, sizeof(*entry));
+        strcpy(entry->name, "DATA");
+        entry->attributes = SB_FAT32_ATTR_DIRECTORY;
+        entry->first_cluster = 4u;
+        return 1;
+    }
+    return 0;
+}
+int sb_fat32_read_directory_entry(sb_fat32_t *fs, uint32_t directory_cluster,
+                                  uint32_t index, sb_fat32_dirent_t *entry) {
+    if (fs != &fake_fs || entry == 0) return 0;
+    if (directory_cluster == fake_fs.root_cluster) {
+        if (index >= 2u) return 0;
+        *entry = fake_root_entries[index];
+        return 1;
+    }
+    if (directory_cluster == 4u) {
+        if (index >= 1u) return 0;
+        *entry = fake_data_entries[index];
+        return 1;
+    }
+    return 0;
 }
 int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name, uint32_t file_size, sb_fat32_dirent_t *entry) {
     if (fs != &fake_fs || name == 0 || entry == 0 || strcmp(name, "NEW.TXT") != 0) return 0;
@@ -97,10 +123,22 @@ int main(void) {
     void *mapped = map_user();
     assert(mapped == (void *)user_base);
     process.address_space.pml4_physical = 1u;
+    fake_fs.root_cluster = 2u;
     memset(&fake_entry, 0, sizeof(fake_entry));
     memcpy(fake_entry.name, "HELLO.TXT", 9u);
     fake_entry.file_size = 5u;
     fake_entry.attributes = 0x20u;
+
+    memset(fake_root_entries, 0, sizeof(fake_root_entries));
+    fake_root_entries[0] = fake_entry;
+    strcpy(fake_root_entries[1].name, "DATA");
+    fake_root_entries[1].attributes = SB_FAT32_ATTR_DIRECTORY;
+    fake_root_entries[1].first_cluster = 4u;
+    memset(fake_data_entries, 0, sizeof(fake_data_entries));
+    strcpy(fake_data_entries[0].name, "NESTED.TXT");
+    fake_data_entries[0].attributes = 0x20u;
+    fake_data_entries[0].first_cluster = 5u;
+    fake_data_entries[0].file_size = 42u;
 
     buffer = (char *)user_base + 0x1000u;
     payload = buffer + 0x200u;
@@ -110,6 +148,31 @@ int main(void) {
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_READ_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
                                    (uint64_t)(uintptr_t)(buffer + 0x100u), 5u, 0u) == 5u);
     assert(memcmp(buffer + 0x100u, "hello", 5u) == 0);
+
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST, (uint64_t)(uintptr_t)buffer, 1u,
+                                   (uint64_t)(uintptr_t)(buffer + 0x400u), 64u, 0u) == 32u);
+    {
+        const sb_fs_dir_record_t *records = (const sb_fs_dir_record_t *)(uintptr_t)(buffer + 0x400u);
+        assert(records[0].type == SB_FS_DIR_TYPE_FILE);
+        assert(records[0].name_length == 9u);
+        assert(memcmp(records[0].name, "HELLO.TXT", 9u) == 0);
+        assert(records[1].type == SB_FS_DIR_TYPE_DIRECTORY);
+        assert(records[1].name_length == 4u);
+        assert(memcmp(records[1].name, "DATA", 4u) == 0);
+    }
+    memcpy(buffer, "/DATA", 5u);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST, (uint64_t)(uintptr_t)buffer, 5u,
+                                   (uint64_t)(uintptr_t)(buffer + 0x400u), 16u, 0u) == 16u);
+    {
+        const sb_fs_dir_record_t *record = (const sb_fs_dir_record_t *)(uintptr_t)(buffer + 0x400u);
+        assert(record->type == SB_FS_DIR_TYPE_FILE);
+        assert(record->name_length == 10u);
+        assert(memcmp(record->name, "NESTED.TXT", 10u) == 0);
+    }
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST, (uint64_t)(uintptr_t)buffer, 5u,
+                                   1u, 16u, 0u) == UINT64_MAX);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST, (uint64_t)(uintptr_t)buffer, 5u,
+                                   (uint64_t)(uintptr_t)(buffer + 0x400u), 15u, 0u) == 0u);
 
     memcpy(buffer, "NEW.TXT", 7u);
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_CREATE_ROOT, (uint64_t)(uintptr_t)buffer, 7u, 16u, 0u, 0u) == 0u);
