@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#define SB_SYSCALL_ABI_MAJOR   1u
+#define SB_SYSCALL_ABI_MINOR   0u
 #define SB_SYS_GET_TICKS          0u
 #define SB_SYS_PROCESS_ID         1u
 #define SB_SYS_EXIT               2u
@@ -28,12 +30,17 @@
 #define SB_SYS_FS_WRITE           22u
 #define SB_SYS_FS_CLOSE           23u
 #define SB_SYS_SLEEP              24u
+#define SB_SYS_ABI_VERSION        25u
 
 #define SB_FS_OPEN_READ   0x01u
 #define SB_FS_OPEN_WRITE  0x02u
 #define SB_FS_OPEN_CREATE 0x04u
 #define SB_CONFIG_SET_VOLATILE    1u
 #define SB_CONFIG_SET_KEEP_OPTIONS 0xFFFFFFFFu
+
+_Static_assert(SB_SYS_ABI_VERSION == 25u, "syscall ABI version query number changed");
+_Static_assert(SB_SYSCALL_ABI_MAJOR == 1u, "syscall ABI major changed");
+_Static_assert(SB_SYSCALL_ABI_MINOR == 0u, "syscall ABI minor changed");
 
 #ifdef SB_HOST_TEST
 uint64_t sb_syscall0(uint64_t number);
@@ -44,6 +51,7 @@ uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg
 uint64_t sb_syscall5(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4);
 uint64_t sb_get_ticks(void);
 uint64_t sb_process_id(void);
+uint64_t sb_syscall_abi_version(void);
 uint64_t sb_display_info(void);
 uint64_t sb_display_clear(uint32_t rgb);
 uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t rgb);
@@ -76,6 +84,7 @@ static inline uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1
 static inline uint64_t sb_syscall5(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; register uint64_t rdx __asm__("rdx") = arg2; register uint64_t r10 __asm__("r10") = arg3; register uint64_t r8 __asm__("r8") = arg4; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r"(r8) : "memory"); return result; }
 static inline uint64_t sb_get_ticks(void) { return sb_syscall0(SB_SYS_GET_TICKS); }
 static inline uint64_t sb_process_id(void) { return sb_syscall0(SB_SYS_PROCESS_ID); }
+static inline uint64_t sb_syscall_abi_version(void) { return sb_syscall0(SB_SYS_ABI_VERSION); }
 static inline uint64_t sb_display_info(void) { return sb_syscall0(SB_SYS_DISPLAY_INFO); }
 static inline uint64_t sb_display_clear(uint32_t rgb) { return sb_syscall1(SB_SYS_DISPLAY_CLEAR, rgb); }
 static inline uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t rgb) { return sb_syscall5(SB_SYS_DISPLAY_RECT,x,y,width,height,rgb); }
