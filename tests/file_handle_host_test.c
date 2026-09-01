@@ -135,6 +135,19 @@ int main(void) {
     assert(memcmp(buffer, "llo", 3u) == 0);
     assert(sb_fs_read(fd0, buffer, 1u) == 0u);
     assert(sb_fs_write(fd0, buffer, 0u) == UINT64_MAX);
+
+    assert(sb_fs_seek(fd0, 1, SB_FS_SEEK_SET) == 1u);
+    assert(sb_fs_read(fd0, buffer, 1u) == 1u);
+    assert(buffer[0] == 'e');
+    assert(sb_fs_seek(fd0, -2, SB_FS_SEEK_END) == 3u);
+    assert(sb_fs_read(fd0, buffer, 2u) == 2u);
+    assert(memcmp(buffer, "lo", 2u) == 0);
+    assert(sb_fs_seek(fd0, -1, SB_FS_SEEK_CUR) == 4u);
+    assert(sb_fs_read(fd0, buffer, 1u) == 1u);
+    assert(buffer[0] == 'o');
+    assert(sb_fs_seek(fd0, -5, SB_FS_SEEK_SET) == UINT64_MAX);
+    assert(sb_fs_seek(fd0, 6, SB_FS_SEEK_SET) == UINT64_MAX);
+    assert(sb_fs_seek(fd0, 0, 99u) == UINT64_MAX);
     assert(sb_fs_close(fd0) == 0u);
     assert(sb_fs_close(fd0) == UINT64_MAX);
 
