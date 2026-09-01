@@ -5,7 +5,7 @@
 #include "storage.h"
 
 #define SB_SYSCALL_ABI_MAJOR   1u
-#define SB_SYSCALL_ABI_MINOR   1u
+#define SB_SYSCALL_ABI_MINOR   2u
 #define SB_SYS_GET_TICKS          0u
 #define SB_SYS_PROCESS_ID         1u
 #define SB_SYS_EXIT               2u
@@ -33,9 +33,14 @@
 #define SB_SYS_SLEEP              24u
 #define SB_SYS_ABI_VERSION        25u
 #define SB_SYS_FS_SEEK            26u
+#define SB_SYS_FS_LIST            27u
+#define SB_FS_DIR_RECORD_SIZE     16u
+#define SB_FS_DIR_TYPE_FILE       0u
+#define SB_FS_DIR_TYPE_DIRECTORY  1u
 #define SB_CONFIG_SET_VOLATILE    1u
 
 _Static_assert(SB_SYS_ABI_VERSION == 25u, "syscall ABI version query number changed");
+_Static_assert(SB_FS_DIR_RECORD_SIZE == 16u, "directory record ABI size changed");
 
 void syscall_init(void);
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
