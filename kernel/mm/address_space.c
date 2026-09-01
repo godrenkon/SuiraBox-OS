@@ -66,7 +66,10 @@ int address_space_create(sb_address_space_t *space) {
     uint64_t current_cr3;
     __asm__ volatile("mov %%cr3, %0" : "=r"(current_cr3));
     uint64_t *current = (uint64_t *)(uintptr_t)(current_cr3 & ENTRY_ADDR_MASK);
-    new_pml4[0] = current[0];
+    for (uint32_t i = 0u; i < PT_ENTRIES; ++i) {
+        if (i == SB_USER_PML4_INDEX) continue;
+        new_pml4[i] = current[i];
+    }
     space->pml4_physical = (uint64_t)(uintptr_t)pml4_page;
     return 0;
 }
