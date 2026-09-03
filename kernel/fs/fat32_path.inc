@@ -19,7 +19,8 @@ static uint32_t le32_path(const uint8_t *p) {
 }
 
 static int path_read_sector(sb_fat32_t *fs, uint32_t lba, uint8_t *sector) {
-    return fs != 0 && sector != 0 && lba < fs->mount->total_sectors &&
+    return fs != 0 && fs->mount != 0 && sector != 0 &&
+           (uint64_t)lba < fs->mount->total_sectors &&
            sb_vfs_read_sectors(fs->mount, lba, 1u, sector) == SB_VFS_OK;
 }
 
@@ -154,6 +155,45 @@ static int path_find_in_directory(sb_fat32_t *fs, uint32_t directory_cluster,
     return 0;
 }
 
+static int path_find_free_directory_slot(sb_fat32_t *fs, uint32_t directory_cluster,
+                                          uint32_t *lba, uint32_t *entry_offset,
+                                          uint32_t *slot_index) {
+    uint8_t sector[SB_FAT32_PATH_SECTOR_BYTES];
+    uint32_t cluster = directory_cluster;
+    uint32_t guard = 0u;
+    if (fs == 0 || lba == 0 || entry_offset == 0 || slot_index == 0 ||
+        !path_valid_cluster(fs, cluster) || fs->bytes_per_sector != SB_FAT32_PATH_SECTOR_BYTES ||
+        fs->sectors_per_cluster == 0u) return 0;
+
+    while (path_valid_cluster(fs, cluster) && guard++ <= fs->max_cluster) {
+        const uint64_t cluster_lba64 = (uint64_t)fs->first_data_sector +
+                                        (uint64_t)(cluster - 2u) * fs->sectors_per_cluster;
+        const uint32_t entries_per_sector = fs->bytes_per_sector / SB_FAT32_PATH_ENTRY_SIZE;
+        const uint32_t entries_per_cluster = entries_per_sector * fs->sectors_per_cluster;
+        if (entries_per_sector == 0u || entries_per_cluster == 0u ||
+            entries_per_cluster > SB_FAT32_PATH_MAX_ENTRIES_PER_CLUSTER ||
+            cluster_lba64 >= fs->mount->total_sectors) return 0;
+        for (uint32_t index = 0u; index < entries_per_cluster; ++index) {
+            const uint64_t lba64 = cluster_lba64 + index / entries_per_sector;
+            const uint32_t offset = (index % entries_per_sector) * SB_FAT32_PATH_ENTRY_SIZE;
+            if (lba64 >= fs->mount->total_sectors || !path_read_sector(fs, (uint32_t)lba64, sector)) return 0;
+            const uint8_t first = sector[offset];
+            if (first == 0x00u || first == 0xE5u) {
+                *lba = (uint32_t)lba64;
+                *entry_offset = offset;
+                *slot_index = index;
+                return 1;
+            }
+        }
+        uint32_t next;
+        if (!path_next_cluster(fs, cluster, &next)) return 0;
+        if (next >= SB_FAT32_PATH_EOC_MIN) return 0;
+        if (!path_valid_cluster(fs, next)) return 0;
+        cluster = next;
+    }
+    return 0;
+}
+
 int sb_fat32_read_directory_entry(sb_fat32_t *fs, uint32_t directory_cluster,
                                   uint32_t index, sb_fat32_dirent_t *entry) {
     uint8_t sector[SB_FAT32_PATH_SECTOR_BYTES];
@@ -235,6 +275,57 @@ int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *en
         if ((current.attributes & 0x10u) == 0u || !path_valid_cluster(fs, current.first_cluster)) return 0;
         current_cluster = current.first_cluster;
     }
+    return 0;
+}
+
+int sb_fat32_create_file_in_directory(sb_fat32_t *fs, uint32_t directory_cluster,
+                                      const char *name, uint32_t file_size,
+                                      sb_fat32_dirent_t *entry) {
+    uint8_t raw_name[11];
+    uint8_t sector[SB_FAT32_PATH_SECTOR_BYTES];
+    char canonical[13];
+    uint32_t lba = 0u;
+    uint32_t entry_offset = 0u;
+    uint32_t slot_index = 0u;
+    uint32_t cluster_size;
+    uint32_t cluster_count = 0u;
+    uint32_t first_cluster = 0u;
+
+    if (fs == 0 || name == 0 || entry == 0 || !path_valid_cluster(fs, directory_cluster) ||
+        fs->bytes_per_sector != SB_FAT32_PATH_SECTOR_BYTES || fs->sectors_per_cluster == 0u ||
+        !canonical_name(name, canonical) || !build_short_name(name, raw_name)) return 0;
+    if (path_find_in_directory(fs, directory_cluster, canonical, entry)) return 0;
+    if (!path_find_free_directory_slot(fs, directory_cluster, &lba, &entry_offset, &slot_index)) return 0;
+
+    cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
+    if (cluster_size == 0u) return 0;
+    if (file_size != 0u) {
+        cluster_count = file_size / cluster_size;
+        if (file_size % cluster_size != 0u) ++cluster_count;
+        if (!allocate_cluster_chain(fs, cluster_count, &first_cluster)) return 0;
+    }
+
+    if (!read_sector(fs, lba, sector)) goto rollback;
+    for (uint32_t i = 0u; i < SB_FAT32_PATH_ENTRY_SIZE; ++i) sector[entry_offset + i] = 0u;
+    for (uint32_t i = 0u; i < sizeof(raw_name); ++i) sector[entry_offset + i] = raw_name[i];
+    sector[entry_offset + 11u] = 0x20u;
+    put_le16(&sector[entry_offset + 20u], (uint16_t)(first_cluster >> 16));
+    put_le16(&sector[entry_offset + 26u], (uint16_t)first_cluster);
+    put_le32(&sector[entry_offset + 28u], file_size);
+    if (!write_sector(fs, lba, sector)) goto rollback;
+
+    for (uint32_t i = 0u; i < sizeof(entry->name); ++i) entry->name[i] = canonical[i];
+    entry->attributes = 0x20u;
+    entry->first_cluster = first_cluster;
+    entry->file_size = file_size;
+    entry->root_index = slot_index;
+    entry->directory_cluster = directory_cluster;
+    entry->entry_lba = lba;
+    entry->entry_offset = (uint16_t)entry_offset;
+    return 1;
+
+rollback:
+    if (first_cluster != 0u) (void)release_cluster_chain(fs, first_cluster);
     return 0;
 }
 
