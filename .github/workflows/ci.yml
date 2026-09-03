@@ -33,7 +33,7 @@ jobs:
           mformat -F -i build/test-disk.img ::
 
       - name: Build ISO
-        run: make
+        run: make USER_CFLAGS='-ffreestanding -fno-stack-protector -fno-pie -fno-builtin -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2 -ffunction-sections -fdata-sections -DSB_RUNTIME_SMOKE'
 
       - name: Check Core footprint and ISO resource boundary
         run: python3 tools/check_core_footprint.py
