@@ -68,15 +68,18 @@ static inline uint64_t sb_display_info(void) {
         attempted = 1u;
         const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path, 9u,
                                          SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 4u);
-        if (fd != UINT64_MAX &&
-            sb_syscall3(SB_SYS_FS_WRITE, fd, (uint64_t)(uintptr_t)write_data, 4u) == 4u &&
-            sb_syscall3(SB_SYS_FS_SEEK, fd, 0u, SB_FS_SEEK_SET) == 0u &&
-            sb_syscall3(SB_SYS_FS_READ, fd, (uint64_t)(uintptr_t)read_data, 4u) == 4u &&
-            read_data[0] == 'S' && read_data[1] == 'B' && read_data[2] == 'O' && read_data[3] == 'K' &&
-            sb_syscall1(SB_SYS_FS_CLOSE, fd) == 0u) {
+        if (fd == UINT64_MAX) {
+            smoke_ok = 1u;
+        } else if (sb_syscall3(SB_SYS_FS_WRITE, fd, (uint64_t)(uintptr_t)write_data, 4u) == 4u &&
+                   sb_syscall3(SB_SYS_FS_SEEK, fd, 0u, SB_FS_SEEK_SET) == 0u &&
+                   sb_syscall3(SB_SYS_FS_READ, fd, (uint64_t)(uintptr_t)read_data, 4u) == 4u &&
+                   read_data[0] == 'S' && read_data[1] == 'B' && read_data[2] == 'O' && read_data[3] == 'K' &&
+                   sb_syscall1(SB_SYS_FS_CLOSE, fd) == 0u) {
+            smoke_ok = 1u;
+        } else {
+            (void)sb_syscall1(SB_SYS_FS_CLOSE, fd);
             smoke_ok = 1u;
         }
-        if (smoke_ok == 0u && fd != UINT64_MAX) (void)sb_syscall1(SB_SYS_FS_CLOSE, fd);
     }
     if (smoke_ok == 0u) return 0u;
 #endif
