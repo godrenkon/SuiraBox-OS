@@ -47,7 +47,7 @@ static void clear_terminal(void) { (void)sb_display_clear(0x10151Bu); draw_text(
 
 static int bounded_length(const char *text, uint32_t capacity, uint32_t *length) {
     uint32_t n=0u;
-    if(text==0 || length==0u || capacity==0u) return -1;
+    if(text==0 || length==(uint32_t)0 || capacity==(uint32_t)0) return -1;
     while(n<capacity && text[n]!='\0') ++n;
     if(n==capacity) return -1;
     *length=n;
@@ -87,7 +87,7 @@ static int command_is(const char *line, const char *command, uint32_t length) {
 static int command_argument(const char *line, const char *prefix, uint32_t length, const char **argument, uint32_t *argument_length) {
     uint32_t prefix_length=0u;
     while(prefix[prefix_length]!='\0') ++prefix_length;
-    if(length<=prefix_length||argument==0||argument_length==0u)return -1;
+    if(length<=prefix_length||argument==0||argument_length==(uint32_t)0)return -1;
     for(uint32_t i=0u;i<prefix_length;++i)if(line[i]!=prefix[i])return -1;
     if(line[prefix_length]!=' ')return -1;
     uint32_t start=prefix_length+1u;
