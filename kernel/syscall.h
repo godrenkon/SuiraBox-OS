@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include "storage.h"
+#include "../include/sb_fs_abi.h"
 
 #define SB_SYSCALL_ABI_MAJOR   1u
 #define SB_SYSCALL_ABI_MINOR   2u
@@ -34,20 +35,9 @@
 #define SB_SYS_ABI_VERSION        25u
 #define SB_SYS_FS_SEEK            26u
 #define SB_SYS_FS_LIST            27u
-#define SB_FS_DIR_RECORD_SIZE     16u
-#define SB_FS_DIR_TYPE_FILE       0u
-#define SB_FS_DIR_TYPE_DIRECTORY  1u
 #define SB_CONFIG_SET_VOLATILE    1u
 
-typedef struct __attribute__((packed)) {
-    uint8_t type;
-    uint8_t name_length;
-    uint16_t reserved;
-    char name[12];
-} sb_fs_dir_record_t;
-
 _Static_assert(SB_SYS_ABI_VERSION == 25u, "syscall ABI version query number changed");
-_Static_assert(sizeof(sb_fs_dir_record_t) == SB_FS_DIR_RECORD_SIZE, "directory record ABI layout changed");
 
 void syscall_init(void);
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
