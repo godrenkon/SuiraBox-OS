@@ -47,7 +47,7 @@ static void clear_terminal(void) { (void)sb_display_clear(0x10151Bu); draw_text(
 
 static int bounded_length(const char *text, uint32_t capacity, uint32_t *length) {
     uint32_t n=0u;
-    if(text==0 || length==(uint32_t)0 || capacity==(uint32_t)0) return -1;
+    if(text==0 || length==0 || capacity==0u) return -1;
     while(n<capacity && text[n]!='\0') ++n;
     if(n==capacity) return -1;
     *length=n;
@@ -86,8 +86,9 @@ static int command_is(const char *line, const char *command, uint32_t length) {
 
 static int command_argument(const char *line, const char *prefix, uint32_t length, const char **argument, uint32_t *argument_length) {
     uint32_t prefix_length=0u;
+    if(argument==0 || argument_length==0) return -1;
     while(prefix[prefix_length]!='\0') ++prefix_length;
-    if(length<=prefix_length||argument==0||argument_length==(uint32_t)0)return -1;
+    if(length<=prefix_length)return -1;
     for(uint32_t i=0u;i<prefix_length;++i)if(line[i]!=prefix[i])return -1;
     if(line[prefix_length]!=' ')return -1;
     uint32_t start=prefix_length+1u;
@@ -138,13 +139,13 @@ static void run_command(const char *line, char cwd[TERM_MAX_PATH]) {
     else if(command_is(line,"PWD",length)) draw_text(24u,100u,cwd,0xBFD8FFu);
     else if(command_is(line,"LS",length)) draw_listing(cwd);
     else if(length>=3u&&line[0]=='L'&&line[1]=='S'&&line[2]==' '){
-        char path[TERM_MAX_PATH]; const char *arg; uint32_t arg_len;
+        char path[TERM_MAX_PATH]; const char *arg=0; uint32_t arg_len=0u;
         if(command_argument(line,"LS",length,&arg,&arg_len)!=0||arg_len+1u>TERM_MAX_PATH){draw_text(24u,100u,"LS ERROR",0xFF8080u);return;}
         char arg_copy[TERM_MAX_PATH]; for(uint32_t i=0u;i<arg_len;++i)arg_copy[i]=arg[i];arg_copy[arg_len]='\0';
         if(build_path(cwd,arg_copy,path)!=0){draw_text(24u,100u,"LS ERROR",0xFF8080u);return;} draw_listing(path);
     }
     else if(length>=3u&&line[0]=='C'&&line[1]=='D'&&line[2]==' '){
-        char path[TERM_MAX_PATH];const char *arg;uint32_t arg_len;uint32_t path_len=0u;
+        char path[TERM_MAX_PATH];const char *arg=0;uint32_t arg_len=0u;uint32_t path_len=0u;
         if(command_argument(line,"CD",length,&arg,&arg_len)!=0||arg_len+1u>TERM_MAX_PATH){draw_text(24u,100u,"CD ERROR",0xFF8080u);return;}
         char arg_copy[TERM_MAX_PATH];for(uint32_t i=0u;i<arg_len;++i)arg_copy[i]=arg[i];arg_copy[arg_len]='\0';
         if(build_path(cwd,arg_copy,path)!=0||bounded_length(path,TERM_MAX_PATH,&path_len)!=0){draw_text(24u,100u,"CD ERROR",0xFF8080u);return;}
