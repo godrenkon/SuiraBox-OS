@@ -169,11 +169,37 @@ int main(void) {
         assert(record->name_length == 10u);
         assert(memcmp(record->name, "NESTED.TXT", 10u) == 0);
     }
-
-    assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST, (uint64_t)(uintptr_t)buffer, 1u,
-                                   (uint64_t)(uintptr_t)(buffer + 0x400u), 16u, 0u) == UINT64_MAX);
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST, (uint64_t)(uintptr_t)buffer, 5u,
-                                   (uint64_t)(uintptr_t)(buffer + 0x400u), 32u, 0u) == UINT64_MAX);
+                                   1u, 16u, 0u) == UINT64_MAX);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST, (uint64_t)(uintptr_t)buffer, 5u,
+                                   (uint64_t)(uintptr_t)(buffer + 0x400u), 15u, 0u) == 0u);
+
+    memcpy(buffer, "NEW.TXT", 7u);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_CREATE_ROOT, (uint64_t)(uintptr_t)buffer, 7u, 16u, 0u, 0u) == 0u);
+    assert(fake_created_size == 16u);
+    assert(strcmp(fake_created_name, "NEW.TXT") == 0);
+
+    memcpy(buffer, "HELLO.TXT", 9u);
+    memcpy(payload, "world", 5u);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   (uint64_t)(uintptr_t)payload, 5u, 0u) == 5u);
+    assert(memcmp(fake_file, "world", 5u) == 0);
+
+    memcpy(payload, "world!", 6u);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   (uint64_t)(uintptr_t)payload, 6u, 0u) == 6u);
+    assert(memcmp(fake_file, "world!", 6u) == 0);
+    assert(fake_entry.file_size == 6u);
+
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_CREATE_ROOT, 1u, 7u, 16u, 0u, 0u) == UINT64_MAX);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   1u, 5u, 0u) == UINT64_MAX);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   (uint64_t)(uintptr_t)payload, 1u, 7u) == UINT64_MAX);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   (uint64_t)(uintptr_t)payload, 0u, 7u) == 0u);
+    assert(sb_fs_syscall_dispatch(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)buffer, 9u,
+                                   (uint64_t)(uintptr_t)payload, 0u, 6u) == 0u);
 
     munmap(mapped, user_size);
     return 0;
