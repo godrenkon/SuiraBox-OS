@@ -76,6 +76,49 @@ static uint64_t list_root(char *user_buffer, uint32_t capacity) {
     return written;
 }
 
+static int normalize_user_path(const char *user_path, uint32_t path_length, char out[SB_VFS_MAX_PATH]) {
+    if (user_path == 0 || out == 0 || path_length == 0u || path_length >= SB_VFS_MAX_PATH) return -1;
+    if (copy_from_user(out, user_path, path_length) != 0) return -1;
+    out[path_length] = '\0';
+    return sb_vfs_normalize_path(out, out, SB_VFS_MAX_PATH) == SB_VFS_OK ? 0 : -1;
+}
+
+static uint64_t list_directory(const char *user_path, uint32_t path_length,
+                               void *user_buffer, uint32_t capacity) {
+    sb_fat32_t *fs = sb_storage_fat32();
+    sb_fat32_dirent_t directory_entry;
+    char path[SB_VFS_MAX_PATH];
+    uint32_t directory_cluster;
+    uint32_t written = 0u;
+    if (fs == 0 || user_buffer == 0 || capacity == 0u || validate_user(user_buffer, capacity, 1u) != 0) return UINT64_MAX;
+    if (normalize_user_path(user_path, path_length, path) != 0) return UINT64_MAX;
+    if (path[0] == '/' && path[1] == '\0') {
+        directory_cluster = fs->root_cluster;
+    } else {
+        if (!sb_fat32_lookup_path(fs, path, &directory_entry) ||
+            (directory_entry.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u ||
+            directory_entry.first_cluster == 0u) return UINT64_MAX;
+        directory_cluster = directory_entry.first_cluster;
+    }
+    for (uint32_t index = 0u; index < SB_FS_LIST_MAX_ENTRIES; ++index) {
+        sb_fat32_dirent_t entry;
+        sb_fs_dir_record_t record;
+        uint32_t name_length = 0u;
+        if (sb_fat32_read_directory_entry(fs, directory_cluster, index, &entry) == 0) continue;
+        if (entry.name[0] == '\0' || (uint8_t)entry.name[0] == 0xE5u || entry.attributes == 0x0Fu) continue;
+        while (name_length < SB_FS_NAME_MAX && entry.name[name_length] != '\0') ++name_length;
+        if (name_length == 0u) continue;
+        if (capacity - written < SB_FS_DIR_RECORD_SIZE) break;
+        record = (sb_fs_dir_record_t){0};
+        record.type = (uint8_t)(((entry.attributes & SB_FAT32_ATTR_DIRECTORY) != 0u) ? SB_FS_DIR_TYPE_DIRECTORY : SB_FS_DIR_TYPE_FILE);
+        record.name_length = (uint8_t)name_length;
+        for (uint32_t i = 0u; i < name_length && i < sizeof(record.name); ++i) record.name[i] = entry.name[i];
+        if (copy_to_user((uint8_t *)user_buffer + written, &record, sizeof(record)) != 0) return UINT64_MAX;
+        written += SB_FS_DIR_RECORD_SIZE;
+    }
+    return written;
+}
+
 static uint64_t stat_root(const char *user_name, uint32_t name_length) {
     sb_fat32_t *fs = sb_storage_fat32();
     sb_fat32_dirent_t entry;
@@ -334,6 +377,11 @@ uint64_t sb_fs_syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_FS_SEEK:
             if (arg2 > 2u) return UINT64_MAX;
             return seek_file_handle(arg0, (int64_t)arg1, (uint32_t)arg2);
+        case SB_SYS_FS_LIST:
+            if (arg0 == 0u || arg1 == 0u || arg1 >= SB_VFS_MAX_PATH || arg2 == 0u || arg3 > UINT32_MAX) return UINT64_MAX;
+            if (arg3 < SB_FS_DIR_RECORD_SIZE) return 0u;
+            return list_directory((const char *)(uintptr_t)arg0, (uint32_t)arg1,
+                                  (void *)(uintptr_t)arg2, (uint32_t)arg3);
         default:
             return UINT64_MAX;
     }
