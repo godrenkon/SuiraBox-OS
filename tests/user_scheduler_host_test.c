@@ -160,5 +160,37 @@ int main(void) {
     assert(user_scheduler_wake_expired(100u) == 0u);
     assert(user_scheduler_current_thread() == &t1);
 
+    /* End-to-end sleep request: current thread sleeps, another thread resumes,
+     * the sleeping thread wakes at its deadline, and the next quantum can pick it. */
+    setup_thread(&p1, &t1, &c1, 51u, 0xB0000u);
+    setup_thread(&p2, &t2, &c2, 52u, 0xC0000u);
+    iret->cs = 0x23u;
+    user_scheduler_init();
+    process_activate_calls = 0;
+    gdt_calls = 0;
+    assert(user_scheduler_add(&p1, &t1) == 0);
+    assert(user_scheduler_add(&p2, &t2) == 0);
+    assert(user_scheduler_set_current(&p1, &t1) == 0);
+    assert(user_scheduler_request_sleep(200u) == 0);
+    assert(user_scheduler_sleep_dispatch((uintptr_t)gpr) == t2.kernel_resume_stack_pointer);
+    assert(user_scheduler_current_thread() == &t2);
+    assert(user_scheduler_current_process() == &p2);
+    assert(t1.state == SB_PROCESS_SLEEPING && t1.wake_tick == 200u);
+    assert(t2.state == SB_PROCESS_RUNNING);
+    assert(p1.state == SB_PROCESS_CREATED);
+    assert(p2.state == SB_PROCESS_RUNNING);
+    assert(user_scheduler_wake_expired(199u) == 0u);
+    assert(t1.state == SB_PROCESS_SLEEPING);
+    assert(user_scheduler_wake_expired(200u) == 1u);
+    assert(t1.state == SB_PROCESS_CREATED && t1.wake_tick == 0u);
+    assert(user_scheduler_wake_expired(200u) == 0u);
+    for (unsigned i = 0u; i < SB_USER_SCHED_QUANTUM_TICKS - 1u; ++i)
+        assert(user_scheduler_timer_dispatch(gpr) == (uintptr_t)gpr);
+    assert(user_scheduler_timer_dispatch(gpr) == t1.kernel_resume_stack_pointer);
+    assert(user_scheduler_current_thread() == &t1);
+    assert(user_scheduler_current_process() == &p1);
+    assert(t1.state == SB_PROCESS_RUNNING);
+    assert(t2.state == SB_PROCESS_CREATED);
+
     return 0;
 }
