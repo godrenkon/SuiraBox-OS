@@ -2,6 +2,7 @@
 #define SB_USER_SYSCALL_H
 
 #include <stdint.h>
+#include "../include/sb_fs_abi.h"
 
 #define SB_SYSCALL_ABI_MAJOR   1u
 #define SB_SYSCALL_ABI_MINOR   2u
@@ -34,9 +35,6 @@
 #define SB_SYS_FS_SEEK             26u
 #define SB_SYS_FS_LIST             27u
 
-#define SB_FS_DIR_RECORD_SIZE     16u
-#define SB_FS_DIR_TYPE_FILE       0u
-#define SB_FS_DIR_TYPE_DIRECTORY  1u
 #define SB_FS_OPEN_READ   0x01u
 #define SB_FS_OPEN_WRITE  0x02u
 #define SB_FS_OPEN_CREATE 0x04u
@@ -46,17 +44,9 @@
 #define SB_CONFIG_SET_VOLATILE    1u
 #define SB_CONFIG_SET_KEEP_OPTIONS 0xFFFFFFFFu
 
-typedef struct __attribute__((packed)) {
-    uint8_t type;
-    uint8_t name_length;
-    uint16_t reserved;
-    char name[12];
-} sb_fs_dir_record_t;
-
 _Static_assert(SB_SYS_ABI_VERSION == 25u, "syscall ABI version query number changed");
 _Static_assert(SB_SYSCALL_ABI_MAJOR == 1u, "syscall ABI major changed");
 _Static_assert(SB_SYSCALL_ABI_MINOR == 2u, "syscall ABI minor changed");
-_Static_assert(sizeof(sb_fs_dir_record_t) == SB_FS_DIR_RECORD_SIZE, "directory record ABI layout changed");
 
 #ifdef SB_HOST_TEST
 uint64_t sb_syscall0(uint64_t number);
@@ -99,7 +89,7 @@ static inline uint64_t sb_syscall1(uint64_t number, uint64_t arg0) { uint64_t re
 static inline uint64_t sb_syscall2(uint64_t number, uint64_t arg0, uint64_t arg1) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi) : "memory"); return result; }
 static inline uint64_t sb_syscall3(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; register uint64_t rdx __asm__("rdx") = arg2; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx) : "memory"); return result; }
 static inline uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; register uint64_t rdx __asm__("rdx") = arg2; register uint64_t r10 __asm__("r10") = arg3; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10) : "memory"); return result; }
-static inline uint64_t sb_syscall5(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; register uint64_t rdx __asm__("rdx") = arg2; register uint64_t r10 __asm__("r10") = arg3; register uint64_t r8 __asm__("r8") = arg4; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r"(r8) : "memory"); return result; }
+static inline uint64_t sb_syscall5(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; register uint64_t rdx __asm__("rdx") = arg2; register uint64_t r10 __asm__("r10") = arg3; register uint64_t r8 __asm__("r8") = arg4; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10) : "memory"); return result; }
 static inline uint64_t sb_get_ticks(void) { return sb_syscall0(SB_SYS_GET_TICKS); }
 static inline uint64_t sb_process_id(void) { return sb_syscall0(SB_SYS_PROCESS_ID); }
 static inline uint64_t sb_syscall_abi_version(void) { return sb_syscall0(SB_SYS_ABI_VERSION); }
