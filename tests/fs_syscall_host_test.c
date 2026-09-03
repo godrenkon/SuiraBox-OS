@@ -149,8 +149,9 @@ int main(void) {
                                    (uint64_t)(uintptr_t)(buffer + 0x100u), 5u, 0u) == 5u);
     assert(memcmp(buffer + 0x100u, "hello", 5u) == 0);
 
+    buffer[0] = '/';
     assert(sb_fs_syscall_dispatch(SB_SYS_FS_LIST, (uint64_t)(uintptr_t)buffer, 1u,
-                                   (uint64_t)(uintptr_t)(buffer + 0x400u), 64u, 0u) == 64u);
+                                   (uint64_t)(uintptr_t)(buffer + 0x400u), 64u, 0u) == 32u);
     {
         const sb_fs_dir_record_t *records = (const sb_fs_dir_record_t *)(uintptr_t)(buffer + 0x400u);
         assert(records[0].type == SB_FS_DIR_TYPE_FILE);
