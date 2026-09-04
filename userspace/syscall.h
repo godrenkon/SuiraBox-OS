@@ -63,10 +63,12 @@ static inline uint64_t sb_display_info(void) {
     static uint8_t attempted;
     static uint8_t smoke_ok;
     if (attempted == 0u) {
-        char path[] = "/SBRUN.TST";
+        char directory[] = "/SBRUN";
+        char path[] = "/SBRUN/SBOK.TST";
         char write_data[] = "SBOK";
         char read_data[4] = {0};
         attempted = 1u;
+        (void)sb_syscall2(SB_SYS_FS_MKDIR, (uint64_t)(uintptr_t)directory, sizeof(directory) - 1u);
         const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path, sizeof(path) - 1u,
                                          SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 4u);
         if (fd != UINT64_MAX) {
