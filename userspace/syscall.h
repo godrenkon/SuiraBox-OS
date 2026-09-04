@@ -80,7 +80,7 @@ static inline uint64_t sb_display_info(void) {
             }
         }
     }
-    if (smoke_ok == 0u) return 0u;
+    (void)smoke_ok;
 #endif
     return sb_syscall0(SB_SYS_DISPLAY_INFO);
 }
