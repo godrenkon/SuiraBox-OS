@@ -30,25 +30,37 @@
  *   r8  = arg3
  *   r9  = arg4
  *
- * Saved register layout from the lowest stack address is:
- *   rax=0, rdi=8, rsi=16, rdx=24, rcx=32,
- *   r8=40, r9=48, r10=56, r11=64.
+ * Saved register layout from the lowest stack address is identical to
+ * sb_timer_saved_gpr_t:
+ *   r15=0, r14=8, r13=16, r12=24, rbp=32, rbx=40,
+ *   r11=48, r10=56, r9=64, r8=72, rdi=80, rsi=88,
+ *   rdx=96, rcx=104, rax=112.
  *
  * The temporary slot below the saved GPRs holds the original save-frame
  * pointer. RSP is then aligned to 8 mod 16 before CALL so the C callee
  * observes the SysV-required 0 mod 16 entry alignment.
- * RAX is intentionally not restored: it is the syscall return value.
+ *
+ * All GPRs are saved because a sleep-induced context switch cannot rely on
+ * the interrupted thread retaining callee-saved registers in live CPU state.
+ * RAX is intentionally not restored on a normal return: it is the syscall
+ * return value.
  */
 sb_syscall_int80_stub:
-    pushq %r11
-    pushq %r10
-    pushq %r9
-    pushq %r8
-    pushq %rcx
-    pushq %rdx
-    pushq %rsi
-    pushq %rdi
     pushq %rax
+    pushq %rdi
+    pushq %rsi
+    pushq %rdx
+    pushq %rcx
+    pushq %r8
+    pushq %r9
+    pushq %r10
+    pushq %r11
+    pushq %rbx
+    pushq %rbp
+    pushq %r12
+    pushq %r13
+    pushq %r14
+    pushq %r15
 
     movq %rsp, %rsi
 
@@ -58,12 +70,12 @@ sb_syscall_int80_stub:
     movq %rsi, (%rsp)
 
     /* Translate userspace syscall ABI to the SysV C dispatcher ABI. */
-    movq 0(%rsi), %rdi
-    movq 8(%rsi), %rsi
-    movq 16(%rsi), %rdx
-    movq 24(%rsi), %rcx
+    movq 112(%rsi), %rdi
+    movq 80(%rsi), %rsi
+    movq 88(%rsi), %rdx
+    movq 96(%rsi), %rcx
     movq 56(%rsi), %r8
-    movq 40(%rsi), %r9
+    movq 72(%rsi), %r9
 
     call sb_syscall_dispatch_entry
 
@@ -82,8 +94,8 @@ sb_syscall_int80_stub:
     jmp sb_resume_user_from_kernel_stack
 
 .Lsyscall_sleep_switch:
-    /* Reuse the saved syscall frame: C needs the original user registers
-     * and the hardware iret frame to preserve the suspended context. */
+    /* Reuse the saved syscall frame: C needs the complete user register
+     * state and the hardware iret frame to preserve the suspended context. */
     movq (%rsp), %rdi
     call user_scheduler_sleep_dispatch
     testq %rax, %rax
@@ -100,15 +112,22 @@ sb_syscall_int80_stub:
     movq (%rsp), %rsi
     movq %rsi, %rsp
 
-    addq $8, %rsp
+    /* Restore every register except RAX, which carries the syscall result. */
+    popq %r15
+    popq %r14
+    popq %r13
+    popq %r12
+    popq %rbp
+    popq %rbx
+    popq %r11
+    popq %r10
+    popq %r9
+    popq %r8
     popq %rdi
     popq %rsi
     popq %rdx
     popq %rcx
-    popq %r8
-    popq %r9
-    popq %r10
-    popq %r11
+    addq $8, %rsp
     iretq
 
 .Lsyscall_fault:
