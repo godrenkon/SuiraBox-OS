@@ -9,12 +9,18 @@ int process_activate(sb_process_t *process) { return process != 0 ? (++activate_
 int process_prepare_user_resume_frame(sb_thread_t *thread) { return thread != 0 && thread->user_context != 0 && thread->kernel_resume_stack_pointer != 0u ? 0 : -1; }
 int gdt_try_set_kernel_stack(uint64_t stack_top) { if (stack_top == 0u || (stack_top & 0xFu) != 0u) return -1; ++gdt_calls; return 0; }
 
+typedef struct {
+    sb_timer_saved_gpr_t gpr;
+    sb_x86_64_user_iret_frame_t iret;
+} sb_syscall_sleep_frame_t;
+
 int main(void) {
     sb_process_t p1 = {0}, p2 = {0};
     sb_thread_t t1 = {0}, t2 = {0};
     sb_user_context_t c1 = {0}, c2 = {0};
-    sb_timer_saved_gpr_t saved = {0};
-    sb_x86_64_user_iret_frame_t iret = {0};
+    sb_syscall_sleep_frame_t frame = {0};
+    sb_timer_saved_gpr_t *saved = &frame.gpr;
+    sb_x86_64_user_iret_frame_t *iret = &frame.iret;
 
     t1.tid = 1u; t1.state = SB_PROCESS_RUNNING; t1.user_context = &c1;
     t1.kernel_stack_base = 0x1000u; t1.kernel_stack_top = 0x2000u; t1.kernel_resume_stack_pointer = 0x1F00u;
@@ -22,13 +28,12 @@ int main(void) {
     t2.kernel_stack_base = 0x3000u; t2.kernel_stack_top = 0x4000u; t2.kernel_resume_stack_pointer = 0x3F00u;
     p1.pid = 1u; p1.state = SB_PROCESS_RUNNING; p1.thread_count = 1u; p1.threads[0] = t1;
     p2.pid = 2u; p2.state = SB_PROCESS_RUNNING; p2.thread_count = 1u; p2.threads[0] = t2;
-    c1.r12 = 0x1212u; c1.rbp = 0xBEEFu; c1.rbx = 0xCAFEu; c1.r13 = 0x1313u; c1.r14 = 0x1414u; c1.r15 = 0x1515u;
 
-    saved.rdi = 0x1111u; saved.rsi = 0x2222u; saved.rdx = 0x3333u; saved.rcx = 0x4444u;
-    saved.r8 = 0x5555u; saved.r9 = 0x6666u; saved.r10 = 0x7777u; saved.r11 = 0x8888u;
-    saved.r12 = 0x9999u; saved.r13 = 0xAAAAu; saved.r14 = 0xBBBBu; saved.r15 = 0xCCCCu;
-    saved.rbp = 0xDDDDu; saved.rbx = 0xEEEEu;
-    iret.rip = 0x400123u; iret.cs = 0x23u; iret.rflags = 0x202u; iret.rsp = 0x7FFFE000u; iret.ss = 0x2Bu;
+    saved->rdi = 0x1111u; saved->rsi = 0x2222u; saved->rdx = 0x3333u; saved->rcx = 0x4444u;
+    saved->r8 = 0x5555u; saved->r9 = 0x6666u; saved->r10 = 0x7777u; saved->r11 = 0x8888u;
+    saved->r12 = 0x9999u; saved->r13 = 0xAAAAu; saved->r14 = 0xBBBBu; saved->r15 = 0xCCCCu;
+    saved->rbp = 0xDDDDu; saved->rbx = 0xEEEEu;
+    iret->rip = 0x400123u; iret->cs = 0x23u; iret->rflags = 0x202u; iret->rsp = 0x7FFFE000u; iret->ss = 0x2Bu;
 
     user_scheduler_init();
     assert(user_scheduler_add(&p1, &p1.threads[0]) == 0);
@@ -36,7 +41,7 @@ int main(void) {
     assert(user_scheduler_set_current(&p1, &p1.threads[0]) == 0);
     activate_calls = 0; gdt_calls = 0;
     assert(user_scheduler_request_sleep(100u) == 0);
-    assert(user_scheduler_sleep_dispatch((uintptr_t)&saved) == p2.threads[0].kernel_resume_stack_pointer);
+    assert(user_scheduler_sleep_dispatch((uintptr_t)saved) == p2.threads[0].kernel_resume_stack_pointer);
     assert(p1.threads[0].state == SB_PROCESS_SLEEPING);
     assert(p1.threads[0].wake_tick == 100u);
     assert(c1.rax == 0u);
