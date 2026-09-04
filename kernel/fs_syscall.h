@@ -16,6 +16,8 @@
 #define SB_FS_SYSCALL_WRITE 22u
 #define SB_FS_SYSCALL_CLOSE 23u
 #define SB_FS_SYSCALL_SEEK  26u
+#define SB_FS_SYSCALL_LIST  27u
+#define SB_FS_SYSCALL_MKDIR 28u
 
 uint64_t sb_fs_syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                                 uint64_t arg2, uint64_t arg3, uint64_t arg4);
@@ -45,6 +47,12 @@ static inline uint64_t sb_fs_close(uint64_t fd) {
 static inline uint64_t sb_fs_seek(uint64_t fd, int64_t offset, uint32_t whence) {
     return sb_fs_syscall_dispatch(SB_FS_SYSCALL_SEEK,
                                   fd, (uint64_t)offset, whence, 0u, 0u);
+}
+
+static inline uint64_t sb_fs_mkdir(const char *path, uint32_t path_length) {
+    return sb_fs_syscall_dispatch(SB_FS_SYSCALL_MKDIR,
+                                  (uint64_t)(uintptr_t)path, path_length,
+                                  0u, 0u, 0u);
 }
 
 void sb_fs_release_process(void *process);
