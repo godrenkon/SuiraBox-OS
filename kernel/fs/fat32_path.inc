@@ -329,4 +329,67 @@ rollback:
     return 0;
 }
 
+int sb_fat32_create_directory_in_directory(sb_fat32_t *fs, uint32_t parent_cluster,
+                                           const char *name, uint32_t *directory_cluster,
+                                           sb_fat32_dirent_t *entry) {
+    uint8_t raw_name[11];
+    uint8_t sector[SB_FAT32_PATH_SECTOR_BYTES];
+    char canonical[13];
+    uint32_t parent_lba = 0u;
+    uint32_t parent_offset = 0u;
+    uint32_t parent_slot = 0u;
+    uint32_t new_cluster = 0u;
+    uint32_t new_lba = 0u;
+
+    if (fs == 0 || name == 0 || directory_cluster == 0 || entry == 0 ||
+        !path_valid_cluster(fs, parent_cluster) ||
+        fs->bytes_per_sector != SB_FAT32_PATH_SECTOR_BYTES || fs->sectors_per_cluster == 0u ||
+        !canonical_name(name, canonical) || !build_short_name(name, raw_name)) return 0;
+    if (path_name_equal(canonical, ".") || path_name_equal(canonical, "..")) return 0;
+    if (path_find_in_directory(fs, parent_cluster, canonical, entry)) return 0;
+    if (!path_find_free_directory_slot(fs, parent_cluster, &parent_lba, &parent_offset, &parent_slot)) return 0;
+    if (!allocate_cluster_chain(fs, 1u, &new_cluster)) return 0;
+    if (!cluster_to_lba_checked(fs, new_cluster, &new_lba)) goto rollback;
+    if (!read_sector(fs, new_lba, sector)) goto rollback;
+    for (uint32_t i = 0u; i < SB_FAT32_PATH_ENTRY_SIZE; ++i) sector[i] = 0u;
+    sector[0] = '.';
+    for (uint32_t i = 1u; i < 11u; ++i) sector[i] = ' ';
+    sector[11] = SB_FAT32_ATTR_DIRECTORY;
+    put_le16(&sector[20u], (uint16_t)(new_cluster >> 16));
+    put_le16(&sector[26u], (uint16_t)new_cluster);
+    put_le32(&sector[28u], 0u);
+    for (uint32_t i = 0u; i < 11u; ++i) sector[SB_FAT32_PATH_ENTRY_SIZE + i] = ' ';
+    sector[SB_FAT32_PATH_ENTRY_SIZE] = '.';
+    sector[SB_FAT32_PATH_ENTRY_SIZE + 1u] = '.';
+    sector[SB_FAT32_PATH_ENTRY_SIZE + 11u] = SB_FAT32_ATTR_DIRECTORY;
+    put_le16(&sector[SB_FAT32_PATH_ENTRY_SIZE + 20u], (uint16_t)(parent_cluster >> 16));
+    put_le16(&sector[SB_FAT32_PATH_ENTRY_SIZE + 26u], (uint16_t)parent_cluster);
+    put_le32(&sector[SB_FAT32_PATH_ENTRY_SIZE + 28u], 0u);
+    if (!write_sector(fs, new_lba, sector)) goto rollback;
+
+    if (!read_sector(fs, parent_lba, sector)) goto rollback;
+    for (uint32_t i = 0u; i < SB_FAT32_PATH_ENTRY_SIZE; ++i) sector[parent_offset + i] = 0u;
+    for (uint32_t i = 0u; i < sizeof(raw_name); ++i) sector[parent_offset + i] = raw_name[i];
+    sector[parent_offset + 11u] = SB_FAT32_ATTR_DIRECTORY;
+    put_le16(&sector[parent_offset + 20u], (uint16_t)(new_cluster >> 16));
+    put_le16(&sector[parent_offset + 26u], (uint16_t)new_cluster);
+    put_le32(&sector[parent_offset + 28u], 0u);
+    if (!write_sector(fs, parent_lba, sector)) goto rollback;
+
+    for (uint32_t i = 0u; i < sizeof(entry->name); ++i) entry->name[i] = canonical[i];
+    entry->attributes = SB_FAT32_ATTR_DIRECTORY;
+    entry->first_cluster = new_cluster;
+    entry->file_size = 0u;
+    entry->root_index = parent_slot;
+    entry->directory_cluster = parent_cluster;
+    entry->entry_lba = parent_lba;
+    entry->entry_offset = (uint16_t)parent_offset;
+    *directory_cluster = new_cluster;
+    return 1;
+
+rollback:
+    if (new_cluster != 0u) (void)release_cluster_chain(fs, new_cluster);
+    return 0;
+}
+
 #endif
