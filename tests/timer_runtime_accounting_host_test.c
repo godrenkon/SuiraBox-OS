@@ -4,6 +4,7 @@
 #include "../kernel/process.h"
 #include "../kernel/arch/x86_64/irq_frame.h"
 
+static sb_process_t current_process;
 static sb_thread_t current_thread;
 static uint32_t wake_calls;
 static uint32_t timer_dispatch_calls;
@@ -13,6 +14,7 @@ static uint32_t scheduler_pick_calls;
 void sb_input_poll_hardware(void) { }
 int sb_net_poll(void) { return 0; }
 uint32_t user_scheduler_wake_expired(uint64_t now_tick) { (void)now_tick; ++wake_calls; return 0u; }
+sb_process_t *user_scheduler_current_process(void) { return &current_process; }
 sb_thread_t *user_scheduler_current_thread(void) { return &current_thread; }
 uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr) { ++timer_dispatch_calls; return (uintptr_t)gpr; }
 void scheduler_tick(void) { ++scheduler_tick_calls; }
@@ -34,6 +36,7 @@ int main(void) {
     sb_timer_saved_gpr_t *gpr = (sb_timer_saved_gpr_t *)(void *)frame_storage;
     const uint64_t start_ticks = timer_ticks();
 
+    current_process = (sb_process_t){.pid = 1u, .runtime_ticks = 100u, .state = SB_PROCESS_RUNNING};
     current_thread = (sb_thread_t){
         .tid = 1u,
         .runtime_ticks = 41u,
@@ -45,26 +48,33 @@ int main(void) {
     assert(sb_timer_irq_dispatch(gpr) == (uintptr_t)gpr);
     assert(timer_ticks() == start_ticks + 1u);
     assert(current_thread.runtime_ticks == 42u);
+    assert(current_process.runtime_ticks == 101u);
     assert(wake_calls == 1u);
     assert(timer_dispatch_calls == 1u);
     assert(scheduler_tick_calls == 0u);
 
     current_thread.state = SB_PROCESS_SLEEPING;
     current_thread.runtime_ticks = 42u;
+    current_process.runtime_ticks = 101u;
     assert(sb_timer_irq_dispatch(gpr) == (uintptr_t)gpr);
     assert(current_thread.runtime_ticks == 42u);
+    assert(current_process.runtime_ticks == 101u);
     assert(timer_dispatch_calls == 2u);
 
     current_thread.state = SB_PROCESS_RUNNING;
     current_thread.runtime_ticks = UINT64_MAX;
+    current_process.runtime_ticks = UINT64_MAX;
     assert(sb_timer_irq_dispatch(gpr) == (uintptr_t)gpr);
     assert(current_thread.runtime_ticks == UINT64_MAX);
+    assert(current_process.runtime_ticks == UINT64_MAX);
     assert(timer_dispatch_calls == 3u);
 
     current_thread.runtime_ticks = 99u;
+    current_process.runtime_ticks = 200u;
     set_interrupted_cs(gpr, 0x08u);
     assert(sb_timer_irq_dispatch(gpr) == (uintptr_t)gpr);
     assert(current_thread.runtime_ticks == 99u);
+    assert(current_process.runtime_ticks == 200u);
     assert(timer_dispatch_calls == 3u);
     assert(scheduler_tick_calls == 1u);
     assert(scheduler_pick_calls == 0u);
