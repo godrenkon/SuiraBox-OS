@@ -35,6 +35,7 @@ typedef struct {
     uint64_t pid;
     uint64_t parent_pid;
     uint64_t exit_code;
+    uint64_t runtime_ticks;
     sb_process_state_t state;
     uint32_t thread_count;
     sb_thread_t threads[SB_MAX_THREADS_PER_PROCESS];
