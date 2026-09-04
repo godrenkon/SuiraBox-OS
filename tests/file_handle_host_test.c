@@ -18,6 +18,7 @@ static sb_fat32_dirent_t data_entry;
 static uint8_t fake_file[128];
 static uint32_t created_count;
 static uint32_t nested_created_count;
+static uint32_t directory_created_count;
 static uint32_t grow_count;
 static uintptr_t user_base = 0x8000000000ull;
 static size_t user_size = 0x20000u;
@@ -72,6 +73,16 @@ int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *en
         *entry = entry_copy;
         return 1;
     }
+    if (strcmp(path, "/DATA/NEWDIR") == 0 && directory_created_count != 0u) {
+        sb_fat32_dirent_t entry_copy = data_entry;
+        memset(&entry_copy, 0, sizeof(entry_copy));
+        strcpy(entry_copy.name, "NEWDIR");
+        entry_copy.attributes = SB_FAT32_ATTR_DIRECTORY;
+        entry_copy.first_cluster = 7u;
+        entry_copy.directory_cluster = data_entry.first_cluster;
+        *entry = entry_copy;
+        return 1;
+    }
     return 0;
 }
 
@@ -98,6 +109,21 @@ int sb_fat32_create_file_in_directory(sb_fat32_t *fs, uint32_t directory_cluster
     entry->file_size = file_size;
     entry->first_cluster = 6u;
     entry->directory_cluster = directory_cluster;
+    return 1;
+}
+
+int sb_fat32_create_directory_in_directory(sb_fat32_t *fs, uint32_t parent_cluster,
+                                            const char *name, uint32_t *directory_cluster,
+                                            sb_fat32_dirent_t *entry) {
+    if (fs != &fake_fs || parent_cluster != data_entry.first_cluster || name == 0 || directory_cluster == 0 ||
+        entry == 0 || strcmp(name, "NEWDIR") != 0) return 0;
+    ++directory_created_count;
+    *directory_cluster = 7u;
+    memset(entry, 0, sizeof(*entry));
+    strcpy(entry->name, name);
+    entry->attributes = SB_FAT32_ATTR_DIRECTORY;
+    entry->first_cluster = 7u;
+    entry->directory_cluster = parent_cluster;
     return 1;
 }
 
@@ -235,6 +261,11 @@ int main(void) {
     assert(sb_fs_close(0u) == 0u);
     assert(sb_fs_open(path, 14u, SB_FS_OPEN_READ, 0u) == 0u);
     assert(sb_fs_close(0u) == 0u);
+
+    memcpy(path, "/DATA/NEWDIR", 12u);
+    assert(sb_fs_mkdir(path, 12u) == 7u);
+    assert(directory_created_count == 1u);
+    assert(sb_fs_mkdir(path, 12u) == UINT64_MAX);
 
     current = &process_a;
     memcpy(path, "/HELLO.TXT", 10u);
