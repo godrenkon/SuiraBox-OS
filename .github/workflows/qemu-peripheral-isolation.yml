@@ -1,0 +1,80 @@
+name: QEMU peripheral isolation
+
+on:
+  push:
+    branches: [ main, master, 'feat/**' ]
+  workflow_dispatch:
+
+jobs:
+  qemu-boot-variants:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: bare
+            prepare_disk: false
+            extra_args: ''
+          - name: ide-only
+            prepare_disk: true
+            extra_args: '-drive file=build/test-disk.img,format=raw,if=ide'
+          - name: nic-only
+            prepare_disk: false
+            extra_args: '-nic user,model=e1000'
+          - name: ide-nic
+            prepare_disk: true
+            extra_args: '-drive file=build/test-disk.img,format=raw,if=ide -nic user,model=e1000'
+    name: QEMU ${{ matrix.name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc binutils make grub-pc-bin grub-common xorriso mtools qemu-system-x86
+
+      - name: Prepare IDE test disk
+        if: matrix.prepare_disk
+        run: |
+          mkdir -p build
+          truncate -s 64M build/test-disk.img
+          mformat -F -i build/test-disk.img ::
+
+      - name: Build ISO
+        run: make iso
+
+      - name: Boot variant
+        shell: bash
+        run: |
+          set +e
+          timeout --preserve-status 30s qemu-system-x86_64 \
+            -machine q35 \
+            -cpu max \
+            -m 512M \
+            -vga std \
+            -cdrom build/suirabox.iso \
+            -boot order=d,menu=off \
+            ${{ matrix.extra_args }} \
+            -serial file:build/qemu-${{ matrix.name }}.log \
+            -display none \
+            -no-reboot \
+            -no-shutdown
+          rc=$?
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
+            echo "QEMU exited unexpectedly with status $rc"
+            exit "$rc"
+          fi
+          test -s build/qemu-${{ matrix.name }}.log
+          grep -Fq 'Boot protocol: Multiboot2 OK' build/qemu-${{ matrix.name }}.log
+          grep -Fq 'Userspace: SB Desktop ELF + address-space + user thread preparation OK' build/qemu-${{ matrix.name }}.log
+          grep -Fq 'Userspace: ring3 syscall reached' build/qemu-${{ matrix.name }}.log
+          grep -Fq 'Userspace: GUI framebuffer draw reached' build/qemu-${{ matrix.name }}.log
+
+      - name: Upload serial log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-${{ matrix.name }}-serial
+          path: build/qemu-${{ matrix.name }}.log
+          if-no-files-found: warn
