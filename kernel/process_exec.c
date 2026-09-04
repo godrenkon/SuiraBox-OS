@@ -5,7 +5,7 @@
 #include "mm/pmm.h"
 #include "mm/vmm.h"
 
-#define SB_USER_STACK_PAGES 4u
+#define SB_USER_STACK_PAGES 32u
 
 static int map_user_stack(sb_address_space_t *space,
                           uint64_t bottom,
