@@ -2,8 +2,7 @@
 #define SB_KERNEL_TIMER_H
 
 #include <stdint.h>
-
-struct sb_timer_saved_gpr;
+#include "arch/x86_64/irq_frame.h"
 
 /* Default kernel timer used by the bootstrap path. */
 void timer_init(void);
@@ -11,6 +10,6 @@ void timer_init(void);
 void timer_init_frequency(uint32_t frequency_hz);
 uint64_t timer_ticks(void);
 void sb_timer_tick(void);
-uintptr_t sb_timer_irq_dispatch(struct sb_timer_saved_gpr *gpr);
+uintptr_t sb_timer_irq_dispatch(sb_timer_saved_gpr_t *gpr);
 
 #endif
