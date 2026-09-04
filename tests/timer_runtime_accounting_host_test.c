@@ -18,6 +18,10 @@ uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr) { ++timer_dis
 void scheduler_tick(void) { ++scheduler_tick_calls; }
 uint32_t scheduler_task_count(void) { return 1u; }
 int scheduler_pick_next(void) { ++scheduler_pick_calls; return 0; }
+void interrupts_disable(void) { }
+void interrupts_enable(void) { }
+void interrupts_set_handler(uint8_t vector, uintptr_t handler) { (void)vector; (void)handler; }
+void sb_timer_irq_stub(void) { }
 
 static void set_interrupted_cs(sb_timer_saved_gpr_t *gpr, uint64_t cs) {
     uint8_t *bytes = (uint8_t *)gpr;
