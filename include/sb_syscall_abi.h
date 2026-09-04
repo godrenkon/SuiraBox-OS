@@ -5,7 +5,7 @@
 #include "sb_fs_abi.h"
 
 #define SB_SYSCALL_ABI_MAJOR   1u
-#define SB_SYSCALL_ABI_MINOR   2u
+#define SB_SYSCALL_ABI_MINOR   3u
 #define SB_SYS_GET_TICKS          0u
 #define SB_SYS_PROCESS_ID         1u
 #define SB_SYS_EXIT               2u
@@ -34,11 +34,13 @@
 #define SB_SYS_ABI_VERSION        25u
 #define SB_SYS_FS_SEEK            26u
 #define SB_SYS_FS_LIST            27u
+#define SB_SYS_FS_MKDIR           28u
 
 #define SB_CONFIG_SET_VOLATILE    1u
 
 _Static_assert(SB_SYSCALL_ABI_MAJOR == 1u, "syscall ABI major changed");
-_Static_assert(SB_SYSCALL_ABI_MINOR == 2u, "syscall ABI minor changed");
+_Static_assert(SB_SYSCALL_ABI_MINOR == 3u, "syscall ABI minor changed");
 _Static_assert(SB_SYS_ABI_VERSION == 25u, "syscall ABI version query number changed");
+_Static_assert(SB_SYS_FS_MKDIR == 28u, "mkdir syscall number changed");
 
 #endif
