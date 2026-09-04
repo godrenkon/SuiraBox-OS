@@ -13,9 +13,8 @@ int main(void) {
     sb_process_t p1 = {0}, p2 = {0};
     sb_thread_t t1 = {0}, t2 = {0};
     sb_user_context_t c1 = {0}, c2 = {0};
-    uint64_t frame_words[14] = {0};
-    uint64_t *saved = frame_words;
-    sb_x86_64_user_iret_frame_t *iret = (sb_x86_64_user_iret_frame_t *)(void *)(saved + 9u);
+    sb_timer_saved_gpr_t saved = {0};
+    sb_x86_64_user_iret_frame_t iret = {0};
 
     t1.tid = 1u; t1.state = SB_PROCESS_RUNNING; t1.user_context = &c1;
     t1.kernel_stack_base = 0x1000u; t1.kernel_stack_top = 0x2000u; t1.kernel_resume_stack_pointer = 0x1F00u;
@@ -25,9 +24,11 @@ int main(void) {
     p2.pid = 2u; p2.state = SB_PROCESS_RUNNING; p2.thread_count = 1u; p2.threads[0] = t2;
     c1.r12 = 0x1212u; c1.rbp = 0xBEEFu; c1.rbx = 0xCAFEu; c1.r13 = 0x1313u; c1.r14 = 0x1414u; c1.r15 = 0x1515u;
 
-    saved[1] = 0x1111u; saved[2] = 0x2222u; saved[3] = 0x3333u; saved[4] = 0x4444u;
-    saved[5] = 0x5555u; saved[6] = 0x6666u; saved[7] = 0x7777u; saved[8] = 0x8888u;
-    iret->rip = 0x400123u; iret->cs = 0x23u; iret->rflags = 0x202u; iret->rsp = 0x7FFFE000u; iret->ss = 0x2Bu;
+    saved.rdi = 0x1111u; saved.rsi = 0x2222u; saved.rdx = 0x3333u; saved.rcx = 0x4444u;
+    saved.r8 = 0x5555u; saved.r9 = 0x6666u; saved.r10 = 0x7777u; saved.r11 = 0x8888u;
+    saved.r12 = 0x9999u; saved.r13 = 0xAAAAu; saved.r14 = 0xBBBBu; saved.r15 = 0xCCCCu;
+    saved.rbp = 0xDDDDu; saved.rbx = 0xEEEEu;
+    iret.rip = 0x400123u; iret.cs = 0x23u; iret.rflags = 0x202u; iret.rsp = 0x7FFFE000u; iret.ss = 0x2Bu;
 
     user_scheduler_init();
     assert(user_scheduler_add(&p1, &p1.threads[0]) == 0);
@@ -35,11 +36,12 @@ int main(void) {
     assert(user_scheduler_set_current(&p1, &p1.threads[0]) == 0);
     activate_calls = 0; gdt_calls = 0;
     assert(user_scheduler_request_sleep(100u) == 0);
-    assert(user_scheduler_sleep_dispatch((uintptr_t)saved) == p2.threads[0].kernel_resume_stack_pointer);
+    assert(user_scheduler_sleep_dispatch((uintptr_t)&saved) == p2.threads[0].kernel_resume_stack_pointer);
     assert(p1.threads[0].state == SB_PROCESS_SLEEPING);
     assert(p1.threads[0].wake_tick == 100u);
     assert(c1.rax == 0u);
-    assert(c1.r12 == 0x1212u && c1.rbp == 0xBEEFu && c1.rbx == 0xCAFEu);
+    assert(c1.r12 == 0x9999u && c1.r13 == 0xAAAAu && c1.r14 == 0xBBBBu && c1.r15 == 0xCCCCu);
+    assert(c1.rbp == 0xDDDDu && c1.rbx == 0xEEEEu);
     assert(c1.rdi == 0x1111u && c1.rsi == 0x2222u && c1.rdx == 0x3333u && c1.rcx == 0x4444u);
     assert(c1.r8 == 0x5555u && c1.r9 == 0x6666u && c1.r10 == 0x7777u && c1.r11 == 0x8888u);
     assert(c1.rip == 0x400123u && c1.cs == 0x23u && c1.rflags == 0x202u && c1.rsp == 0x7FFFE000u && c1.ss == 0x2Bu);
