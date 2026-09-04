@@ -119,6 +119,37 @@ static uint64_t list_directory(const char *user_path, uint32_t path_length,
     return written;
 }
 
+static uint64_t make_directory(const char *user_path, uint32_t path_length) {
+    sb_fat32_t *fs = sb_storage_fat32();
+    char path[SB_VFS_MAX_PATH];
+    char parent[SB_VFS_MAX_PATH];
+    char name[SB_VFS_MAX_NAME + 1u];
+    sb_fat32_dirent_t existing;
+    sb_fat32_dirent_t parent_entry;
+    sb_fat32_dirent_t created;
+    uint32_t parent_cluster;
+    uint32_t new_cluster;
+    sb_vfs_status_t status;
+
+    if (fs == 0 || normalize_user_path(user_path, path_length, path) != 0) return UINT64_MAX;
+    if (sb_fat32_lookup_path(fs, path, &existing)) return UINT64_MAX;
+    status = sb_vfs_split_path(path, parent, sizeof(parent), name, sizeof(name));
+    if (status != SB_VFS_OK || name[0] == '\0') return UINT64_MAX;
+
+    if (parent[0] == '/' && parent[1] == '\0') {
+        parent_cluster = fs->root_cluster;
+    } else {
+        if (!sb_fat32_lookup_path(fs, parent, &parent_entry) ||
+            (parent_entry.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u ||
+            parent_entry.first_cluster < 2u || parent_entry.first_cluster > fs->max_cluster) return UINT64_MAX;
+        parent_cluster = parent_entry.first_cluster;
+    }
+
+    if (!sb_fat32_create_directory_in_directory(fs, parent_cluster, name, &new_cluster, &created)) return UINT64_MAX;
+    if (sb_storage_sync() != SB_BLOCK_OK) return UINT64_MAX;
+    return new_cluster;
+}
+
 static uint64_t stat_root(const char *user_name, uint32_t name_length) {
     sb_fat32_t *fs = sb_storage_fat32();
     sb_fat32_dirent_t entry;
@@ -382,6 +413,9 @@ uint64_t sb_fs_syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             if (arg0 == 0u || arg1 == 0u || arg1 >= SB_VFS_MAX_PATH || arg2 == 0u || arg3 > UINT32_MAX) return UINT64_MAX;
             if (arg3 < SB_FS_DIR_RECORD_SIZE) return 0u;
             return list_directory((const char *)(uintptr_t)arg0, (uint32_t)arg1, (void *)(uintptr_t)arg2, (uint32_t)arg3);
+        case SB_SYS_FS_MKDIR:
+            if (arg0 == 0u || arg1 == 0u || arg1 >= SB_VFS_MAX_PATH || arg2 != 0u || arg3 != 0u || arg4 != 0u) return UINT64_MAX;
+            return make_directory((const char *)(uintptr_t)arg0, (uint32_t)arg1);
         default: return UINT64_MAX;
     }
 }
