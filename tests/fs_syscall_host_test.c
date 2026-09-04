@@ -48,6 +48,10 @@ int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *en
         *entry = fake_entry;
         return 1;
     }
+    if (strcmp(path, "/DATA/HELLO.TXT") == 0) {
+        *entry = fake_data_entries[0];
+        return 1;
+    }
     if (strcmp(path, "/DATA") == 0 || strcmp(path, "/TESTDIR") == 0) {
         memset(entry, 0, sizeof(*entry));
         strcpy(entry->name, strcmp(path, "/DATA") == 0 ? "DATA" : "TESTDIR");
@@ -171,6 +175,7 @@ int main(void) {
     fake_data_entries[0].attributes = 0x20u;
     fake_data_entries[0].first_cluster = 5u;
     fake_data_entries[0].file_size = 42u;
+    fake_data_entries[0].directory_cluster = 4u;
 
     buffer = (char *)user_base + 0x1000u;
     payload = buffer + 0x200u;
