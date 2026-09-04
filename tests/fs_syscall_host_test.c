@@ -21,6 +21,7 @@ static uint32_t fake_created_size;
 static char fake_created_name[13];
 static uint32_t fake_mkdir_cluster;
 static char fake_mkdir_name[13];
+static uint32_t grow_count;
 
 sb_process_t *user_scheduler_current_process(void) { return &process; }
 int address_space_validate_user_range(const sb_address_space_t *space, uint64_t address, uint64_t size, uint8_t write_access) {
@@ -127,6 +128,7 @@ int sb_fat32_write_file_grow(sb_fat32_t *fs, sb_fat32_dirent_t *entry, uint32_t 
     if (fs != &fake_fs || entry == 0 || buffer == 0 || offset > sizeof(fake_file) || size > sizeof(fake_file) - offset) return 0;
     if (offset > entry->file_size) return 0;
     if (offset + size > entry->file_size) entry->file_size = offset + size;
+    ++grow_count;
     if (!sb_fat32_write_file(fs, entry, offset, size, buffer)) return 0;
     fake_entry = *entry;
     return 1;
@@ -156,6 +158,8 @@ int main(void) {
     memcpy(fake_entry.name, "HELLO.TXT", 9u);
     fake_entry.file_size = 5u;
     fake_entry.attributes = 0x20u;
+    fake_entry.first_cluster = 2u;
+    fake_entry.directory_cluster = 2u;
 
     memset(fake_root_entries, 0, sizeof(fake_root_entries));
     fake_root_entries[0] = fake_entry;
