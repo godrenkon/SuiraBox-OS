@@ -62,11 +62,13 @@ uintptr_t sb_timer_irq_dispatch(sb_timer_saved_gpr_t *gpr) {
     (void)user_scheduler_wake_expired(ticks);
     const uint64_t interrupted_cs=*((const uint64_t *)((uintptr_t)gpr+sizeof(*gpr)+sizeof(uint64_t)));
     if((interrupted_cs&3u)==3u){
+        sb_process_t *current_process = user_scheduler_current_process();
         sb_thread_t *current_thread = user_scheduler_current_thread();
-        if(current_thread != 0 &&
-           (current_thread->state == SB_PROCESS_CREATED || current_thread->state == SB_PROCESS_RUNNING) &&
-           current_thread->runtime_ticks != UINT64_MAX)
-            ++current_thread->runtime_ticks;
+        if(current_thread != 0 && current_process != 0 &&
+           (current_thread->state == SB_PROCESS_CREATED || current_thread->state == SB_PROCESS_RUNNING)) {
+            if(current_thread->runtime_ticks != UINT64_MAX) ++current_thread->runtime_ticks;
+            if(current_process->runtime_ticks != UINT64_MAX) ++current_process->runtime_ticks;
+        }
         const uintptr_t user_resume_rsp=user_scheduler_timer_dispatch(gpr);if(user_resume_rsp!=0u)return user_resume_rsp;
     }
     scheduler_tick();
