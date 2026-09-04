@@ -68,17 +68,16 @@ static inline uint64_t sb_display_info(void) {
         attempted = 1u;
         const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path, 9u,
                                          SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 4u);
-        if (fd == UINT64_MAX) {
-            smoke_ok = 1u;
-        } else if (sb_syscall3(SB_SYS_FS_WRITE, fd, (uint64_t)(uintptr_t)write_data, 4u) == 4u &&
-                   sb_syscall3(SB_SYS_FS_SEEK, fd, 0u, SB_FS_SEEK_SET) == 0u &&
-                   sb_syscall3(SB_SYS_FS_READ, fd, (uint64_t)(uintptr_t)read_data, 4u) == 4u &&
-                   read_data[0] == 'S' && read_data[1] == 'B' && read_data[2] == 'O' && read_data[3] == 'K' &&
-                   sb_syscall1(SB_SYS_FS_CLOSE, fd) == 0u) {
-            smoke_ok = 1u;
-        } else {
-            (void)sb_syscall1(SB_SYS_FS_CLOSE, fd);
-            smoke_ok = 1u;
+        if (fd != UINT64_MAX) {
+            if (sb_syscall3(SB_SYS_FS_WRITE, fd, (uint64_t)(uintptr_t)write_data, 4u) == 4u &&
+                sb_syscall3(SB_SYS_FS_SEEK, fd, 0u, SB_FS_SEEK_SET) == 0u &&
+                sb_syscall3(SB_SYS_FS_READ, fd, (uint64_t)(uintptr_t)read_data, 4u) == 4u &&
+                read_data[0] == 'S' && read_data[1] == 'B' && read_data[2] == 'O' && read_data[3] == 'K' &&
+                sb_syscall1(SB_SYS_FS_CLOSE, fd) == 0u) {
+                smoke_ok = 1u;
+            } else {
+                (void)sb_syscall1(SB_SYS_FS_CLOSE, fd);
+            }
         }
     }
     if (smoke_ok == 0u) return 0u;
@@ -98,7 +97,7 @@ static inline uint64_t sb_app_launch(uint32_t app_id){return sb_syscall1(SB_SYS_
 static inline uint64_t sb_fs_list_root(char *buffer,uint32_t capacity){return sb_syscall2(SB_SYS_FS_LIST_ROOT,(uint64_t)(uintptr_t)buffer,capacity);}
 static inline uint64_t sb_fs_list(const char *path,uint32_t path_length,void *buffer,uint32_t capacity){return sb_syscall4(SB_SYS_FS_LIST,(uint64_t)(uintptr_t)path,path_length,(uint64_t)(uintptr_t)buffer,capacity);}
 static inline uint64_t sb_fs_stat_root(const char *name,uint32_t name_length){return sb_syscall2(SB_SYS_FS_STAT_ROOT,(uint64_t)(uintptr_t)name,name_length);}
-static inline uint64_t sb_fs_read_root(const char *name,uint32_t name_length,void *buffer,uint32_t capacity,uint32_t offset){return sb_syscall5(SB_SYS_FS_READ_ROOT,(uint64_t)(uintptr_t)name,name_length,(uint64_t)(uintptr_t)buffer,capacity,offset);}
+static inline uint64_t sb_fs_read_root(const char *name,uint32_t name_length,void *buffer,uint32_t capacity,uint32_t offset){return sb_syscall4(SB_SYS_FS_READ_ROOT,(uint64_t)(uintptr_t)name,name_length,(uint64_t)(uintptr_t)buffer,capacity,offset);}
 static inline uint64_t sb_fs_create_root(const char *name,uint32_t name_length,uint32_t file_size){return sb_syscall3(SB_SYS_FS_CREATE_ROOT,(uint64_t)(uintptr_t)name,name_length,file_size);}
 static inline uint64_t sb_fs_write_root(const char *name,uint32_t name_length,const void *buffer,uint32_t length,uint32_t offset){return sb_syscall5(SB_SYS_FS_WRITE_ROOT,(uint64_t)(uintptr_t)name,name_length,(uint64_t)(uintptr_t)buffer,length,offset);}
 static inline uint64_t sb_fs_open(const char *path,uint32_t path_length,uint32_t flags,uint32_t initial_size){return sb_syscall4(SB_SYS_FS_OPEN,(uint64_t)(uintptr_t)path,path_length,flags,initial_size);}
