@@ -23,6 +23,13 @@ static void put_le32(uint8_t *p, uint32_t value) {
     p[3] = (uint8_t)(value >> 24);
 }
 
+static uint32_t get_le32(const uint8_t *p) {
+    return (uint32_t)p[0] |
+           ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
 static sb_block_status_t disk_read(sb_block_device_t *device, uint64_t lba,
                                    uint32_t count, void *buffer) {
     if (device == 0 || buffer == 0 || count == 0u || lba >= device->sector_count ||
@@ -109,6 +116,7 @@ int main(void) {
     sb_vfs_mount_t mount;
     sb_fat32_t fs;
     sb_fat32_dirent_t entry;
+    uint32_t new_directory_cluster = 0u;
 
     build_image();
     assert(sb_vfs_mount(&device, &mount) == SB_VFS_OK);
@@ -135,6 +143,34 @@ int main(void) {
     assert(entry.directory_cluster == 4u);
     assert(entry.entry_lba == 5u && entry.entry_offset == 64u);
     assert(sb_fat32_read_directory_entry(&fs, 4u, 1u, &entry) == 0);
+
+    assert(sb_fat32_create_directory_in_directory(&fs, 4u, "NEWDIR", &new_directory_cluster, &entry) != 0);
+    assert(new_directory_cluster == 6u);
+    assert(strcmp(entry.name, "NEWDIR") == 0);
+    assert(entry.attributes == SB_FAT32_ATTR_DIRECTORY);
+    assert(entry.first_cluster == 6u);
+    assert(entry.directory_cluster == 4u);
+    assert(entry.entry_lba == 5u && entry.entry_offset == 96u);
+
+    assert(get_le32(&disk[1u * SECTOR_SIZE + 6u * 4u]) >= 0x0FFFFFF8u);
+    assert(get_le32(&disk[2u * SECTOR_SIZE + 6u * 4u]) >= 0x0FFFFFF8u);
+    assert((disk[5u * SECTOR_SIZE + 96u + 11u] & SB_FAT32_ATTR_DIRECTORY) != 0u);
+    assert(get_le32(&disk[5u * SECTOR_SIZE + 96u + 20u]) == 0u);
+    assert((uint32_t)disk[5u * SECTOR_SIZE + 96u + 26u] == 6u);
+
+    assert(disk[7u * SECTOR_SIZE + 0u] == '.');
+    assert((disk[7u * SECTOR_SIZE + 11u] & SB_FAT32_ATTR_DIRECTORY) != 0u);
+    assert((uint32_t)disk[7u * SECTOR_SIZE + 26u] == 6u);
+    assert(disk[7u * SECTOR_SIZE + 32u] == '.');
+    assert(disk[7u * SECTOR_SIZE + 33u] == '.');
+    assert((disk[7u * SECTOR_SIZE + 32u + 11u] & SB_FAT32_ATTR_DIRECTORY) != 0u);
+    assert((uint32_t)disk[7u * SECTOR_SIZE + 32u + 26u] == 4u);
+
+    assert(sb_fat32_lookup_path(&fs, "/DATA/NEWDIR", &entry) != 0);
+    assert(strcmp(entry.name, "NEWDIR") == 0);
+    assert((entry.attributes & SB_FAT32_ATTR_DIRECTORY) != 0u);
+    assert(entry.first_cluster == 6u);
+    assert(entry.directory_cluster == 4u);
 
     return 0;
 }
