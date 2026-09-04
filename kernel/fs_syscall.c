@@ -238,7 +238,8 @@ static uint64_t open_file(const char *user_path, uint32_t path_length,
         } else {
             if (!sb_fat32_lookup_path(fs, parent, &parent_entry) ||
                 (parent_entry.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u ||
-                !path_parent_entry_valid(fs, parent_entry.first_cluster, &parent_cluster)) return UINT64_MAX;
+                parent_entry.first_cluster < 2u || parent_entry.first_cluster > fs->max_cluster) return UINT64_MAX;
+            parent_cluster = parent_entry.first_cluster;
             if (!sb_fat32_create_file_in_directory(fs, parent_cluster, name, initial_size, &entry)) return UINT64_MAX;
         }
         if (sb_storage_sync() != SB_BLOCK_OK) return UINT64_MAX;
@@ -316,20 +317,12 @@ static uint64_t seek_file_handle(uint64_t fd, int64_t offset, uint32_t whence) {
     int64_t position;
     if (handle == 0) return UINT64_MAX;
     switch (whence) {
-        case SB_FS_SEEK_SET:
-            base = 0;
-            break;
-        case SB_FS_SEEK_CUR:
-            base = (int64_t)handle->offset;
-            break;
-        case SB_FS_SEEK_END:
-            base = (int64_t)handle->entry.file_size;
-            break;
-        default:
-            return UINT64_MAX;
+        case SB_FS_SEEK_SET: base = 0; break;
+        case SB_FS_SEEK_CUR: base = (int64_t)handle->offset; break;
+        case SB_FS_SEEK_END: base = (int64_t)handle->entry.file_size; break;
+        default: return UINT64_MAX;
     }
-    if ((offset > 0 && base > INT64_MAX - offset) ||
-        (offset < 0 && base < INT64_MIN - offset)) return UINT64_MAX;
+    if ((offset > 0 && base > INT64_MAX - offset) || (offset < 0 && base < INT64_MIN - offset)) return UINT64_MAX;
     position = base + offset;
     if (position < 0 || (uint64_t)position > handle->entry.file_size) return UINT64_MAX;
     handle->offset = (uint32_t)position;
@@ -381,17 +374,14 @@ uint64_t sb_fs_syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_FS_WRITE:
             if (arg1 == 0u || arg2 > UINT32_MAX) return UINT64_MAX;
             return write_file_handle(arg0, (const void *)(uintptr_t)arg1, (uint32_t)arg2);
-        case SB_SYS_FS_CLOSE:
-            return close_file_handle(arg0);
+        case SB_SYS_FS_CLOSE: return close_file_handle(arg0);
         case SB_SYS_FS_SEEK:
             if (arg2 > 2u) return UINT64_MAX;
             return seek_file_handle(arg0, (int64_t)arg1, (uint32_t)arg2);
         case SB_SYS_FS_LIST:
             if (arg0 == 0u || arg1 == 0u || arg1 >= SB_VFS_MAX_PATH || arg2 == 0u || arg3 > UINT32_MAX) return UINT64_MAX;
             if (arg3 < SB_FS_DIR_RECORD_SIZE) return 0u;
-            return list_directory((const char *)(uintptr_t)arg0, (uint32_t)arg1,
-                                  (void *)(uintptr_t)arg2, (uint32_t)arg3);
-        default:
-            return UINT64_MAX;
+            return list_directory((const char *)(uintptr_t)arg0, (uint32_t)arg1, (void *)(uintptr_t)arg2, (uint32_t)arg3);
+        default: return UINT64_MAX;
     }
 }
