@@ -14,8 +14,10 @@ static sb_process_t process_b;
 static sb_process_t *current;
 static sb_fat32_t fake_fs;
 static sb_fat32_dirent_t hello_entry;
+static sb_fat32_dirent_t data_entry;
 static uint8_t fake_file[128];
 static uint32_t created_count;
+static uint32_t nested_created_count;
 static uint32_t grow_count;
 static uintptr_t user_base = 0x8000000000ull;
 static size_t user_size = 0x20000u;
@@ -39,8 +41,35 @@ int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t
 
 int sb_fat32_lookup_path(sb_fat32_t *fs, const char *path, sb_fat32_dirent_t *entry) {
     if (fs != &fake_fs || path == 0 || entry == 0) return 0;
-    if (strcmp(path, "/HELLO.TXT") == 0 || strcmp(path, "/DATA/HELLO.TXT") == 0) {
+    if (strcmp(path, "/HELLO.TXT") == 0) {
         *entry = hello_entry;
+        return 1;
+    }
+    if (strcmp(path, "/DATA") == 0) {
+        *entry = data_entry;
+        return 1;
+    }
+    if (strcmp(path, "/DATA/HELLO.TXT") == 0) {
+        *entry = hello_entry;
+        return 1;
+    }
+    if (strcmp(path, "/NEW.TXT") == 0 && created_count != 0u) {
+        sb_fat32_dirent_t entry_copy = hello_entry;
+        memset(&entry_copy, 0, sizeof(entry_copy));
+        strcpy(entry_copy.name, "NEW.TXT");
+        entry_copy.attributes = 0x20u;
+        entry_copy.first_cluster = 2u;
+        *entry = entry_copy;
+        return 1;
+    }
+    if (strcmp(path, "/DATA/NEW.TXT") == 0 && nested_created_count != 0u) {
+        sb_fat32_dirent_t entry_copy = hello_entry;
+        memset(&entry_copy, 0, sizeof(entry_copy));
+        strcpy(entry_copy.name, "NEW.TXT");
+        entry_copy.attributes = 0x20u;
+        entry_copy.first_cluster = 6u;
+        entry_copy.directory_cluster = 4u;
+        *entry = entry_copy;
         return 1;
     }
     return 0;
@@ -55,6 +84,20 @@ int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name, uint32_t file_si
     entry->file_size = file_size;
     entry->first_cluster = 2u;
     entry->directory_cluster = fake_fs.root_cluster;
+    return 1;
+}
+
+int sb_fat32_create_file_in_directory(sb_fat32_t *fs, uint32_t directory_cluster,
+                                       const char *name, uint32_t file_size,
+                                       sb_fat32_dirent_t *entry) {
+    if (fs != &fake_fs || directory_cluster != data_entry.first_cluster || name == 0 || entry == 0 || strcmp(name, "NEW.TXT") != 0) return 0;
+    ++nested_created_count;
+    memset(entry, 0, sizeof(*entry));
+    strcpy(entry->name, name);
+    entry->attributes = 0x20u;
+    entry->file_size = file_size;
+    entry->first_cluster = 6u;
+    entry->directory_cluster = directory_cluster;
     return 1;
 }
 
@@ -112,12 +155,20 @@ int main(void) {
     process_a.address_space.pml4_physical = 1u;
     process_b.address_space.pml4_physical = 1u;
     current = &process_a;
+    memset(&fake_fs, 0, sizeof(fake_fs));
+    fake_fs.root_cluster = 2u;
+    fake_fs.max_cluster = 100u;
     memset(&hello_entry, 0, sizeof(hello_entry));
     strcpy(hello_entry.name, "HELLO.TXT");
     hello_entry.file_size = 5u;
     hello_entry.attributes = 0x20u;
     hello_entry.first_cluster = 2u;
     hello_entry.directory_cluster = 2u;
+    memset(&data_entry, 0, sizeof(data_entry));
+    strcpy(data_entry.name, "DATA");
+    data_entry.attributes = SB_FAT32_ATTR_DIRECTORY;
+    data_entry.first_cluster = 4u;
+    data_entry.directory_cluster = 2u;
     path = (char *)user_base + 0x1000u;
     buffer = (char *)user_base + 0x2000u;
     memcpy(path, "/HELLO.TXT", 10u);
@@ -175,6 +226,14 @@ int main(void) {
     assert(sb_fs_open(path, 8u, SB_FS_OPEN_READ, 0u) == UINT64_MAX);
     assert(sb_fs_open(path, 8u, SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 16u) == 0u);
     assert(created_count == 1u);
+    assert(sb_fs_close(0u) == 0u);
+
+    memcpy(path, "/DATA/NEW.TXT", 14u);
+    assert(sb_fs_open(path, 14u, SB_FS_OPEN_READ, 0u) == UINT64_MAX);
+    assert(sb_fs_open(path, 14u, SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 16u) == 0u);
+    assert(nested_created_count == 1u);
+    assert(sb_fs_close(0u) == 0u);
+    assert(sb_fs_open(path, 14u, SB_FS_OPEN_READ, 0u) == 0u);
     assert(sb_fs_close(0u) == 0u);
 
     current = &process_a;
