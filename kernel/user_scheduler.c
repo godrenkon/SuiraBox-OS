@@ -274,20 +274,26 @@ static uintptr_t switch_after_current_exit(void) {
 }
 
 static void capture_syscall_user_context(sb_thread_t *thread, uintptr_t saved_gpr_base) {
-    const uint64_t *saved = (const uint64_t *)saved_gpr_base;
+    const sb_timer_saved_gpr_t *saved = (const sb_timer_saved_gpr_t *)saved_gpr_base;
     const sb_x86_64_user_iret_frame_t *iret =
-        (const sb_x86_64_user_iret_frame_t *)(saved + 9u);
+        (const sb_x86_64_user_iret_frame_t *)(saved + 1);
     sb_user_context_t *context = thread != 0 ? thread->user_context : 0;
     if (context == 0) return;
+    context->r15 = saved->r15;
+    context->r14 = saved->r14;
+    context->r13 = saved->r13;
+    context->r12 = saved->r12;
+    context->rbp = saved->rbp;
+    context->rbx = saved->rbx;
+    context->r11 = saved->r11;
+    context->r10 = saved->r10;
+    context->r9 = saved->r9;
+    context->r8 = saved->r8;
+    context->rdi = saved->rdi;
+    context->rsi = saved->rsi;
+    context->rdx = saved->rdx;
+    context->rcx = saved->rcx;
     context->rax = 0u;
-    context->rdi = saved[1];
-    context->rsi = saved[2];
-    context->rdx = saved[3];
-    context->rcx = saved[4];
-    context->r8 = saved[5];
-    context->r9 = saved[6];
-    context->r10 = saved[7];
-    context->r11 = saved[8];
     context->rip = iret->rip;
     context->cs = iret->cs;
     context->rflags = iret->rflags;
