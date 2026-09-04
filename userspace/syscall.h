@@ -66,7 +66,7 @@ static inline uint64_t sb_display_info(void) {
         char write_data[] = "SBOK";
         char read_data[4] = {0};
         attempted = 1u;
-        const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path, 9u,
+        const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path, sizeof(path) - 1u,
                                          SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 4u);
         if (fd != UINT64_MAX) {
             if (sb_syscall3(SB_SYS_FS_WRITE, fd, (uint64_t)(uintptr_t)write_data, 4u) == 4u &&
