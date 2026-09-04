@@ -218,7 +218,9 @@ static uint64_t open_file(const char *user_path, uint32_t path_length,
     char parent[SB_VFS_MAX_PATH];
     char name[SB_VFS_MAX_NAME + 1u];
     sb_fat32_dirent_t entry;
+    sb_fat32_dirent_t parent_entry;
     sb_vfs_status_t status;
+    uint32_t parent_cluster;
     int row;
     if (process == 0 || fs == 0 || user_path == 0 || path_length == 0u || path_length >= sizeof(path) ||
         (flags & (SB_FS_OPEN_READ | SB_FS_OPEN_WRITE)) == 0u || (flags & ~0x07u) != 0u) return UINT64_MAX;
@@ -230,8 +232,15 @@ static uint64_t open_file(const char *user_path, uint32_t path_length,
     if (!sb_fat32_lookup_path(fs, path, &entry)) {
         if ((flags & SB_FS_OPEN_CREATE) == 0u) return UINT64_MAX;
         status = sb_vfs_split_path(path, parent, sizeof(parent), name, sizeof(name));
-        if (status != SB_VFS_OK || parent[0] != '/' || parent[1] != '\0') return UINT64_MAX;
-        if (!sb_fat32_create_root_file(fs, name, initial_size, &entry)) return UINT64_MAX;
+        if (status != SB_VFS_OK) return UINT64_MAX;
+        if (parent[0] == '/' && parent[1] == '\0') {
+            if (!sb_fat32_create_root_file(fs, name, initial_size, &entry)) return UINT64_MAX;
+        } else {
+            if (!sb_fat32_lookup_path(fs, parent, &parent_entry) ||
+                (parent_entry.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u ||
+                !path_parent_entry_valid(fs, parent_entry.first_cluster, &parent_cluster)) return UINT64_MAX;
+            if (!sb_fat32_create_file_in_directory(fs, parent_cluster, name, initial_size, &entry)) return UINT64_MAX;
+        }
         if (sb_storage_sync() != SB_BLOCK_OK) return UINT64_MAX;
     }
     if ((entry.attributes & SB_FAT32_ATTR_DIRECTORY) != 0u) return UINT64_MAX;
