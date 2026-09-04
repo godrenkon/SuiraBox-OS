@@ -104,6 +104,11 @@ jobs:
           grep -F "Userspace: ring3 syscall reached" qemu.log
           grep -F "Userspace: GUI framebuffer draw reached" qemu.log
 
+      - name: Verify userspace filesystem writeback
+        run: |
+          mdir -i build/test-disk.img ::/SBRUN
+          mtype -i build/test-disk.img ::/SBRUN/SBOK.TST | grep -F "SBOK"
+
       - name: Framebuffer smoke test
         run: |
           set -o pipefail
