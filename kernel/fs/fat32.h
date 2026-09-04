@@ -39,6 +39,9 @@ int sb_fat32_create_root_file(sb_fat32_t *fs, const char *name,
 int sb_fat32_create_file_in_directory(sb_fat32_t *fs, uint32_t directory_cluster,
                                       const char *name, uint32_t file_size,
                                       sb_fat32_dirent_t *entry);
+int sb_fat32_create_directory_in_directory(sb_fat32_t *fs, uint32_t parent_cluster,
+                                           const char *name, uint32_t *directory_cluster,
+                                           sb_fat32_dirent_t *entry);
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
                        uint32_t offset, uint32_t length, void *buffer);
 int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
