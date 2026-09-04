@@ -1,0 +1,19 @@
+name: timer-runtime-accounting-host
+
+on:
+  push:
+    branches:
+      - feat/gui-framebuffer-bootstrap
+  pull_request:
+    branches:
+      - feat/gui-framebuffer-bootstrap
+
+jobs:
+  timer-runtime-accounting-host:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build timer runtime accounting host test
+        run: gcc -std=c11 -Wall -Wextra -Werror -Ikernel tests/timer_runtime_accounting_host_test.c kernel/timer.c -o /tmp/timer-runtime-accounting-host-test
+      - name: Run timer runtime accounting host test
+        run: /tmp/timer-runtime-accounting-host-test
