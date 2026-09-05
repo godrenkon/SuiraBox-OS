@@ -45,8 +45,12 @@ jobs:
           grep -Fq 'Boot protocol: Multiboot2 OK' build/qemu-serial.log
           grep -Fq 'Display: framebuffer ready' build/qemu-serial.log
           grep -Fq 'Memory: VMM map/translate/unmap OK' build/qemu-serial.log
+          grep -Fq 'Storage: real block device + FAT32 mount OK' build/qemu-serial.log
+          grep -Eq 'Storage: persistence marker (initialized|verified)' build/qemu-serial.log
+          grep -Fq 'Syscall: int 0x80 user gate ready' build/qemu-serial.log
           grep -Fq 'Userspace: SB Desktop ELF + address-space + user thread preparation OK' build/qemu-serial.log
           grep -Fq 'Userspace: ring3 syscall reached' build/qemu-serial.log
+          grep -Fq 'Userspace: GUI framebuffer draw reached' build/qemu-serial.log
       - name: Upload serial log
         if: always()
         uses: actions/upload-artifact@v4
