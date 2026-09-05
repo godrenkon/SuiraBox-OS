@@ -6,10 +6,12 @@
 .extern sb_syscall_dispatch_entry
 .extern user_scheduler_exit_dispatch
 .extern user_scheduler_sleep_dispatch
+.extern user_scheduler_yield_dispatch
 .extern sb_resume_user_from_kernel_stack
 
 .set SB_SYSCALL_EXIT_SWITCH, -2
 .set SB_SYSCALL_SLEEP_SWITCH, -3
+.set SB_SYSCALL_YIELD_SWITCH, -4
 .set SB_SYSCALL_ERROR, -1
 
 /*
@@ -40,8 +42,8 @@
  * pointer. RSP is then aligned to 8 mod 16 before CALL so the C callee
  * observes the SysV-required 0 mod 16 entry alignment.
  *
- * All GPRs are saved because a sleep-induced context switch cannot rely on
- * the interrupted thread retaining callee-saved registers in live CPU state.
+ * All GPRs are saved because a context switch cannot rely on the interrupted
+ * thread retaining callee-saved registers in live CPU state.
  * RAX is intentionally not restored on a normal return: it is the syscall
  * return value.
  */
@@ -84,6 +86,8 @@ sb_syscall_int80_stub:
     je .Lsyscall_exit_switch
     cmpq $SB_SYSCALL_SLEEP_SWITCH, %rax
     je .Lsyscall_sleep_switch
+    cmpq $SB_SYSCALL_YIELD_SWITCH, %rax
+    je .Lsyscall_yield_switch
     jmp .Lsyscall_normal_return
 
 .Lsyscall_exit_switch:
@@ -103,7 +107,19 @@ sb_syscall_int80_stub:
     movq %rax, %rdi
     jmp sb_resume_user_from_kernel_stack
 
+.Lsyscall_yield_switch:
+    movq (%rsp), %rdi
+    call user_scheduler_yield_dispatch
+    testq %rax, %rax
+    jz .Lsyscall_yield_failed
+    movq %rax, %rdi
+    jmp sb_resume_user_from_kernel_stack
+
 .Lsyscall_sleep_failed:
+    movq $SB_SYSCALL_ERROR, %rax
+    jmp .Lsyscall_normal_return
+
+.Lsyscall_yield_failed:
     movq $SB_SYSCALL_ERROR, %rax
     jmp .Lsyscall_normal_return
 
