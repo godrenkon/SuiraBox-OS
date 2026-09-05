@@ -29,6 +29,30 @@ static void syscall_user_smoke_char(char c) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
 }
 
+#ifdef SB_RUNTIME_SMOKE
+static void syscall_user_smoke_u64(uint64_t value) {
+    static const char digits[] = "0123456789ABCDEF";
+    char text[16];
+    for (uint32_t i = 0u; i < 16u; ++i) {
+        text[15u - i] = digits[value & 0xFu];
+        value >>= 4u;
+    }
+    for (uint32_t i = 0u; i < 16u; ++i) syscall_user_smoke_char(text[i]);
+}
+
+static void syscall_user_smoke_fs_result(const char *name, uint64_t result) {
+    static const char prefix[] = "FS " ;
+    for (uint32_t i = 0u; prefix[i] != '\0'; ++i) syscall_user_smoke_char(prefix[i]);
+    for (uint32_t i = 0u; name[i] != '\0'; ++i) syscall_user_smoke_char(name[i]);
+    syscall_user_smoke_char('=');
+    syscall_user_smoke_char('0');
+    syscall_user_smoke_char('x');
+    syscall_user_smoke_u64(result);
+    syscall_user_smoke_char('\r');
+    syscall_user_smoke_char('\n');
+}
+#endif
+
 static void syscall_user_smoke_mark(void) {
     if (syscall_user_smoke_seen != 0u) return;
     syscall_user_smoke_seen = 1u;
@@ -204,15 +228,27 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_FS_LIST_ROOT:
         case SB_SYS_FS_STAT_ROOT:
         case SB_SYS_FS_READ_ROOT:
-        case SB_SYS_FS_CREATE_ROOT:
+        case SB_SYS_FS_CREATE_ROOT: {
+            const uint64_t result = sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
+#ifdef SB_RUNTIME_SMOKE
+            if (number == SB_SYS_FS_CREATE_ROOT) syscall_user_smoke_fs_result("CREATE", result);
+#endif
+            return result;
+        }
         case SB_SYS_FS_WRITE_ROOT:
         case SB_SYS_FS_OPEN:
         case SB_SYS_FS_READ:
         case SB_SYS_FS_WRITE:
         case SB_SYS_FS_CLOSE:
         case SB_SYS_FS_SEEK:
-        case SB_SYS_FS_MKDIR:
             return sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
+        case SB_SYS_FS_MKDIR: {
+            const uint64_t result = sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
+#ifdef SB_RUNTIME_SMOKE
+            syscall_user_smoke_fs_result("MKDIR", result);
+#endif
+            return result;
+        }
         case SB_SYS_FS_LIST:
             return syscall_fs_list(arg0, arg1, arg2, arg3);
         case SB_SYS_WAIT_CHILD:
