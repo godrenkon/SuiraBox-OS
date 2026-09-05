@@ -106,6 +106,26 @@ jobs:
 
       - name: Verify userspace filesystem writeback
         run: |
+          set -o pipefail
+          rm -f qemu-fs.log qemu-fs-host.log
+          timeout 30s qemu-system-x86_64 \
+            -machine pc \
+            -cpu max \
+            -m 512M \
+            -vga std \
+            -cdrom build/suirabox.iso \
+            -drive file=build/test-disk.img,format=raw,if=ide \
+            -boot order=d,menu=off \
+            -nic user,model=e1000 \
+            -serial file:qemu-fs.log \
+            -display none \
+            -no-reboot \
+            -no-shutdown \
+            2>&1 | tee qemu-fs-host.log || test ${PIPESTATUS[0]} -eq 124
+          grep -F "Storage: ATA primary master registered" qemu-fs.log
+          grep -F "Storage: persistent filesystem mounted" qemu-fs.log
+          grep -F "Userspace: ring3 syscall reached" qemu-fs.log
+          grep -F "Userspace: GUI framebuffer draw reached" qemu-fs.log
           mdir -i build/test-disk.img ::/SBRUN
           mtype -i build/test-disk.img ::/SBRUN/SBOK.TST | grep -F "SBOK"
 
@@ -192,6 +212,8 @@ jobs:
             build/suirabox.elf
             build/test-disk.img
             qemu.log
+            qemu-fs.log
+            qemu-fs-host.log
             qemu-gui.log
             qemu-gui-host.log
             qemu-storage-first.log
