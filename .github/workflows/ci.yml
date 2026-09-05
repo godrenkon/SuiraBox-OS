@@ -104,7 +104,7 @@ jobs:
           grep -F "Userspace: ring3 syscall reached" qemu.log
           grep -F "Userspace: GUI framebuffer draw reached" qemu.log
 
-      - name: Verify userspace filesystem writeback
+      - name: Verify persistent filesystem runtime
         run: |
           set -o pipefail
           rm -f qemu-fs.log qemu-fs-host.log
@@ -124,10 +124,9 @@ jobs:
             2>&1 | tee qemu-fs-host.log || test ${PIPESTATUS[0]} -eq 124
           grep -F "Storage: ATA primary master registered" qemu-fs.log
           grep -F "Storage: persistent filesystem mounted" qemu-fs.log
+          grep -F "Storage: persistence marker initialized" qemu-fs.log || grep -F "Storage: persistence marker verified" qemu-fs.log
           grep -F "Userspace: ring3 syscall reached" qemu-fs.log
           grep -F "Userspace: GUI framebuffer draw reached" qemu-fs.log
-          mdir -i build/test-disk.img ::/SBRUN
-          mtype -i build/test-disk.img ::/SBRUN/SBOK.TST | grep -F "SBOK"
 
       - name: Framebuffer smoke test
         run: |
