@@ -414,7 +414,7 @@ uint64_t sb_fs_syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             if (arg3 < SB_FS_DIR_RECORD_SIZE) return 0u;
             return list_directory((const char *)(uintptr_t)arg0, (uint32_t)arg1, (void *)(uintptr_t)arg2, (uint32_t)arg3);
         case SB_SYS_FS_MKDIR:
-            if (arg0 == 0u || arg1 == 0u || arg1 >= SB_VFS_MAX_PATH || arg2 != 0u || arg3 != 0u || arg4 != 0u) return UINT64_MAX;
+            if (arg0 == 0u || arg1 == 0u || arg1 >= SB_VFS_MAX_PATH) return UINT64_MAX;
             return make_directory((const char *)(uintptr_t)arg0, (uint32_t)arg1);
         default: return UINT64_MAX;
     }
