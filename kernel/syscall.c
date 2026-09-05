@@ -41,7 +41,7 @@ static void syscall_user_smoke_u64(uint64_t value) {
 }
 
 static void syscall_user_smoke_fs_result(const char *name, uint64_t result) {
-    static const char prefix[] = "FS " ;
+    static const char prefix[] = "FS ";
     for (uint32_t i = 0u; prefix[i] != '\0'; ++i) syscall_user_smoke_char(prefix[i]);
     for (uint32_t i = 0u; name[i] != '\0'; ++i) syscall_user_smoke_char(name[i]);
     syscall_user_smoke_char('=');
@@ -178,10 +178,6 @@ static uint64_t syscall_abi_version(void) {
     return ((uint64_t)SB_SYSCALL_ABI_MAJOR << 32) | (uint64_t)SB_SYSCALL_ABI_MINOR;
 }
 
-static void syscall_idle(void) {
-    __asm__ volatile ("sti\n\thlt\n\tcli" ::: "memory");
-}
-
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                           uint64_t arg2, uint64_t arg3, uint64_t arg4) {
     switch (number) {
@@ -221,7 +217,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             if (!sb_storage_ready()) return UINT64_MAX;
             return sb_config_store_set((uint8_t)language, optional_enabled_mask) == 0 ? 0u : UINT64_MAX;
         }
-        case SB_SYS_YIELD: syscall_idle(); return 0u;
+        case SB_SYS_YIELD: return syscall_sleep(1u);
         case SB_SYS_APP_LAUNCH:
             if (arg0 > UINT32_MAX) return UINT64_MAX;
             return sb_app_launch((uint32_t)arg0) == 0 ? 0u : UINT64_MAX;
