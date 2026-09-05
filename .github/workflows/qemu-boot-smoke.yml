@@ -27,7 +27,8 @@ jobs:
       - name: First boot and capture serial log
         shell: bash
         run: |
-          set +e
+          set -o pipefail
+          rm -f build/qemu-serial-first.log build/qemu-serial-first-host.log
           timeout --preserve-status 30s qemu-system-x86_64 \
             -machine pc \
             -cpu max \
@@ -35,15 +36,13 @@ jobs:
             -vga std \
             -cdrom build/suirabox.iso \
             -drive file=build/sb-storage.img,format=raw,if=ide \
+            -boot order=d,menu=off \
+            -nic user,model=e1000 \
             -serial file:build/qemu-serial-first.log \
             -display none \
             -no-reboot \
-            -no-shutdown
-          rc=$?
-          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
-            echo "QEMU first boot exited unexpectedly with status $rc"
-            exit "$rc"
-          fi
+            -no-shutdown \
+            2>&1 | tee build/qemu-serial-first-host.log || test ${PIPESTATUS[0]} -eq 124
       - name: Verify first boot milestones and persistence initialization
         run: |
           test -s build/qemu-serial-first.log
@@ -59,7 +58,8 @@ jobs:
       - name: Second boot and capture serial log
         shell: bash
         run: |
-          set +e
+          set -o pipefail
+          rm -f build/qemu-serial-second.log build/qemu-serial-second-host.log
           timeout --preserve-status 30s qemu-system-x86_64 \
             -machine pc \
             -cpu max \
@@ -67,15 +67,13 @@ jobs:
             -vga std \
             -cdrom build/suirabox.iso \
             -drive file=build/sb-storage.img,format=raw,if=ide \
+            -boot order=d,menu=off \
+            -nic user,model=e1000 \
             -serial file:build/qemu-serial-second.log \
             -display none \
             -no-reboot \
-            -no-shutdown
-          rc=$?
-          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
-            echo "QEMU second boot exited unexpectedly with status $rc"
-            exit "$rc"
-          fi
+            -no-shutdown \
+            2>&1 | tee build/qemu-serial-second-host.log || test ${PIPESTATUS[0]} -eq 124
       - name: Verify second boot persistence
         run: |
           test -s build/qemu-serial-second.log
