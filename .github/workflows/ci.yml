@@ -156,6 +156,7 @@ jobs:
       - name: Persistent storage first boot
         run: |
           set -o pipefail
+          mformat -F -i build/test-disk.img ::
           rm -f qemu-storage-first.log
           timeout 30s qemu-system-x86_64 \
             -machine pc \
