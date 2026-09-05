@@ -150,13 +150,13 @@ int main(void) {
     assert(entry.attributes == SB_FAT32_ATTR_DIRECTORY);
     assert(entry.first_cluster == 6u);
     assert(entry.directory_cluster == 4u);
-    assert(entry.entry_lba == 5u && entry.entry_offset == 96u);
+    assert(entry.entry_lba == 5u && entry.entry_offset == 0u);
 
     assert(get_le32(&disk[1u * SECTOR_SIZE + 6u * 4u]) >= 0x0FFFFFF8u);
     assert(get_le32(&disk[2u * SECTOR_SIZE + 6u * 4u]) >= 0x0FFFFFF8u);
-    assert((disk[5u * SECTOR_SIZE + 96u + 11u] & SB_FAT32_ATTR_DIRECTORY) != 0u);
-    assert(get_le32(&disk[5u * SECTOR_SIZE + 96u + 20u]) == 0u);
-    assert((uint32_t)disk[5u * SECTOR_SIZE + 96u + 26u] == 6u);
+    assert((disk[5u * SECTOR_SIZE + 11u] & SB_FAT32_ATTR_DIRECTORY) != 0u);
+    assert(get_le32(&disk[5u * SECTOR_SIZE + 20u]) == 0u);
+    assert((uint32_t)disk[5u * SECTOR_SIZE + 26u] == 6u);
 
     assert(disk[7u * SECTOR_SIZE + 0u] == '.');
     assert((disk[7u * SECTOR_SIZE + 11u] & SB_FAT32_ATTR_DIRECTORY) != 0u);
