@@ -29,7 +29,7 @@ jobs:
         run: |
           set +e
           timeout --preserve-status 30s qemu-system-x86_64 \
-            -machine q35 \
+            -machine pc \
             -cpu max \
             -m 512M \
             -vga std \
@@ -61,7 +61,7 @@ jobs:
         run: |
           set +e
           timeout --preserve-status 30s qemu-system-x86_64 \
-            -machine q35 \
+            -machine pc \
             -cpu max \
             -m 512M \
             -vga std \
