@@ -22,6 +22,7 @@ sb_process_t *user_scheduler_current_process(void);
 uint32_t user_scheduler_count(void);
 uintptr_t user_scheduler_exit_dispatch(void);
 uintptr_t user_scheduler_sleep_dispatch(uintptr_t saved_gpr_base);
+uintptr_t user_scheduler_yield_dispatch(uintptr_t saved_gpr_base);
 uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr);
 
 #endif
