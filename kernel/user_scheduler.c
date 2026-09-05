@@ -352,12 +352,49 @@ static uintptr_t switch_after_current_sleep(uintptr_t saved_gpr_base) {
     return (uintptr_t)next_thread->kernel_resume_stack_pointer;
 }
 
+static uintptr_t switch_after_current_yield(uintptr_t saved_gpr_base) {
+    if (saved_gpr_base == 0u || slot_count < 2u || current_index >= slot_count) return 0u;
+    if (pending_exit_process != 0 || pending_exit_thread != 0 || pending_sleep_wake_tick != 0u) return 0u;
+
+    const uint32_t old_index = current_index;
+    sb_process_t *old_process = slots[old_index].process;
+    sb_thread_t *old_thread = slots[old_index].thread;
+    uint32_t candidate_index = slot_count;
+    if (!thread_runnable(old_thread) || !process_runnable(old_process) ||
+        find_next_runnable(old_index, &candidate_index) != 0) return 0u;
+
+    sb_process_t *next_process = slots[candidate_index].process;
+    sb_thread_t *next_thread = slots[candidate_index].thread;
+    capture_syscall_user_context(old_thread, saved_gpr_base);
+    if (process_prepare_user_resume_frame(next_thread) != 0) return 0u;
+    if (process_activate(next_process) != 0) return 0u;
+    if (gdt_try_set_kernel_stack(next_thread->kernel_stack_top) != 0) {
+        (void)process_activate(old_process);
+        (void)gdt_try_set_kernel_stack(old_thread->kernel_stack_top);
+        return 0u;
+    }
+
+    old_thread->state = SB_PROCESS_CREATED;
+    old_thread->wake_tick = 0u;
+    next_thread->state = SB_PROCESS_RUNNING;
+    next_thread->wake_tick = 0u;
+    if (old_process != next_process) old_process->state = SB_PROCESS_CREATED;
+    next_process->state = SB_PROCESS_RUNNING;
+    current_index = candidate_index;
+    quantum_ticks = 0u;
+    return (uintptr_t)next_thread->kernel_resume_stack_pointer;
+}
+
 uintptr_t user_scheduler_sleep_dispatch(uintptr_t saved_gpr_base) {
     return switch_after_current_sleep(saved_gpr_base);
 }
 
 uintptr_t user_scheduler_exit_dispatch(void) {
     return switch_after_current_exit();
+}
+
+uintptr_t user_scheduler_yield_dispatch(uintptr_t saved_gpr_base) {
+    return switch_after_current_yield(saved_gpr_base);
 }
 
 uintptr_t user_scheduler_timer_dispatch(sb_timer_saved_gpr_t *gpr) {
