@@ -211,6 +211,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_FS_WRITE:
         case SB_SYS_FS_CLOSE:
         case SB_SYS_FS_SEEK:
+        case SB_SYS_FS_MKDIR:
             return sb_fs_syscall_dispatch(number, arg0, arg1, arg2, arg3, arg4);
         case SB_SYS_FS_LIST:
             return syscall_fs_list(arg0, arg1, arg2, arg3);
