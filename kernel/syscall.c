@@ -15,6 +15,7 @@
 
 #define SB_SYSCALL_EXIT_SWITCH (UINT64_MAX - 1u)
 #define SB_SYSCALL_SLEEP_SWITCH (UINT64_MAX - 2u)
+#define SB_SYSCALL_YIELD_SWITCH (UINT64_MAX - 3u)
 #define SB_SYSCALL_FS_LIST_MAX_PATH (SB_VFS_MAX_PATH - 1u)
 
 static uint8_t syscall_user_smoke_seen;
@@ -217,7 +218,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             if (!sb_storage_ready()) return UINT64_MAX;
             return sb_config_store_set((uint8_t)language, optional_enabled_mask) == 0 ? 0u : UINT64_MAX;
         }
-        case SB_SYS_YIELD: return syscall_sleep(1u);
+        case SB_SYS_YIELD: return SB_SYSCALL_YIELD_SWITCH;
         case SB_SYS_APP_LAUNCH:
             if (arg0 > UINT32_MAX) return UINT64_MAX;
             return sb_app_launch((uint32_t)arg0) == 0 ? 0u : UINT64_MAX;
