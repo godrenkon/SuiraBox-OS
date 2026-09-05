@@ -24,7 +24,7 @@ jobs:
         run: |
           truncate -s 64M build/sb-storage.img
           mkfs.fat -F 32 -n SBROOT build/sb-storage.img
-      - name: Boot ISO and capture serial log
+      - name: First boot and capture serial log
         shell: bash
         run: |
           set +e
@@ -35,30 +35,59 @@ jobs:
             -vga std \
             -cdrom build/suirabox.iso \
             -drive file=build/sb-storage.img,format=raw,if=ide \
-            -serial file:build/qemu-serial.log \
+            -serial file:build/qemu-serial-first.log \
             -display none \
             -no-reboot \
             -no-shutdown
           rc=$?
           if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
-            echo "QEMU exited unexpectedly with status $rc"
+            echo "QEMU first boot exited unexpectedly with status $rc"
             exit "$rc"
           fi
-      - name: Verify boot milestones
+      - name: Verify first boot milestones and persistence initialization
         run: |
-          test -s build/qemu-serial.log
-          grep -Fq 'Boot protocol: Multiboot2 OK' build/qemu-serial.log
-          grep -Fq 'Display: framebuffer ready' build/qemu-serial.log
-          grep -Fq 'Memory: VMM map/translate/unmap OK' build/qemu-serial.log
-          grep -Fq 'Storage: real block device + FAT32 mount OK' build/qemu-serial.log
-          grep -Eq 'Storage: persistence marker (initialized|verified)' build/qemu-serial.log
-          grep -Fq 'Syscall: int 0x80 user gate ready' build/qemu-serial.log
-          grep -Fq 'Userspace: SB Desktop ELF + address-space + user thread preparation OK' build/qemu-serial.log
-          grep -Fq 'Userspace: ring3 syscall reached' build/qemu-serial.log
-          grep -Fq 'Userspace: GUI framebuffer draw reached' build/qemu-serial.log
-      - name: Upload serial log
+          test -s build/qemu-serial-first.log
+          grep -Fq 'Boot protocol: Multiboot2 OK' build/qemu-serial-first.log
+          grep -Fq 'Display: framebuffer ready' build/qemu-serial-first.log
+          grep -Fq 'Memory: VMM map/translate/unmap OK' build/qemu-serial-first.log
+          grep -Fq 'Storage: real block device + FAT32 mount OK' build/qemu-serial-first.log
+          grep -Fq 'Storage: persistence marker initialized' build/qemu-serial-first.log
+          grep -Fq 'Syscall: int 0x80 user gate ready' build/qemu-serial-first.log
+          grep -Fq 'Userspace: SB Desktop ELF + address-space + user thread preparation OK' build/qemu-serial-first.log
+          grep -Fq 'Userspace: ring3 syscall reached' build/qemu-serial-first.log
+          grep -Fq 'Userspace: GUI framebuffer draw reached' build/qemu-serial-first.log
+      - name: Second boot and capture serial log
+        shell: bash
+        run: |
+          set +e
+          timeout --preserve-status 30s qemu-system-x86_64 \
+            -machine q35 \
+            -cpu max \
+            -m 512M \
+            -vga std \
+            -cdrom build/suirabox.iso \
+            -drive file=build/sb-storage.img,format=raw,if=ide \
+            -serial file:build/qemu-serial-second.log \
+            -display none \
+            -no-reboot \
+            -no-shutdown
+          rc=$?
+          if [ "$rc" -ne 0 ] && [ "$rc" -ne 124 ]; then
+            echo "QEMU second boot exited unexpectedly with status $rc"
+            exit "$rc"
+          fi
+      - name: Verify second boot persistence
+        run: |
+          test -s build/qemu-serial-second.log
+          grep -Fq 'Boot protocol: Multiboot2 OK' build/qemu-serial-second.log
+          grep -Fq 'Storage: real block device + FAT32 mount OK' build/qemu-serial-second.log
+          grep -Fq 'Storage: persistence marker verified' build/qemu-serial-second.log
+          grep -Fq 'Syscall: int 0x80 user gate ready' build/qemu-serial-second.log
+          grep -Fq 'Userspace: ring3 syscall reached' build/qemu-serial-second.log
+          grep -Fq 'Userspace: GUI framebuffer draw reached' build/qemu-serial-second.log
+      - name: Upload serial logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: qemu-serial-log
-          path: build/qemu-serial.log
+          name: qemu-serial-logs
+          path: build/qemu-serial-*.log
