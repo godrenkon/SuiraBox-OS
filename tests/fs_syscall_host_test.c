@@ -102,6 +102,7 @@ int sb_fat32_create_directory_in_directory(sb_fat32_t *fs, uint32_t parent_clust
                                             const char *name, uint32_t *directory_cluster,
                                             sb_fat32_dirent_t *entry) {
     if (fs != &fake_fs || parent_cluster != 4u || name == 0 || directory_cluster == 0 || entry == 0 || strcmp(name, "TESTDIR") != 0) return 0;
+    if (fake_mkdir_cluster != 0u) return 0;
     fake_mkdir_cluster = 7u;
     strcpy(fake_mkdir_name, name);
     memset(entry, 0, sizeof(*entry));
