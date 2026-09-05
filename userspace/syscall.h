@@ -65,10 +65,19 @@ static inline uint64_t sb_display_info(void) {
     if (attempted == 0u) {
         char directory[] = "/SBRUN";
         char path[] = "/SBRUN/SBOK.TST";
+        char stage_name[] = "SBSTAGE.TXT";
+        char stage_data[] = "F";
         char write_data[] = "SBOK";
         char read_data[4] = {0};
         attempted = 1u;
-        (void)sb_syscall2(SB_SYS_FS_MKDIR, (uint64_t)(uintptr_t)directory, sizeof(directory) - 1u);
+        const uint64_t stage_create = sb_syscall3(SB_SYS_FS_CREATE_ROOT, (uint64_t)(uintptr_t)stage_name,
+                                                   sizeof(stage_name) - 1u, 1u);
+        const uint64_t mkdir_result = sb_syscall2(SB_SYS_FS_MKDIR, (uint64_t)(uintptr_t)directory, sizeof(directory) - 1u);
+        stage_data[0] = mkdir_result == UINT64_MAX ? 'F' : 'S';
+        if (stage_create == 0u) {
+            (void)sb_syscall5(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)stage_name, sizeof(stage_name) - 1u,
+                               (uint64_t)(uintptr_t)stage_data, 1u, 0u);
+        }
         const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path, sizeof(path) - 1u,
                                          SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 4u);
         if (fd != UINT64_MAX) {
