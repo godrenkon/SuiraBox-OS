@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **5-3 / 5-4 → 6-3**。Schedulerの実コンテキスト切替・timer preemptionを完成させつつ、Process / Thread層のuser thread起動経路へ接続しています。
+> **Current focus:** **5-5 / 5-6 → 6-4 / 6-5**。timer preemption・saved-frame resume・first user thread起動の実動作確認を完了し、thread state遷移とsleep/wake統合、次のprocess/thread lifecycleへ進みます。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -95,7 +95,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **3-3** IRQ entry / exit
 - [x] **3-4** timer初期化
 - [x] **3-5** canonical timer API
-- [-] **3-6** timerからschedulerへのpreemption接続
+- [x] **3-6** timerからschedulerへのpreemption接続
 - [ ] **3-7** sleep / wake / timeout semanticsの完全化
 - [ ] **3-8** 複数timer sourceへの適応
 
@@ -115,10 +115,10 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 - [x] **5-1** runnable threadの基本モデル
 - [-] **5-2** context object / switch ABI
-- [*] **5-3** timer preemption経路
-- [*] **5-4** 保存済みregister frameからのthread resume
-- [ ] **5-5** runnable / blocked / sleeping遷移の完全化
-- [ ] **5-6** sleep / wakeとschedulerの統合
+- [x] **5-3** timer preemption経路
+- [x] **5-4** 保存済みregister frameからのthread resume
+- [*] **5-5** runnable / blocked / sleeping遷移の完全化
+- [*] **5-6** sleep / wakeとschedulerの統合
 - [ ] **5-7** CPU accounting
 - [ ] **5-8** priority / affinity基盤
 - [ ] **5-9** SMP scheduling / load balancing
@@ -128,9 +128,9 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 - [x] **6-1** thread object / lifecycleの基本
 - [-] **6-2** process object / address space紐付け
-- [*] **6-3** first user thread起動経路
-- [ ] **6-4** user threadのfork / spawn相当
-- [ ] **6-5** process exit / cleanup
+- [x] **6-3** first user thread起動経路
+- [*] **6-4** user threadのfork / spawn相当
+- [*] **6-5** process exit / cleanup
 - [ ] **6-6** wait / parent-child lifecycle
 - [ ] **6-7** 複数thread / 複数process実行
 - [ ] **6-8** signal / cancellation相当
@@ -282,21 +282,29 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 ## Current Development Position
 
+### Verified scheduler/userspace boundary
+
+**3-6 + 5-3 + 5-4 + 6-3: timer preemption → saved-frame resume → first user thread**
+
+GitHub Actions上のx86_64 QEMU smoke testで、kernel taskからtimer IRQによってuser taskへ切り替わり、ring3のuser programがsyscallへ到達した後、再びtimer IRQでkernel taskへpreemptされ、保存済みuser IRQ frameから再開してもう一度syscallへ到達する往復経路を確認済みです。
+
+この経路では、IRQ entryで全GPRを保存し、Schedulerがtask state・CR3・TSS.rsp0を切り替え、選択したregister frameをIRQ epilogueが復元して`iretq`します。
+
 ### Primary work
 
-**5-3 → 5-4: timer preemption + saved-frame resume**
+**5-5 → 5-6: task state transition + sleep / wake integration**
 
-現在は、timer IRQから現在threadの実行状態を扱い、次に実行するthreadの保存済みframeへ切り替える、Schedulerの核心部分を実装・検証しています。
+次はREADY / RUNNINGだけでなく、BLOCKED / SLEEPINGを実際のrun queue選択とtimer wakeupへ接続し、待機中threadを実行対象から確実に除外して期限到達時に再びrunnableへ戻せる状態遷移を完成させます。
 
 ### Parallel integration
 
-**6-2 → 6-3: Process / Thread + first user thread**
+**6-4 → 6-5: spawn + process exit / cleanup**
 
-同時に、processごとのaddress space、kernel stack、user stack、復帰用frame、TSS.rsp0、CR3切替をつないで、最初のuser threadを実際に起動できる経路を完成させています。
+first user thread起動経路を基礎に、追加user thread/processを生成できるspawn経路と、終了時のthread・address space・kernel stack・resource cleanupを整備します。
 
 ### Next boundary
 
-5章と6章が安定した後は、**7-1 syscall entry/exit ABI**へ進み、userspaceとkernelの正式な境界を固定します。
+上記のlifecycleが安定した後は、**7-1 syscall entry/exit ABI**を正式化し、userspaceとkernelの境界を固定します。
 
 ---
 
