@@ -87,7 +87,7 @@ jobs:
           grep -F "Scheduler: saved user IRQ frame selected for resume" qemu.log
           grep -F "Userspace: resumed user thread reached syscall" qemu.log
 
-          # BLOCKED + parent/child wait lifecycle.
+          # Legacy ABI v1 selector + BLOCKED parent/child wait lifecycle.
           grep -F "Userspace: spawn syscall created child process" qemu.log
           grep -F "Scheduler: user task entered BLOCKED" qemu.log
           grep -F "Userspace: wait syscall blocked for child" qemu.log
@@ -99,6 +99,14 @@ jobs:
           grep -F "Process: exited process resources reaped" qemu.log
           grep -F "Scheduler: woke blocked user task selected for resume" qemu.log
           grep -F "Userspace: parent wait resumed after child exit" qemu.log
+
+          # Versioned general spawn request: validated userspace request/name,
+          # dynamic identifiers, child execution, exit/reap, parent wake.
+          grep -F "Spawn: userspace request copied and validated" qemu.log
+          grep -F "Spawn: general child process created" qemu.log
+          grep -F "Spawn: general child PID syscall OK" qemu.log
+          grep -F "Spawn: general child requested process exit" qemu.log
+          grep -F "Spawn: general child wait completed" qemu.log
 
           # SLEEP remains an independent deadline-driven transition.
           grep -F "Scheduler: user task entered SLEEPING" qemu.log
@@ -135,7 +143,7 @@ jobs:
                   "Handle: close invalidated generation",
                   "Handle: stale generation rejected",
               ],
-              "wait/child/reap": [
+              "legacy-wait/child/reap": [
                   "Userspace: spawn syscall created child process",
                   "Scheduler: user task entered BLOCKED",
                   "Userspace: wait syscall blocked for child",
@@ -147,6 +155,19 @@ jobs:
                   "Process: exited process resources reaped",
                   "Scheduler: woke blocked user task selected for resume",
                   "Userspace: parent wait resumed after child exit",
+              ],
+              "general-spawn/wait/reap": [
+                  "Spawn: userspace request copied and validated",
+                  "Spawn: general child process created",
+                  "Scheduler: user task entered BLOCKED",
+                  "Userspace: wait syscall blocked for child",
+                  "Scheduler: blocked user task descheduled",
+                  "Spawn: general child PID syscall OK",
+                  "Spawn: general child requested process exit",
+                  "Scheduler: blocked user task woke",
+                  "Process: exited process resources reaped",
+                  "Scheduler: woke blocked user task selected for resume",
+                  "Spawn: general child wait completed",
               ],
               "sleep/wake": [
                   "Scheduler: user task entered SLEEPING",
