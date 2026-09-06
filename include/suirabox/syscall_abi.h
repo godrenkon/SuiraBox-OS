@@ -33,17 +33,19 @@
 #define SB_SYS_PROCESS_OPEN_SELF 9
 #define SB_SYS_HANDLE_INFO       10
 #define SB_SYS_HANDLE_CLOSE      11
-#define SB_SYS_MAX_NUMBER        11
+#define SB_SYS_SPAWN_REQUEST     12
+#define SB_SYS_MAX_NUMBER        12
 
-/* Temporary bootstrap executable selector. It remains until spawn accepts a
- * validated userspace path/descriptor rather than a trusted boot-image ID. */
+/* Legacy bootstrap selector retained for ABI v1 compatibility. New code should
+ * use SB_SYS_SPAWN_REQUEST and an explicit source/name request. */
 #define SB_SPAWN_IMAGE_CHILD   1
 
-#define SB_SYS_ERROR_INVALID  -1
-#define SB_SYS_ERROR_FAULT    -2
-#define SB_SYS_ERROR_LIMIT    -3
-#define SB_SYS_ERROR_STALE    -4
-#define SB_SYS_ERROR_RIGHTS   -5
+#define SB_SYS_ERROR_INVALID    -1
+#define SB_SYS_ERROR_FAULT      -2
+#define SB_SYS_ERROR_LIMIT      -3
+#define SB_SYS_ERROR_STALE      -4
+#define SB_SYS_ERROR_RIGHTS     -5
+#define SB_SYS_ERROR_NOT_FOUND  -6
 
 #define SB_SYS_LOG_MAX         256
 
@@ -52,6 +54,22 @@
 #define SB_ABI_INFO_MAX_SYSCALL_OFFSET 8
 #define SB_ABI_INFO_SIZE               16
 
+/* Versioned spawn request. Version 1 intentionally names a source separately
+ * from its image identifier so VFS/file-handle backed sources can be appended
+ * without changing the legacy syscall or reinterpreting existing fields. */
+#define SB_SPAWN_REQUEST_VERSION              1
+#define SB_SPAWN_SOURCE_BOOT_MODULE           1
+#define SB_SPAWN_FLAG_NONE                    0
+#define SB_SPAWN_NAME_MAX                     63
+#define SB_SPAWN_REQUEST_SIZE_OFFSET          0
+#define SB_SPAWN_REQUEST_VERSION_OFFSET       4
+#define SB_SPAWN_REQUEST_SOURCE_OFFSET        6
+#define SB_SPAWN_REQUEST_FLAGS_OFFSET         8
+#define SB_SPAWN_REQUEST_NAME_OFFSET          16
+#define SB_SPAWN_REQUEST_NAME_LENGTH_OFFSET   24
+#define SB_SPAWN_REQUEST_RESERVED_OFFSET      28
+#define SB_SPAWN_REQUEST_SIZE                 32
+
 #ifndef __ASSEMBLER__
 #include <stdint.h>
 typedef struct {
@@ -59,8 +77,20 @@ typedef struct {
     uint64_t max_syscall_number;
 } sb_syscall_abi_info_t;
 
+typedef struct {
+    uint32_t size;
+    uint16_t version;
+    uint16_t source;
+    uint64_t flags;
+    uint64_t name;
+    uint32_t name_length;
+    uint32_t reserved;
+} sb_spawn_request_t;
+
 _Static_assert(sizeof(sb_syscall_abi_info_t) == SB_ABI_INFO_SIZE,
                "syscall ABI info layout mismatch");
+_Static_assert(sizeof(sb_spawn_request_t) == SB_SPAWN_REQUEST_SIZE,
+               "spawn request layout mismatch");
 #endif
 
 #endif /* SUIRABOX_SYSCALL_ABI_H */
