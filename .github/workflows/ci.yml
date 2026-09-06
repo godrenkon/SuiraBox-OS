@@ -74,6 +74,12 @@ jobs:
           grep -F "Syscall: writable user pointer copy OK" qemu.log
           grep -F "Syscall: read-only user pointer write rejected" qemu.log
 
+          # Process-local handle generation/type/rights lifecycle.
+          grep -F "Handle: userspace process handle opened" qemu.log
+          grep -F "Handle: type and rights query OK" qemu.log
+          grep -F "Handle: close invalidated generation" qemu.log
+          grep -F "Handle: stale generation rejected" qemu.log
+
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
           grep -F "Userspace: entering ring3" qemu.log
           grep -F "Userspace: first syscall reached kernel" qemu.log
@@ -122,6 +128,12 @@ jobs:
                   "Syscall: invalid user pointer rejected",
                   "Syscall: writable user pointer copy OK",
                   "Syscall: read-only user pointer write rejected",
+              ],
+              "handle-generation": [
+                  "Handle: userspace process handle opened",
+                  "Handle: type and rights query OK",
+                  "Handle: close invalidated generation",
+                  "Handle: stale generation rejected",
               ],
               "wait/child/reap": [
                   "Userspace: spawn syscall created child process",
