@@ -56,7 +56,7 @@ static inline uint64_t sb_syscall1(uint64_t number, uint64_t arg0) { uint64_t re
 static inline uint64_t sb_syscall2(uint64_t number, uint64_t arg0, uint64_t arg1) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi) : "memory"); return result; }
 static inline uint64_t sb_syscall3(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; register uint64_t rdx __asm__("rdx") = arg2; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx) : "memory"); return result; }
 static inline uint64_t sb_syscall4(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; register uint64_t rdx __asm__("rdx") = arg2; register uint64_t r10 __asm__("r10") = arg3; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10) : "memory"); return result; }
-static inline uint64_t sb_syscall5(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; register uint64_t rdx __asm__("rdx") = arg2; register uint64_t r10 __asm__("r10") = arg3; register uint64_t r8 __asm__("r8") = arg4; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r"(r8) : "memory"); return result; }
+static inline uint64_t sb_syscall5(uint64_t number, uint64_t arg0, uint64_t arg1, uint64_t arg2, uint64_t arg3, uint64_t arg4) { uint64_t result; register uint64_t rdi __asm__("rdi") = arg0; register uint64_t rsi __asm__("rsi") = arg1; register uint64_t rdx __asm__("rdx") = arg2; register uint64_t r10 __asm__("r10") = arg3; register uint64_t r8 __asm__("r8") = arg4; __asm__ volatile ("int $0x80" : "=a"(result) : "a"(number), "D"(rdi), "S"(rsi), "d"(rdx), "r"(r10), "r"(memory)); return result; }
 static inline uint64_t sb_get_ticks(void) { return sb_syscall0(SB_SYS_GET_TICKS); }
 static inline uint64_t sb_process_id(void) { return sb_syscall0(SB_SYS_PROCESS_ID); }
 static inline uint64_t sb_syscall_abi_version(void) { return sb_syscall0(SB_SYS_ABI_VERSION); }
@@ -88,43 +88,6 @@ static inline uint64_t sb_fs_mkdir(const char *path,uint32_t path_length){return
 static inline uint64_t sb_wait_child(uint64_t child_pid,uint64_t *exit_code){return sb_syscall2(SB_SYS_WAIT_CHILD,child_pid,(uint64_t)(uintptr_t)exit_code);}
 static inline uint64_t sb_sleep(uint64_t ticks){return sb_syscall1(SB_SYS_SLEEP,ticks);}
 static inline uint64_t sb_yield(void){return sb_syscall0(SB_SYS_YIELD);}
-
-#ifdef SB_RUNTIME_SMOKE
-static inline int sb_runtime_fs_smoke(void) {
-    static uint8_t attempted;
-    static int smoke_ok;
-    if (attempted != 0u) return smoke_ok;
-    attempted = 1u;
-    char directory[] = "/SBRUN";
-    char path[] = "/SBRUN/SBOK.TST";
-    char stage_name[] = "SBSTAGE.TXT";
-    char stage_data[] = "F";
-    char write_data[] = "SBOK";
-    char read_data[4] = {0};
-    const uint64_t stage_create = sb_syscall3(SB_SYS_FS_CREATE_ROOT, (uint64_t)(uintptr_t)stage_name,
-                                               sizeof(stage_name) - 1u, 1u);
-    const uint64_t mkdir_result = sb_syscall2(SB_SYS_FS_MKDIR, (uint64_t)(uintptr_t)directory,
-                                               sizeof(directory) - 1u);
-    stage_data[0] = mkdir_result == UINT64_MAX ? 'F' : 'S';
-    if (stage_create == 0u) {
-        (void)sb_syscall5(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)stage_name,
-                           sizeof(stage_name) - 1u, (uint64_t)(uintptr_t)stage_data, 1u, 0u);
-    }
-    const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path,
-                                     sizeof(path) - 1u, SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 4u);
-    if (fd == UINT64_MAX) return 0;
-    if (sb_syscall3(SB_SYS_FS_WRITE, fd, (uint64_t)(uintptr_t)write_data, 4u) != 4u ||
-        sb_syscall3(SB_SYS_FS_SEEK, fd, 0u, SB_FS_SEEK_SET) != 0u ||
-        sb_syscall3(SB_SYS_FS_READ, fd, (uint64_t)(uintptr_t)read_data, 4u) != 4u ||
-        read_data[0] != 'S' || read_data[1] != 'B' || read_data[2] != 'O' || read_data[3] != 'K' ||
-        sb_syscall1(SB_SYS_FS_CLOSE, fd) != 0u) {
-        (void)sb_syscall1(SB_SYS_FS_CLOSE, fd);
-        return 0;
-    }
-    smoke_ok = 1;
-    return smoke_ok;
-}
-#endif
 #endif
 
 #endif
