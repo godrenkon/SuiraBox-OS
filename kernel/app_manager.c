@@ -45,6 +45,12 @@ static sb_app_instance_t *find_instance(uint32_t app_id) {
     return 0;
 }
 
+static int instance_owned_by_current(const sb_app_instance_t *instance) {
+    sb_process_t *current = user_scheduler_current_process();
+    if (instance == 0 || instance->process == 0 || current == 0) return 0;
+    return instance->process->parent_pid == current->pid;
+}
+
 void sb_app_manager_init(uint64_t multiboot_info) {
     multiboot_info_value = multiboot_info;
     next_pid = SB_APP_PID_BASE;
@@ -114,12 +120,28 @@ int sb_app_terminate(uint32_t app_id, uint64_t exit_code) {
     return process_terminate(instance->process, exit_code);
 }
 
+int sb_app_terminate_for_current(uint32_t app_id, uint64_t exit_code) {
+    sb_app_instance_t *instance;
+    if (!app_id_is_valid(app_id)) return -1;
+    (void)sb_app_reap_exited();
+    instance = find_instance(app_id);
+    if (!instance_owned_by_current(instance)) return -1;
+    return sb_app_terminate(app_id, exit_code);
+}
+
 int sb_app_is_running(uint32_t app_id) {
     sb_app_instance_t *instance;
     if (!app_id_is_valid(app_id)) return 0;
     instance = find_instance(app_id);
     if (instance == 0 || instance->process == 0) return 0;
     return instance->process->state != SB_PROCESS_EXITED ? 1 : 0;
+}
+
+int sb_app_is_running_for_current(uint32_t app_id) {
+    sb_app_instance_t *instance;
+    if (!app_id_is_valid(app_id)) return 0;
+    instance = find_instance(app_id);
+    return instance_owned_by_current(instance) && instance->process->state != SB_PROCESS_EXITED ? 1 : 0;
 }
 
 uint32_t sb_app_count(void) {
