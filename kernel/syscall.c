@@ -18,6 +18,19 @@
 static uint8_t syscall_user_smoke_seen;
 static uint8_t syscall_user_draw_seen;
 
+static void syscall_user_smoke_char(char c) {
+#if __STDC_HOSTED__ == 0
+    while (1) {
+        uint8_t status;
+        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+        if ((status & 0x20u) != 0u) break;
+    }
+    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
+#else
+    (void)c;
+#endif
+}
+
 #if __STDC_HOSTED__ == 0
 static void syscall_user_copy_to_user(const sb_process_t *process, uint64_t user_address,
                                       const void *kernel_source, uint32_t length) {
@@ -29,28 +42,7 @@ static void syscall_user_copy_to_user(const sb_process_t *process, uint64_t user
 }
 #endif
 
-#if __STDC_HOSTED__ == 0
-static const uint64_t G_J = 0x003844040404043eULL;
-static const uint64_t G_P = 0x004040407c44447cULL;
-static const uint64_t G_E = 0x007c40407840407cULL;
-static const uint64_t G_N = 0x004242464a526242ULL;
-static const uint64_t G_S = 0x007c02023c40403eULL;
-
-static void draw_rect(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rgb) { (void)sb_display_rect(x, y, w, h, rgb); }
-static void draw_glyph(uint32_t x, uint32_t y, uint64_t glyph) { (void)sb_display_glyph(x, y, glyph, 0xE9F2FFu); }
-static void draw_pair(uint32_t x, uint32_t y, uint64_t a, uint64_t b) { (void)sb_display_glyph_pair(x, y, a, b, 0xE9F2FFu); }
-#endif
-
 #ifdef SB_RUNTIME_SMOKE
-static void syscall_user_smoke_char(char c) {
-    while (1) {
-        uint8_t status;
-        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
-        if ((status & 0x20u) != 0u) break;
-    }
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
-}
-
 static void syscall_user_smoke_u64(uint64_t value) {
     static const char digits[] = "0123456789ABCDEF";
     char text[16];
