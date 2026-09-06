@@ -40,6 +40,7 @@ Current stable errors:
 | `-4` | `SB_SYS_ERROR_STALE` | opaque handle generation is no longer valid |
 | `-5` | `SB_SYS_ERROR_RIGHTS` | handle exists but lacks required rights |
 | `-6` | `SB_SYS_ERROR_NOT_FOUND` | requested named resource/source does not exist |
+| `-7` | `SB_SYS_ERROR_IO` | underlying object/provider I/O operation failed |
 
 New error values may be appended. Existing meanings must not be silently changed within ABI version 1.
 
@@ -60,8 +61,13 @@ New error values may be appended. Existing meanings must not be silently changed
 | 10 | `SB_SYS_HANDLE_INFO` | `rdi=handle`, `rsi=writable sb_handle_info_t*` | 0 and fills public type/rights |
 | 11 | `SB_SYS_HANDLE_CLOSE` | `rdi=handle` | 0; invalidates that handle generation |
 | 12 | `SB_SYS_SPAWN_REQUEST` | `rdi=readable sb_spawn_request_t*` | dynamically allocated child PID |
+| 13 | `SB_SYS_FILE_OPEN_BOOT_MODULE` | `rdi=readable name`, `rsi=name_length` | opaque read-only FILE handle |
+| 14 | `SB_SYS_FILE_READ` | `rdi=file_handle`, `rsi=writable buffer`, `rdx=length` | bytes read |
+| 15 | `SB_SYS_FILE_SEEK` | `rdi=file_handle`, `rsi=absolute_offset` | 0 on success |
 
 `SB_SYS_SPAWN` remains a legacy ABI v1 bootstrap interface. Selector `SB_SPAWN_IMAGE_CHILD` resolves to the validation child image and remains operational so adding the general request path does not reinterpret or renumber an existing syscall.
+
+`SB_SYS_FILE_OPEN_BOOT_MODULE` is intentionally transitional: it exposes the current Multiboot executable source through the generic VFS file-object and FILE-handle boundary. Filesystem/path-based open will replace the provider-specific entry point after VFS path/mount semantics exist; syscall 13 keeps its existing ABI meaning for compatibility.
 
 ## Userspace pointer rules
 
@@ -79,6 +85,8 @@ Before reading or writing userspace memory the kernel must:
 `SB_SYS_LOG_WRITE` proves the read side: QEMU CI requires a valid `.rodata` pointer to copy successfully and an invalid null pointer to return `SB_SYS_ERROR_FAULT` without causing a page fault.
 
 `SB_SYS_ABI_INFO` proves the write side: QEMU CI requires a writable `.data` destination to receive `sb_syscall_abi_info_t`, then requires the same kernel-to-user copy aimed at `.rodata` to be rejected with `SB_SYS_ERROR_FAULT`. The userspace smoke program verifies the copied ABI version and maximum syscall number itself before continuing.
+
+`SB_SYS_FILE_READ` additionally validates the complete destination range for write access **before** invoking the VFS object. This prevents a bad userspace output pointer from consuming file bytes or advancing the open-file offset. The read then lands in a bounded kernel buffer before copy-out. If that final copy unexpectedly fails after validation, the kernel restores the original file offset before returning `SB_SYS_ERROR_FAULT`.
 
 ## General spawn request
 
@@ -151,7 +159,15 @@ Closing a handle invalidates its current generation before any object-specific c
 
 ### Rights rule
 
-Kernel operations must request the rights they require when resolving a handle. `SB_SYS_HANDLE_INFO` currently requires QUERY. A valid handle with insufficient rights returns `SB_SYS_ERROR_RIGHTS` rather than bypassing the rights check.
+Kernel operations must request the rights they require when resolving a handle. `SB_SYS_HANDLE_INFO` requires QUERY. `SB_SYS_FILE_READ` and `SB_SYS_FILE_SEEK` require a FILE handle carrying READ. A valid handle with insufficient rights returns `SB_SYS_ERROR_RIGHTS` rather than bypassing the rights check.
+
+### FILE object model
+
+A VFS node describes the underlying resource: object type, size, capabilities, backend operations, private provider state, and reference count. An open VFS file is separate state containing a node reference, current offset, access mode, and open/closed state. Therefore two future opens of the same node can maintain independent offsets without putting per-open state into the filesystem node.
+
+The current boot-module provider is read-only. It packages the provider node and its open-file state into one bootstrap allocation because the Phase 1 kernel heap still permits only one live heap allocation. That allocation strategy is an implementation limitation, not part of the userspace FILE ABI.
+
+Closing the FILE handle invokes its kernel close callback. The open-file node reference is released, the provider object reaches reference count zero, and its backing bootstrap allocation is freed. Userspace never receives the VFS node pointer or provider pointer.
 
 ### Process teardown
 
@@ -159,14 +175,16 @@ Each process owns its handle table. After scheduler-owned execution resources ar
 
 ### Current QEMU proof
 
-The userspace smoke program:
+The userspace smoke program proves both PROCESS and FILE handles. For FILE it:
 
-1. opens a QUERY-only handle to its current process;
-2. queries it and verifies `PROCESS` type + exact QUERY rights in userspace memory;
-3. closes the handle;
-4. queries the same opaque value again and requires `SB_SYS_ERROR_STALE`.
+1. opens the `user-child` boot module through the VFS provider and receives an opaque FILE handle;
+2. queries it and verifies FILE type plus exact READ|QUERY rights;
+3. attempts a 4-byte read into `.rodata` and requires `SB_SYS_ERROR_FAULT` before the VFS offset changes;
+4. reads into writable `.data` and verifies the ELF magic at offset zero;
+5. seeks back to zero and verifies the same ELF magic again;
+6. closes the handle and verifies the old generation is stale.
 
-A host test separately covers rights rejection, type rejection, table exhaustion, close callbacks, slot reuse with changed generation, stale lookup/close rejection, and close-all behavior.
+A host handle test separately covers rights rejection, type rejection, table exhaustion, close callbacks, slot reuse with changed generation, stale lookup/close rejection, and close-all behavior. A VFS object host test covers independent open-file state, access enforcement, read/write/seek bounds, close behavior, and node lifetime.
 
 ## Compatibility policy
 
@@ -177,5 +195,5 @@ A host test separately covers rights rejection, type rejection, table exhaustion
 - Versioned request structs carry explicit `size` and `version` fields rather than silently changing layout semantics.
 - A semantic change that invalidates existing userspace requires a new `SB_SYSCALL_ABI_VERSION`.
 - Kernel and in-tree userspace are compiled against the same canonical headers.
-- QEMU integration tests exercise version query, read/write pointer boundaries, handle generation semantics, legacy spawn compatibility, general spawn/wait/reap, and sleep/wake in sequence.
+- QEMU integration tests exercise version query, user-pointer boundaries, PROCESS/FILE handle generation semantics, legacy spawn compatibility, general spawn/wait/reap, and sleep/wake in sequence.
 - CI treats any serial `Exception:` record as a hard regression even if later markers would otherwise appear.
