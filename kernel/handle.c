@@ -1,5 +1,4 @@
 #include "handle.h"
-#include <limits.h>
 
 #define HANDLE_SLOT_MASK 0xFFFFFFFFull
 #define HANDLE_GENERATION_SHIFT 32u
@@ -31,6 +30,36 @@ static int decode_handle(sb_handle_t handle,
     return SB_HANDLE_OK;
 }
 
+static int resolve_entry(const sb_handle_table_t *table,
+                         sb_handle_t handle,
+                         sb_handle_type_t expected_type,
+                         uint64_t required_rights,
+                         const sb_handle_entry_t **entry_out) {
+    if (table == 0 || entry_out == 0 ||
+        (required_rights & ~SB_HANDLE_RIGHT_ALL) != 0u) {
+        return SB_HANDLE_ERROR_INVALID;
+    }
+
+    uint32_t index;
+    uint32_t generation;
+    const int decode_result = decode_handle(handle, &index, &generation);
+    if (decode_result != SB_HANDLE_OK) return decode_result;
+
+    const sb_handle_entry_t *entry = &table->entries[index];
+    if (entry->in_use == 0u || entry->generation != generation) {
+        return SB_HANDLE_ERROR_STALE;
+    }
+    if (expected_type != SB_HANDLE_TYPE_NONE && entry->type != expected_type) {
+        return SB_HANDLE_ERROR_TYPE;
+    }
+    if ((entry->rights & required_rights) != required_rights) {
+        return SB_HANDLE_ERROR_RIGHTS;
+    }
+
+    *entry_out = entry;
+    return SB_HANDLE_OK;
+}
+
 void sb_handle_table_init(sb_handle_table_t *table) {
     if (table == 0) return;
 
@@ -47,8 +76,9 @@ int sb_handle_allocate(sb_handle_table_t *table,
                        void *object,
                        sb_handle_close_fn close,
                        sb_handle_t *handle_out) {
-    if (table == 0 || type == SB_HANDLE_TYPE_NONE || object == 0 ||
-        handle_out == 0 || (rights & ~SB_HANDLE_RIGHT_ALL) != 0u) {
+    if (table == 0 || type <= SB_HANDLE_TYPE_NONE || type > SB_HANDLE_TYPE_SERVICE ||
+        object == 0 || handle_out == 0 ||
+        (rights & ~SB_HANDLE_RIGHT_ALL) != 0u) {
         return SB_HANDLE_ERROR_INVALID;
     }
     if (table->count >= SB_MAX_HANDLES_PER_PROCESS) {
@@ -78,28 +108,37 @@ int sb_handle_lookup(const sb_handle_table_t *table,
                      sb_handle_type_t expected_type,
                      uint64_t required_rights,
                      void **object_out) {
-    if (table == 0 || object_out == 0 ||
-        (required_rights & ~SB_HANDLE_RIGHT_ALL) != 0u) {
-        return SB_HANDLE_ERROR_INVALID;
-    }
+    if (object_out == 0) return SB_HANDLE_ERROR_INVALID;
 
-    uint32_t index;
-    uint32_t generation;
-    const int decode_result = decode_handle(handle, &index, &generation);
-    if (decode_result != SB_HANDLE_OK) return decode_result;
-
-    const sb_handle_entry_t *entry = &table->entries[index];
-    if (entry->in_use == 0u || entry->generation != generation) {
-        return SB_HANDLE_ERROR_STALE;
-    }
-    if (expected_type != SB_HANDLE_TYPE_NONE && entry->type != expected_type) {
-        return SB_HANDLE_ERROR_TYPE;
-    }
-    if ((entry->rights & required_rights) != required_rights) {
-        return SB_HANDLE_ERROR_RIGHTS;
-    }
+    const sb_handle_entry_t *entry;
+    const int result = resolve_entry(table,
+                                     handle,
+                                     expected_type,
+                                     required_rights,
+                                     &entry);
+    if (result != SB_HANDLE_OK) return result;
 
     *object_out = entry->object;
+    return SB_HANDLE_OK;
+}
+
+int sb_handle_query(const sb_handle_table_t *table,
+                    sb_handle_t handle,
+                    uint64_t required_rights,
+                    sb_handle_info_t *info_out) {
+    if (info_out == 0) return SB_HANDLE_ERROR_INVALID;
+
+    const sb_handle_entry_t *entry;
+    const int result = resolve_entry(table,
+                                     handle,
+                                     SB_HANDLE_TYPE_NONE,
+                                     required_rights,
+                                     &entry);
+    if (result != SB_HANDLE_OK) return result;
+
+    info_out->type = (uint32_t)entry->type;
+    info_out->reserved = 0u;
+    info_out->rights = entry->rights;
     return SB_HANDLE_OK;
 }
 
