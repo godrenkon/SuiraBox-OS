@@ -32,8 +32,9 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
 
 /* Bootstrap bridge used until VFS-backed executable lookup exists. The first
  * successful boot-module load records the Multiboot information pointer, so a
- * later userspace SPAWN syscall can select another trusted boot module without
- * accepting an unchecked userspace string pointer. */
+ * later userspace spawn request can safely resolve another named boot module. */
+int process_registered_boot_module_exists(const char *module_name);
+
 sb_process_t *process_spawn_registered_boot_module(const char *module_name,
                                                    uint64_t pid,
                                                    uint64_t parent_pid,
