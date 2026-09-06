@@ -35,7 +35,7 @@ int main(void) {
     assert(sb_desktop_shell_key(&shell, 0x48u) == 0);
     assert(shell.launcher.selected == 1u);
     activated = 0;
-    assert(sb_desktop_shell_click(&shell, 40, 598, &activated) == 0);
+    assert(sb_desktop_shell_click(&shell, 40, 648, &activated) == 0);
     assert(activated != 0 && activated[0] == 'f');
     assert(shell.launcher.open == 0u);
 
