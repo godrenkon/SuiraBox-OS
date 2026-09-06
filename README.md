@@ -1,4 +1,4 @@
-<img width="350" alt="Image" src="https://github.com/user-attachments/assets/adccd9ec-bbdb-457c-b32c-2c8ea1ca9d5c" />
+<img width="200" alt="Image" src="https://github.com/user-attachments/assets/25464faf-25ed-4142-948d-4e3d9222dfdd" />　<img width="350" alt="Image" src="https://github.com/user-attachments/assets/adccd9ec-bbdb-457c-b32c-2c8ea1ca9d5c" />
 
 **Minecraftに特化しながら、普段使いもできるオープンソースOSを目指すプロジェクト。**
 
