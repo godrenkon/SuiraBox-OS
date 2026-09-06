@@ -23,7 +23,7 @@ _Static_assert(offsetof(sb_irq_frame_t, rdx) == 11u * sizeof(uint64_t),
                "syscall ABI rdx frame offset changed");
 _Static_assert(offsetof(sb_irq_frame_t, rax) == 14u * sizeof(uint64_t),
                "syscall ABI rax frame offset changed");
-_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_HANDLE_CLOSE,
+_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_SPAWN_REQUEST,
                "syscall ABI max-number table is stale");
 _Static_assert(SB_HANDLE_TYPE_PROCESS == SB_HANDLE_ABI_TYPE_PROCESS,
                "kernel/public process handle type mismatch");
@@ -49,6 +49,14 @@ static int handle_open_logged;
 static int handle_query_logged;
 static int handle_close_logged;
 static int stale_handle_logged;
+static int general_spawn_request_logged;
+static int general_spawn_created_logged;
+static uint64_t general_spawn_pid;
+static int general_child_pid_logged;
+static int general_child_exit_logged;
+static int general_wait_armed;
+static uint64_t general_wait_task_id;
+static int general_wait_completed_logged;
 
 static void syscall_debug_char(char c) {
     while (1) {
@@ -109,6 +117,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_PROCESS_OPEN_SELF:
         case SB_SYS_HANDLE_INFO:
         case SB_SYS_HANDLE_CLOSE:
+        case SB_SYS_SPAWN_REQUEST:
             return syscall_error(SB_SYS_ERROR_INVALID);
         case SB_SYS_SLEEP:
             return scheduler_sleep_current(arg0) == 0
@@ -268,6 +277,85 @@ static sb_irq_frame_t *syscall_handle_close(sb_irq_frame_t *frame,
     return frame;
 }
 
+static sb_irq_frame_t *syscall_spawn_request(sb_irq_frame_t *frame,
+                                              sb_task_t *task) {
+    sb_process_t *parent = syscall_current_process(task);
+    if (parent == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    sb_spawn_request_t request;
+    if (user_copy_from(parent, &request, frame->rdi, sizeof(request)) != 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
+        return frame;
+    }
+
+    if (request.size != SB_SPAWN_REQUEST_SIZE ||
+        request.version != SB_SPAWN_REQUEST_VERSION ||
+        request.source != SB_SPAWN_SOURCE_BOOT_MODULE ||
+        request.flags != SB_SPAWN_FLAG_NONE ||
+        request.reserved != 0u || request.name == 0u ||
+        request.name_length == 0u || request.name_length > SB_SPAWN_NAME_MAX) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    char module_name[SB_SPAWN_NAME_MAX + 1u];
+    if (user_copy_from(parent,
+                       module_name,
+                       request.name,
+                       request.name_length) != 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
+        return frame;
+    }
+
+    for (uint32_t i = 0u; i < request.name_length; ++i) {
+        if (module_name[i] == '\0' || module_name[i] == ' ' || module_name[i] == '\t') {
+            frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+            return frame;
+        }
+    }
+    module_name[request.name_length] = '\0';
+
+    if (!general_spawn_request_logged) {
+        general_spawn_request_logged = 1;
+        syscall_debug("Spawn: userspace request copied and validated\r\n");
+    }
+
+    if (!process_registered_boot_module_exists(module_name)) {
+        frame->rax = syscall_error(SB_SYS_ERROR_NOT_FOUND);
+        return frame;
+    }
+
+    const uint64_t pid = process_allocate_pid();
+    const uint64_t tid = process_allocate_tid();
+    if (pid == 0u || tid == 0u) {
+        frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
+        return frame;
+    }
+
+    sb_process_image_t child_image;
+    sb_process_t *child = process_spawn_registered_boot_module(module_name,
+                                                               pid,
+                                                               parent->pid,
+                                                               tid,
+                                                               SB_DEFAULT_USER_PRIORITY,
+                                                               &child_image);
+    if (child == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
+        return frame;
+    }
+
+    general_spawn_pid = child->pid;
+    frame->rax = child->pid;
+    if (!general_spawn_created_logged) {
+        general_spawn_created_logged = 1;
+        syscall_debug("Spawn: general child process created\r\n");
+    }
+    return frame;
+}
+
 sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
     if (frame == 0) return 0;
 
@@ -295,6 +383,15 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         syscall_debug("Userspace: parent wait resumed after child exit\r\n");
     }
 
+    if (general_wait_armed && !general_wait_completed_logged &&
+        number != SB_SYS_WAIT_PROCESS && task != 0 &&
+        task->id == general_wait_task_id && task->user_task != 0u) {
+        general_wait_armed = 0;
+        general_wait_task_id = 0u;
+        general_wait_completed_logged = 1;
+        syscall_debug("Spawn: general child wait completed\r\n");
+    }
+
     if (number == SB_SYS_LOG_WRITE) {
         return syscall_log_write(frame, task);
     }
@@ -313,6 +410,10 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
 
     if (number == SB_SYS_HANDLE_CLOSE) {
         return syscall_handle_close(frame, task);
+    }
+
+    if (number == SB_SYS_SPAWN_REQUEST) {
+        return syscall_spawn_request(frame, task);
     }
 
     if (number == SB_SYS_SLEEP) {
@@ -368,6 +469,10 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
                                                    &exit_code);
         if (wait_result == 0) {
             frame->rax = (uint64_t)exit_code;
+            if (child_pid == general_spawn_pid && !general_wait_completed_logged) {
+                general_wait_completed_logged = 1;
+                syscall_debug("Spawn: general child wait completed\r\n");
+            }
             return frame;
         }
         if (wait_result < 0 || scheduler_block_current() != 0) {
@@ -379,6 +484,10 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
         wait_cycle_armed = 1;
         wait_task_id = task->id;
+        if (child_pid == general_spawn_pid) {
+            general_wait_armed = 1;
+            general_wait_task_id = task->id;
+        }
         syscall_debug("Userspace: wait syscall blocked for child\r\n");
         return scheduler_reschedule(frame);
     }
@@ -404,6 +513,10 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         if (pid == SB_VALIDATION_CHILD_PID) {
             syscall_debug("Userspace: child requested process exit\r\n");
         }
+        if (pid == general_spawn_pid && !general_child_exit_logged) {
+            general_child_exit_logged = 1;
+            syscall_debug("Spawn: general child requested process exit\r\n");
+        }
         return scheduler_reschedule(frame);
     }
 
@@ -425,6 +538,13 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         frame->rax == SB_VALIDATION_CHILD_PID && !child_pid_syscall_logged) {
         child_pid_syscall_logged = 1;
         syscall_debug("Userspace: child process PID syscall OK\r\n");
+    }
+
+    if (number == SB_SYS_PROCESS_ID && task != 0 &&
+        task->process_id == general_spawn_pid &&
+        frame->rax == general_spawn_pid && !general_child_pid_logged) {
+        general_child_pid_logged = 1;
+        syscall_debug("Spawn: general child PID syscall OK\r\n");
     }
 
     if (sleep_cycle_armed && !woke_user_syscall_logged &&
@@ -459,4 +579,12 @@ void syscall_init(void) {
     handle_query_logged = 0;
     handle_close_logged = 0;
     stale_handle_logged = 0;
+    general_spawn_request_logged = 0;
+    general_spawn_created_logged = 0;
+    general_spawn_pid = 0u;
+    general_child_pid_logged = 0;
+    general_child_exit_logged = 0;
+    general_wait_armed = 0;
+    general_wait_task_id = 0u;
+    general_wait_completed_logged = 0;
 }
