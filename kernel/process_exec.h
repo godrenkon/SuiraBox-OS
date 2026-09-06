@@ -30,10 +30,13 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
                                         uint32_t priority,
                                         sb_process_image_t *image_info);
 
-/* Bootstrap bridge used until VFS-backed executable lookup exists. The first
- * successful boot-module load records the Multiboot information pointer, so a
- * later userspace spawn request can safely resolve another named boot module. */
+/* Bootstrap registry used until a persistent filesystem-backed executable
+ * namespace is mounted. These helpers return kernel-owned immutable module
+ * bytes; callers must not free or modify the returned image. */
 int process_registered_boot_module_exists(const char *module_name);
+int process_registered_boot_module_view(const char *module_name,
+                                        const void **image_out,
+                                        uint64_t *image_size_out);
 
 sb_process_t *process_spawn_registered_boot_module(const char *module_name,
                                                    uint64_t pid,
