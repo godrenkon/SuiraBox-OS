@@ -10,6 +10,19 @@ static void clear_process(sb_process_t *process) {
     process->state = SB_PROCESS_UNUSED;
 }
 
+static void release_process_resources(sb_process_t *process) {
+    if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
+
+    /* Handle callbacks run before the address space disappears so future
+     * resource types can release process-owned backing objects in a stable
+     * teardown phase. Scheduler-owned task stacks have already been reaped in
+     * the normal EXIT path before this helper is reached. */
+    (void)sb_handle_close_all(&process->handles);
+    address_space_destroy(&process->address_space);
+    process->entry_point = 0u;
+    process->user_stack_top = 0u;
+}
+
 static void collect_process_slot(sb_process_t *process) {
     if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
     clear_process(process);
@@ -42,6 +55,7 @@ sb_process_t *process_create(uint64_t pid) {
         if (processes[i].state != SB_PROCESS_UNUSED) continue;
 
         clear_process(&processes[i]);
+        sb_handle_table_init(&processes[i].handles);
         processes[i].pid = pid;
         processes[i].state = SB_PROCESS_CREATED;
         if (address_space_create(&processes[i].address_space) != 0) {
@@ -130,7 +144,7 @@ int process_cancel_wait(uint64_t child_pid, uint64_t waiter_tid) {
 
 void process_destroy(sb_process_t *process) {
     if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
-    address_space_destroy(&process->address_space);
+    release_process_resources(process);
     collect_process_slot(process);
 }
 
@@ -144,12 +158,10 @@ uint32_t process_reap_exited(void) {
         const int task_result = scheduler_reap_process(process->pid);
         if (task_result < 0) continue;
 
-        /* Task stacks are gone and this CR3 is no longer executing. Release
-         * user leaf pages + page-table hierarchy before making exit visible
-         * to a waiting parent. */
-        address_space_destroy(&process->address_space);
-        process->entry_point = 0u;
-        process->user_stack_top = 0u;
+        /* Task stacks are gone and this CR3 is no longer executing. Close all
+         * process-local resource handles, then release the user address space
+         * before making exit status visible to a waiting parent. */
+        release_process_resources(process);
         ++reaped;
 
         if (process->waiter_tid != 0u) {
