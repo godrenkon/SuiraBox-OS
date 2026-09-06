@@ -10,8 +10,10 @@ static sb_thread_t threads[16];
 static uint32_t process_count_value;
 static uint32_t prepare_calls;
 static uint32_t scheduler_calls;
+static uint32_t terminate_calls;
 static int fail_prepare;
 static int fail_scheduler;
+static int fail_terminate;
 static sb_process_t *current_parent;
 
 sb_process_t *process_create(uint64_t pid) {
@@ -27,6 +29,14 @@ sb_process_t *process_create_child(sb_process_t *parent,uint64_t pid){
 
 void process_destroy(sb_process_t *process){if(process==0)return;*process=(sb_process_t){.state=SB_PROCESS_UNUSED};if(process_count_value>0u)--process_count_value;}
 
+int process_terminate(sb_process_t *process, uint64_t exit_code){
+    ++terminate_calls;
+    if (fail_terminate != 0 || process == 0 || process->state == SB_PROCESS_UNUSED) return -1;
+    process->exit_code = exit_code;
+    process->state = SB_PROCESS_EXITED;
+    return 0;
+}
+
 int process_prepare_boot_module(sb_process_t *process,uint64_t multiboot_info,const char *module_name,sb_process_image_t *image){(void)multiboot_info;++prepare_calls;if(fail_prepare!=0||process==0||module_name==0||image==0)return -1;image->entry_point=0x400000u;image->user_stack_top=0x800000u;image->user_stack_bottom=0x7FC000u;return 0;}
 
 int process_prepare_elf_thread(sb_process_t *process,uint64_t tid,uint32_t priority,sb_user_context_t *context,const sb_process_image_t *image,sb_thread_t **thread_out){(void)priority;if(process==0||context==0||image==0||thread_out==0)return -1;uint32_t index=0u;while(index<16u&&&processes[index]!=process)++index;if(index>=16u)return -1;sb_thread_t *thread=&threads[index];*thread=(sb_thread_t){.tid=tid,.state=SB_PROCESS_CREATED,.user_context=context,.kernel_stack_base=0x10000u+index*0x1000u,.kernel_stack_top=0x10800u+index*0x1000u,.kernel_resume_stack_pointer=0x10400u+index*0x1000u};process->threads[0]=*thread;process->thread_count=1u;*thread_out=thread;return 0;}
@@ -38,12 +48,18 @@ int user_scheduler_remove(sb_process_t *process,sb_thread_t *thread){(void)proce
 int main(void){
     sb_app_manager_init(0x1000u); assert(sb_app_count()==0u); assert(sb_app_launch(0u)!=0); assert(sb_app_launch(99u)!=0);
     fail_prepare=1; assert(sb_app_launch(SB_APP_SETTINGS)!=0); assert(prepare_calls==1u); fail_prepare=0;
-    assert(sb_app_launch(SB_APP_SETTINGS)==0); assert(sb_app_count()==1u); assert(sb_app_launch(SB_APP_SETTINGS)!=0); assert(prepare_calls==2u); assert(scheduler_calls==1u);
+    assert(sb_app_launch(SB_APP_SETTINGS)==0); assert(sb_app_count()==1u); assert(sb_app_is_running(SB_APP_SETTINGS)==1); assert(sb_app_is_running(99u)==0);
+    assert(sb_app_launch(SB_APP_SETTINGS)!=0); assert(prepare_calls==2u); assert(scheduler_calls==1u);
     assert(sb_app_launch(SB_APP_FILES)==0); assert(sb_app_launch(SB_APP_TERMINAL)==0); assert(sb_app_count()==3u);
-    fail_scheduler=1; assert(sb_app_launch(4u)!=0); fail_scheduler=0; assert(sb_app_count()==3u); assert(sb_app_launch(SB_APP_TERMINAL)!=0); assert(sb_app_count()==3u);
-    processes[0].state=SB_PROCESS_EXITED; assert(sb_app_reap_exited()==1u); assert(sb_app_count()==2u); assert(sb_app_launch(SB_APP_SETTINGS)==0); assert(sb_app_count()==3u);
+    assert(sb_app_terminate(SB_APP_FILES,17u)==0); assert(terminate_calls==1u); assert(sb_app_is_running(SB_APP_FILES)==0); assert(sb_app_count()==3u);
+    assert(sb_app_terminate(SB_APP_FILES,18u)!=0); assert(terminate_calls==1u);
+    fail_terminate=1; assert(sb_app_terminate(SB_APP_TERMINAL,19u)!=0); assert(terminate_calls==2u); assert(sb_app_is_running(SB_APP_TERMINAL)==1u); fail_terminate=0;
+    assert(sb_app_terminate(SB_APP_TERMINAL,20u)==0); assert(sb_app_is_running(SB_APP_TERMINAL)==0); assert(terminate_calls==3u);
+    assert(sb_app_count()==3u); assert(sb_app_reap_exited()==2u); assert(sb_app_count()==1u);
 
-    /* Start a genuinely fresh mock process table for the second lifecycle. */
+    fail_scheduler=1; assert(sb_app_launch(4u)!=0); fail_scheduler=0; assert(sb_app_count()==1u); assert(sb_app_launch(SB_APP_SETTINGS)!=0); assert(sb_app_count()==1u);
+    processes[0].state=SB_PROCESS_EXITED; assert(sb_app_reap_exited()==1u); assert(sb_app_count()==0u); assert(sb_app_launch(SB_APP_SETTINGS)==0); assert(sb_app_count()==1u);
+
     for (uint32_t i=0u;i<16u;++i) { processes[i]=(sb_process_t){0}; threads[i]=(sb_thread_t){0}; }
     process_count_value=0u;
     current_parent=0;
