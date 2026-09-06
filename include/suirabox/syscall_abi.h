@@ -1,6 +1,8 @@
 #ifndef SUIRABOX_SYSCALL_ABI_H
 #define SUIRABOX_SYSCALL_ABI_H
 
+#include <suirabox/handle_abi.h>
+
 /*
  * SuiraBox userspace syscall ABI, version 1.
  *
@@ -19,16 +21,19 @@
 #define SB_SYSCALL_ABI_VERSION 1
 #define SB_SYSCALL_VECTOR      0x80
 
-#define SB_SYS_GET_TICKS       0
-#define SB_SYS_PROCESS_ID      1
-#define SB_SYS_EXIT            2
-#define SB_SYS_SLEEP           3
-#define SB_SYS_SPAWN           4
-#define SB_SYS_WAIT_PROCESS    5
-#define SB_SYS_ABI_VERSION     6
-#define SB_SYS_LOG_WRITE       7
-#define SB_SYS_ABI_INFO        8
-#define SB_SYS_MAX_NUMBER      8
+#define SB_SYS_GET_TICKS         0
+#define SB_SYS_PROCESS_ID        1
+#define SB_SYS_EXIT              2
+#define SB_SYS_SLEEP             3
+#define SB_SYS_SPAWN             4
+#define SB_SYS_WAIT_PROCESS      5
+#define SB_SYS_ABI_VERSION       6
+#define SB_SYS_LOG_WRITE         7
+#define SB_SYS_ABI_INFO          8
+#define SB_SYS_PROCESS_OPEN_SELF 9
+#define SB_SYS_HANDLE_INFO       10
+#define SB_SYS_HANDLE_CLOSE      11
+#define SB_SYS_MAX_NUMBER        11
 
 /* Temporary bootstrap executable selector. It remains until spawn accepts a
  * validated userspace path/descriptor rather than a trusted boot-image ID. */
@@ -37,6 +42,8 @@
 #define SB_SYS_ERROR_INVALID  -1
 #define SB_SYS_ERROR_FAULT    -2
 #define SB_SYS_ERROR_LIMIT    -3
+#define SB_SYS_ERROR_STALE    -4
+#define SB_SYS_ERROR_RIGHTS   -5
 
 #define SB_SYS_LOG_MAX         256
 
