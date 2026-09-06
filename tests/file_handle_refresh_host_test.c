@@ -42,6 +42,13 @@ sb_vfs_status_t sb_vfs_split_path(const char *path, char *parent, uint32_t paren
 
 static void copy_entry(sb_fat32_dirent_t *entry) { *entry = disk_entry; }
 
+int sb_fat32_read_root_entry(sb_fat32_t *fs, uint32_t index, sb_fat32_dirent_t *entry) {
+    (void)index;
+    if (fs != &fake_fs || entry == 0) return 0;
+    copy_entry(entry);
+    return 0;
+}
+
 int sb_fat32_find_root_entry(sb_fat32_t *fs, const char *name, sb_fat32_dirent_t *entry) {
     if (fs != &fake_fs || name == 0 || entry == 0 || strcmp(name, "SHARED.TXT") != 0) return 0;
     copy_entry(entry);
