@@ -22,10 +22,10 @@ int address_space_validate_user_range(const sb_address_space_t *space, uint64_t 
 sb_fat32_t *sb_storage_fat32(void) { return &fake_fs; }
 sb_block_status_t sb_storage_sync(void) { return SB_BLOCK_OK; }
 
-int sb_vfs_normalize_path(const char *input, char *output, uint32_t capacity) {
-    if (input == 0 || output == 0 || capacity == 0u) return SB_VFS_ERR_INVALID;
+sb_vfs_status_t sb_vfs_normalize_path(const char *input, char *output, uint32_t capacity) {
+    if (input == 0 || output == 0 || capacity == 0u) return SB_VFS_INVALID_ARGUMENT;
     const size_t length = strlen(input);
-    if (length + 1u > capacity) return SB_VFS_ERR_RANGE;
+    if (length + 1u > capacity) return SB_VFS_PATH_INVALID;
     memmove(output, input, length + 1u);
     return SB_VFS_OK;
 }
@@ -37,7 +37,7 @@ sb_vfs_status_t sb_vfs_split_path(const char *path, char *parent, uint32_t paren
     (void)parent_capacity;
     (void)name;
     (void)name_capacity;
-    return SB_VFS_ERR_INVALID;
+    return SB_VFS_INVALID_ARGUMENT;
 }
 
 static void copy_entry(sb_fat32_dirent_t *entry) { *entry = disk_entry; }
