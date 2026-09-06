@@ -12,8 +12,10 @@
  * 2. LOG_WRITE validates/copies a .rodata userspace buffer; null must fault.
  * 3. ABI_INFO copies kernel data into writable .data, then the same syscall is
  *    aimed at .rodata and must be rejected as non-writable without #PF.
- * 4. SPAWN + WAIT prove BLOCKED parent/child lifecycle and cross-process CR3.
- * 5. SLEEP proves timer-deadline sleep/wakeup and saved-frame resume.
+ * 4. Open/query/close a process-local handle and prove the old generation is
+ *    rejected as stale after close.
+ * 5. SPAWN + WAIT prove BLOCKED parent/child lifecycle and cross-process CR3.
+ * 6. SLEEP proves timer-deadline sleep/wakeup and saved-frame resume.
  */
 _start:
     mov $SB_SYS_GET_TICKS, %rax
@@ -54,6 +56,40 @@ _start:
     mov $SB_SYS_ABI_INFO, %rax
     int $SB_SYSCALL_VECTOR
     cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+
+    /* Handles are opaque. Userspace only stores and returns the value; type,
+     * rights, slot selection and generation validation remain kernel-owned. */
+    mov $SB_SYS_PROCESS_OPEN_SELF, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %rbx
+
+    mov %rbx, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_HANDLE_ABI_TYPE_PROCESS, SB_HANDLE_INFO_TYPE_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $SB_HANDLE_ABI_RIGHT_QUERY, SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %rbx, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    /* The same opaque value must never resolve again after its slot generation
+     * advances on close. */
+    mov %rbx, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_STALE, %rax
     jne lifecycle_failed
 
     mov $50000, %rcx
@@ -115,4 +151,8 @@ pointer_message:
 .align 8
 abi_info_buffer:
     .quad 0
+    .quad 0
+handle_info_buffer:
+    .long 0
+    .long 0
     .quad 0
