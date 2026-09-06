@@ -1,8 +1,11 @@
 #include "process.h"
 #include "scheduler.h"
+#include <stdint.h>
 
 static sb_process_t processes[SB_MAX_PROCESSES];
 static uint32_t process_count_value;
+static uint64_t next_pid_value;
+static uint64_t next_tid_value;
 
 static void clear_process(sb_process_t *process) {
     if (process == 0) return;
@@ -29,11 +32,55 @@ static void collect_process_slot(sb_process_t *process) {
     if (process_count_value > 0u) --process_count_value;
 }
 
+static int process_tid_in_use(uint64_t tid) {
+    if (tid == 0u) return 1;
+    for (uint32_t i = 0u; i < SB_MAX_PROCESSES; ++i) {
+        const sb_process_t *process = &processes[i];
+        if (process->state == SB_PROCESS_UNUSED) continue;
+        for (uint32_t j = 0u; j < process->thread_count; ++j) {
+            if (process->threads[j].tid == tid) return 1;
+        }
+    }
+    return 0;
+}
+
+static void advance_pid_floor(uint64_t pid) {
+    if (next_pid_value == 0u || pid < next_pid_value) return;
+    next_pid_value = pid == UINT64_MAX ? 0u : pid + 1u;
+}
+
+static void advance_tid_floor(uint64_t tid) {
+    if (next_tid_value == 0u || tid < next_tid_value) return;
+    next_tid_value = tid == UINT64_MAX ? 0u : tid + 1u;
+}
+
 void process_init(void) {
     for (uint32_t i = 0; i < SB_MAX_PROCESSES; ++i) {
         clear_process(&processes[i]);
     }
-    process_count_value = 0;
+    process_count_value = 0u;
+    /* PID 1 is reserved for init. User-thread IDs start well above bootstrap
+     * scheduler IDs used by early kernel self-tests. */
+    next_pid_value = 2u;
+    next_tid_value = 10001u;
+}
+
+uint64_t process_allocate_pid(void) {
+    while (next_pid_value != 0u) {
+        const uint64_t candidate = next_pid_value;
+        next_pid_value = candidate == UINT64_MAX ? 0u : candidate + 1u;
+        if (process_get(candidate) == 0) return candidate;
+    }
+    return 0u;
+}
+
+uint64_t process_allocate_tid(void) {
+    while (next_tid_value != 0u) {
+        const uint64_t candidate = next_tid_value;
+        next_tid_value = candidate == UINT64_MAX ? 0u : candidate + 1u;
+        if (!process_tid_in_use(candidate)) return candidate;
+    }
+    return 0u;
 }
 
 sb_process_t *process_get(uint64_t pid) {
@@ -63,6 +110,7 @@ sb_process_t *process_create(uint64_t pid) {
             return 0;
         }
         ++process_count_value;
+        advance_pid_floor(pid);
         return &processes[i];
     }
 
@@ -72,12 +120,8 @@ sb_process_t *process_create(uint64_t pid) {
 sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t priority) {
     if (process == 0 || tid == 0u || process->thread_count >= SB_MAX_THREADS_PER_PROCESS ||
         process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED ||
-        process->state == SB_PROCESS_ZOMBIE) {
+        process->state == SB_PROCESS_ZOMBIE || process_tid_in_use(tid)) {
         return 0;
-    }
-
-    for (uint32_t i = 0u; i < process->thread_count; ++i) {
-        if (process->threads[i].tid == tid) return 0;
     }
 
     sb_thread_t *thread = &process->threads[process->thread_count++];
@@ -85,6 +129,7 @@ sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t
     thread->tid = tid;
     thread->priority = priority;
     thread->state = SB_PROCESS_CREATED;
+    advance_tid_floor(tid);
     return thread;
 }
 
