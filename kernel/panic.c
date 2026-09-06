@@ -4,6 +4,49 @@
 static volatile uint16_t *const VGA = (volatile uint16_t *)0xB8000;
 static int panic_ready;
 
+static void serial_putc(char c) {
+    while (1) {
+        uint8_t status;
+        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+        if ((status & 0x20u) != 0u) break;
+    }
+    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
+}
+
+static void serial_text(const char *s) {
+    while (*s != '\0') serial_putc(*s++);
+}
+
+static void serial_hex64(uint64_t value) {
+    static const char digits[] = "0123456789ABCDEF";
+    serial_text("0x");
+    for (uint32_t i = 0u; i < 16u; ++i) {
+        const uint32_t shift = (15u - i) * 4u;
+        serial_putc(digits[(value >> shift) & 0xFu]);
+    }
+}
+
+static void serial_exception(uint8_t vector,
+                             uint64_t error_code,
+                             uint64_t rip,
+                             uint64_t cs,
+                             uint64_t rflags,
+                             uint64_t cr2) {
+    serial_text("\r\nException: vector=");
+    serial_hex64(vector);
+    serial_text(" error=");
+    serial_hex64(error_code);
+    serial_text(" rip=");
+    serial_hex64(rip);
+    serial_text(" cs=");
+    serial_hex64(cs);
+    serial_text(" rflags=");
+    serial_hex64(rflags);
+    serial_text(" cr2=");
+    serial_hex64(cr2);
+    serial_text("\r\n");
+}
+
 static void put_cell(uint32_t x, uint32_t y, char c, uint8_t color) {
     VGA[y * 80u + x] = (uint16_t)color << 8 | (uint8_t)c;
 }
@@ -59,6 +102,7 @@ static void render(uint8_t vector, uint64_t error_code, uint64_t rip, uint64_t c
 }
 
 void sb_panic_from_exception(uint8_t vector, uint64_t error_code, uint64_t rip, uint64_t cs, uint64_t rflags, uint64_t cr2) {
+    serial_exception(vector, error_code, rip, cs, rflags, cr2);
     if (!panic_ready) {
         clear_screen(0x4F);
         text(3, 2, "SUIRABOX PANIC", 0xFF);
