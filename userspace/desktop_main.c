@@ -138,11 +138,17 @@ static int shell_open_app(sb_gui_window_manager_t *wm, const char *id, uint32_t 
     int32_t x;
     int32_t y;
     const uint32_t app_id = shell_app_id(id);
+    sb_gui_window_t *window;
     if (wm == 0 || app_id == 0u || width < SB_GUI_MIN_WINDOW_WIDTH || height < SB_GUI_MIN_WINDOW_HEIGHT) return -1;
     if (app_id == 1u) { x = 170; y = 120; }
     else if (app_id == 2u) { x = 230; y = 150; }
     else { x = 290; y = 180; }
-    return sb_gui_create_app_window(wm, app_id, x, y, width, height) != 0 ? 0 : -1;
+    window = sb_gui_create_app_window(wm, app_id, x, y, width, height);
+    if (window == 0) {
+        (void)sb_app_terminate(app_id, 0u);
+        return -1;
+    }
+    return 0;
 }
 
 static void sync_app_windows(sb_gui_window_manager_t *wm) {
