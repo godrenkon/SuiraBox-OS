@@ -8,6 +8,7 @@ int main(void) {
     sb_gui_window_t *back;
     sb_gui_window_t *front;
     sb_gui_window_t *top;
+    sb_gui_window_t *app_window;
     sb_gui_window_t extreme;
     uint32_t back_id;
     uint32_t front_id;
@@ -21,11 +22,17 @@ int main(void) {
     back = sb_gui_create_window(&wm, 10, 20, 200u, 120u);
     front = sb_gui_create_window(&wm, 40, 50, 160u, 100u);
     assert(back != 0 && front != 0);
+    assert(back->app_id == 0u && front->app_id == 0u);
     back_id = back->id;
     front_id = front->id;
     assert(wm.count == 2u);
     assert(wm.focused_id == front_id);
 
+    app_window = sb_gui_create_app_window(&wm, 3u, 60, 70, 200u, 120u);
+    assert(app_window != 0 && app_window->app_id == 3u);
+    assert(sb_gui_create_app_window(&wm, 0u, 0, 0, 200u, 120u) == 0);
+
+    assert(sb_gui_hit_test(&wm, 65, 75)->id == app_window->id);
     assert(sb_gui_hit_test(&wm, 45, 55)->id == front_id);
     assert(sb_gui_hit_test(&wm, 15, 25)->id == back_id);
     assert(sb_gui_hit_test(&wm, 1000, 1000) == 0);
@@ -42,12 +49,12 @@ int main(void) {
     assert(sb_gui_hit_test(&wm, 50, 60)->id == top->id);
     assert(sb_gui_focus_window(&wm, back_id) == 0);
     assert(wm.focused_id == back_id);
-    assert(sb_gui_hit_test(&wm, 50, 60)->id == back_id);
+    assert(sb_gui_hit_test(&wm, 50, 60)->id == top->id);
 
     front = sb_gui_find_window(&wm, front_id);
     assert(front != 0);
     assert(sb_gui_move_window(&wm, front_id, 100, 100) == 0);
-    assert(sb_gui_hit_test(&wm, 105, 105)->id == back_id);
+    assert(sb_gui_hit_test(&wm, 105, 105)->id == front_id);
     assert(sb_gui_focus_window(&wm, front_id) == 0);
     assert(sb_gui_hit_test(&wm, 105, 105)->id == front_id);
     assert(sb_gui_resize_window(&wm, front_id, 320u, 240u) == 0);
@@ -66,9 +73,20 @@ int main(void) {
     assert(sb_gui_resize_window(&wm, front_id, 95u, 64u) != 0);
 
     extreme = (sb_gui_window_t){
-        99u, INT32_MAX - 8, INT32_MAX - 8, UINT32_MAX, UINT32_MAX,
-        INT32_MAX - 8, INT32_MAX - 8, UINT32_MAX, UINT32_MAX,
-        1u, 1u, 0u, 0u
+        .id = 99u,
+        .app_id = 0u,
+        .x = INT32_MAX - 8,
+        .y = INT32_MAX - 8,
+        .width = UINT32_MAX,
+        .height = UINT32_MAX,
+        .restore_x = INT32_MAX - 8,
+        .restore_y = INT32_MAX - 8,
+        .restore_width = UINT32_MAX,
+        .restore_height = UINT32_MAX,
+        .visible = 1u,
+        .resizable = 1u,
+        .minimized = 0u,
+        .maximized = 0u
     };
     assert(sb_gui_hit_control(&extreme, INT32_MAX, INT32_MAX) == SB_GUI_CONTROL_NONE);
     assert(sb_gui_hit_control(&extreme, INT32_MIN, INT32_MIN) == SB_GUI_CONTROL_NONE);
@@ -129,10 +147,11 @@ int main(void) {
 
     assert(sb_gui_set_minimized(&wm, top->id, 1u) == 0);
     assert(top->minimized == 1u);
-    assert(sb_gui_minimized_count(&wm) == 1u);
+    assert(sb_gui_minimized_count(&wm) == 2u);
+    assert(sb_gui_destroy_window(&wm, app_window->id) == 0);
+    assert(sb_gui_find_window(&wm, app_window->id) == 0);
     assert(sb_gui_destroy_window(&wm, front_id) == 0);
     assert(wm.count == 2u);
-    assert(wm.focused_id == back_id);
     assert(sb_gui_find_window(&wm, front_id) == 0);
     assert(sb_gui_destroy_window(&wm, 0u) != 0);
     return 0;
