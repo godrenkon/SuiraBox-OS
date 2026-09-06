@@ -3,11 +3,28 @@
 #include "scheduler.h"
 #include "process.h"
 #include "process_exec.h"
+#include "user_access.h"
+#include <stddef.h>
 
 #define SB_INIT_PID 1u
 #define SB_VALIDATION_CHILD_PID 2u
 #define SB_VALIDATION_CHILD_TID 20001u
 #define SB_DEFAULT_USER_PRIORITY 128u
+
+_Static_assert(offsetof(sb_irq_frame_t, r10) == 5u * sizeof(uint64_t),
+               "syscall ABI r10 frame offset changed");
+_Static_assert(offsetof(sb_irq_frame_t, r8) == 7u * sizeof(uint64_t),
+               "syscall ABI r8 frame offset changed");
+_Static_assert(offsetof(sb_irq_frame_t, rdi) == 8u * sizeof(uint64_t),
+               "syscall ABI rdi frame offset changed");
+_Static_assert(offsetof(sb_irq_frame_t, rsi) == 9u * sizeof(uint64_t),
+               "syscall ABI rsi frame offset changed");
+_Static_assert(offsetof(sb_irq_frame_t, rdx) == 11u * sizeof(uint64_t),
+               "syscall ABI rdx frame offset changed");
+_Static_assert(offsetof(sb_irq_frame_t, rax) == 14u * sizeof(uint64_t),
+               "syscall ABI rax frame offset changed");
+_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_LOG_WRITE,
+               "syscall ABI max-number table is stale");
 
 static int first_user_syscall_logged;
 static uint64_t first_user_task_id;
@@ -20,6 +37,8 @@ static uint64_t wait_task_id;
 static int wait_resume_logged;
 static int child_pid_syscall_logged;
 static int child_spawn_logged;
+static int abi_version_logged;
+static int invalid_pointer_logged;
 
 static void syscall_debug_char(char c) {
     while (1) {
@@ -32,6 +51,10 @@ static void syscall_debug_char(char c) {
 
 static void syscall_debug(const char *s) {
     while (*s) syscall_debug_char(*s++);
+}
+
+static uint64_t syscall_error(int64_t code) {
+    return (uint64_t)code;
 }
 
 static uint64_t syscall_process_id(void) {
@@ -51,15 +74,56 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             return timer_ticks();
         case SB_SYS_PROCESS_ID:
             return syscall_process_id();
+        case SB_SYS_ABI_VERSION:
+            return SB_SYSCALL_ABI_VERSION;
         case SB_SYS_EXIT:
         case SB_SYS_SPAWN:
         case SB_SYS_WAIT_PROCESS:
-            return UINT64_MAX;
+        case SB_SYS_LOG_WRITE:
+            return syscall_error(SB_SYS_ERROR_INVALID);
         case SB_SYS_SLEEP:
-            return scheduler_sleep_current(arg0) == 0 ? 0u : UINT64_MAX;
+            return scheduler_sleep_current(arg0) == 0
+                ? 0u : syscall_error(SB_SYS_ERROR_INVALID);
         default:
-            return UINT64_MAX;
+            return syscall_error(SB_SYS_ERROR_INVALID);
     }
+}
+
+static sb_irq_frame_t *syscall_log_write(sb_irq_frame_t *frame, sb_task_t *task) {
+    if (task == 0 || task->user_task == 0u || task->process_id == 0u) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    const uint64_t length = frame->rsi;
+    if (length > SB_SYS_LOG_MAX) {
+        frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
+        return frame;
+    }
+    if (length == 0u) {
+        frame->rax = 0u;
+        return frame;
+    }
+
+    sb_process_t *process = process_get(task->process_id);
+    if (process == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    uint8_t buffer[SB_SYS_LOG_MAX];
+    if (user_copy_from(process, buffer, frame->rdi, length) != 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
+        if (!invalid_pointer_logged) {
+            invalid_pointer_logged = 1;
+            syscall_debug("Syscall: invalid user pointer rejected\r\n");
+        }
+        return frame;
+    }
+
+    for (uint64_t i = 0u; i < length; ++i) syscall_debug_char((char)buffer[i]);
+    frame->rax = length;
+    return frame;
 }
 
 sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
@@ -89,9 +153,13 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         syscall_debug("Userspace: parent wait resumed after child exit\r\n");
     }
 
+    if (number == SB_SYS_LOG_WRITE) {
+        return syscall_log_write(frame, task);
+    }
+
     if (number == SB_SYS_SLEEP) {
         const int result = scheduler_sleep_current(frame->rdi);
-        frame->rax = result == 0 ? 0u : UINT64_MAX;
+        frame->rax = result == 0 ? 0u : syscall_error(SB_SYS_ERROR_INVALID);
         if (result == 0 && task != 0) {
             sleep_cycle_armed = 1;
             sleep_task_id = task->id;
@@ -104,7 +172,7 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
     if (number == SB_SYS_SPAWN) {
         if (task == 0 || task->user_task == 0u || task->process_id != SB_INIT_PID ||
             frame->rdi != SB_SPAWN_IMAGE_CHILD || process_get(SB_VALIDATION_CHILD_PID) != 0) {
-            frame->rax = UINT64_MAX;
+            frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
             return frame;
         }
 
@@ -116,7 +184,7 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
                                                                    SB_DEFAULT_USER_PRIORITY,
                                                                    &child_image);
         if (child == 0) {
-            frame->rax = UINT64_MAX;
+            frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
             return frame;
         }
 
@@ -130,7 +198,7 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
 
     if (number == SB_SYS_WAIT_PROCESS) {
         if (task == 0 || task->user_task == 0u || task->process_id == 0u) {
-            frame->rax = UINT64_MAX;
+            frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
             return frame;
         }
 
@@ -146,13 +214,13 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         }
         if (wait_result < 0 || scheduler_block_current() != 0) {
             if (wait_result > 0) (void)process_cancel_wait(child_pid, task->id);
-            frame->rax = UINT64_MAX;
+            frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
             return frame;
         }
 
         /* The saved frame's RAX is replaced with the child's exit status by
          * scheduler_wake_task_with_result() after deferred resource reaping. */
-        frame->rax = UINT64_MAX;
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
         wait_cycle_armed = 1;
         wait_task_id = task->id;
         syscall_debug("Userspace: wait syscall blocked for child\r\n");
@@ -162,14 +230,14 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
     if (number == SB_SYS_EXIT) {
         if (task == 0 || task->user_task == 0u || task->process_id == 0u ||
             process_get(task->process_id) == 0) {
-            frame->rax = UINT64_MAX;
+            frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
             return frame;
         }
 
         const uint64_t pid = task->process_id;
         const int64_t exit_code = (int64_t)frame->rdi;
         if (scheduler_exit_current_process(exit_code) != 0) {
-            frame->rax = UINT64_MAX;
+            frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
             return frame;
         }
         if (process_mark_exited(pid, exit_code) != 0) {
@@ -189,6 +257,12 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
                                   frame->rdx,
                                   frame->r10,
                                   frame->r8);
+
+    if (number == SB_SYS_ABI_VERSION && task != 0 && task->process_id == SB_INIT_PID &&
+        frame->rax == SB_SYSCALL_ABI_VERSION && !abi_version_logged) {
+        abi_version_logged = 1;
+        syscall_debug("Syscall: ABI v1 userspace probe OK\r\n");
+    }
 
     if (number == SB_SYS_PROCESS_ID && task != 0 &&
         task->process_id == SB_VALIDATION_CHILD_PID &&
@@ -221,4 +295,6 @@ void syscall_init(void) {
     wait_resume_logged = 0;
     child_pid_syscall_logged = 0;
     child_spawn_logged = 0;
+    abi_version_logged = 0;
+    invalid_pointer_logged = 0;
 }

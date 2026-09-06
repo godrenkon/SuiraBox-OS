@@ -83,30 +83,49 @@ int address_space_map_user(sb_address_space_t *space,
     return 0;
 }
 
-int address_space_translate_user(const sb_address_space_t *space,
-                                 uint64_t virtual_address,
-                                 uint64_t *physical_address) {
+int address_space_translate_user_access(const sb_address_space_t *space,
+                                        uint64_t virtual_address,
+                                        int write_access,
+                                        uint64_t *physical_address) {
     if (space == 0 || space->pml4_physical == 0u || physical_address == 0 ||
         pml4_index(virtual_address) != SB_USER_PML4_INDEX ||
         virtual_address >= SB_USER_LIMIT) return -1;
 
     uint64_t *pml4 = (uint64_t *)(uintptr_t)space->pml4_physical;
-    uint64_t e4 = pml4[pml4_index(virtual_address)];
-    if ((e4 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER)) return -1;
-    if ((e4 & ENTRY_HUGE_PAGE) != 0u) return -1;
+    const uint64_t e4 = pml4[pml4_index(virtual_address)];
+    if ((e4 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER) ||
+        (e4 & ENTRY_HUGE_PAGE) != 0u) return -1;
+
     uint64_t *pdpt = table_from_entry(e4);
-    uint64_t e3 = pdpt[pdpt_index(virtual_address)];
-    if ((e3 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER)) return -1;
-    if ((e3 & ENTRY_HUGE_PAGE) != 0u) return -1;
+    const uint64_t e3 = pdpt[pdpt_index(virtual_address)];
+    if ((e3 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER) ||
+        (e3 & ENTRY_HUGE_PAGE) != 0u) return -1;
+
     uint64_t *pd = table_from_entry(e3);
-    uint64_t e2 = pd[pd_index(virtual_address)];
-    if ((e2 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER)) return -1;
-    if ((e2 & ENTRY_HUGE_PAGE) != 0u) return -1;
+    const uint64_t e2 = pd[pd_index(virtual_address)];
+    if ((e2 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER) ||
+        (e2 & ENTRY_HUGE_PAGE) != 0u) return -1;
+
     uint64_t *pt = table_from_entry(e2);
-    uint64_t e1 = pt[pt_index(virtual_address)];
+    const uint64_t e1 = pt[pt_index(virtual_address)];
     if ((e1 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER)) return -1;
+
+    if (write_access != 0) {
+        const uint64_t effective = e4 & e3 & e2 & e1;
+        if ((effective & SB_VMM_WRITABLE) == 0u) return -1;
+    }
+
     *physical_address = (e1 & ENTRY_ADDR_MASK) | (virtual_address & PAGE_OFFSET_MASK);
     return 0;
+}
+
+int address_space_translate_user(const sb_address_space_t *space,
+                                 uint64_t virtual_address,
+                                 uint64_t *physical_address) {
+    return address_space_translate_user_access(space,
+                                               virtual_address,
+                                               0,
+                                               physical_address);
 }
 
 int address_space_activate(const sb_address_space_t *space) {

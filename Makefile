@@ -12,9 +12,10 @@ LD ?= ld
 
 # The kernel has no early FPU/SIMD context management. Disable MMX/SSE/SSE2
 # so GCC cannot emit SIMD stores during bootstrap and exception paths.
-CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2
+CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2 -Iinclude
 LDFLAGS := -nostdlib -z max-page-size=0x1000 -T linker.ld
 USER_LDFLAGS := -nostdlib -z max-page-size=0x1000 -T userspace/user.ld
+USER_ASFLAGS := -m64 -ffreestanding -fno-pie -Iinclude
 
 BOOT_OBJ := $(BUILD)/boot.o
 KERNEL_OBJ := $(BUILD)/kernel.o
@@ -39,6 +40,7 @@ SCHED_OBJ := $(BUILD)/scheduler.o
 CONTEXT_OBJ := $(BUILD)/context.o
 PROCESS_OBJ := $(BUILD)/process.o
 PROCESS_EXEC_OBJ := $(BUILD)/process_exec.o
+USER_ACCESS_OBJ := $(BUILD)/user_access.o
 SYSCALL_OBJ := $(BUILD)/syscall.o
 SYSCALL_ARCH_OBJ := $(BUILD)/syscall_arch.o
 ADDRSPACE_OBJ := $(BUILD)/address_space.o
@@ -66,7 +68,7 @@ $(SETUP_OBJ): kernel/setup.c kernel/setup.h | $(BUILD)
 $(FRAMEBUFFER_OBJ): kernel/framebuffer.c kernel/framebuffer.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(KERNEL_OBJ): kernel/kernel.c kernel/pci.h kernel/vfs.h kernel/block.h kernel/ata_pio.h kernel/fs/fat32.h kernel/framebuffer.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/mm/heap.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/syscall.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/arch/x86_64/irq_frame.h | $(BUILD)
+$(KERNEL_OBJ): kernel/kernel.c kernel/pci.h kernel/vfs.h kernel/block.h kernel/ata_pio.h kernel/fs/fat32.h kernel/framebuffer.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/mm/heap.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/syscall.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -Ikernel/mm -Ikernel/arch/x86_64 -c $< -o $@
 
 $(PCI_OBJ): kernel/pci.c kernel/pci.h | $(BUILD)
@@ -126,7 +128,10 @@ $(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/scheduler.h kernel/mm/a
 $(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.h kernel/scheduler.h kernel/elf_loader.h kernel/mm/address_space.h kernel/mm/multiboot_modules.h kernel/mm/pmm.h kernel/mm/vmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/arch/x86_64/irq_frame.h | $(BUILD)
+$(USER_ACCESS_OBJ): kernel/user_access.c kernel/user_access.h kernel/process.h kernel/mm/address_space.h kernel/mm/pmm.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
+
+$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(SYSCALL_ARCH_OBJ): kernel/arch/x86_64/syscall.S kernel/arch/x86_64/irq_frame.h | $(BUILD)
@@ -150,11 +155,11 @@ $(USERMODE_OBJ): kernel/arch/x86_64/user_mode.S kernel/arch/x86_64/user_mode.h |
 $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel/mm -c $< -o $@
 
-$(USER_OBJ): userspace/hello.S | $(BUILD)
-	$(AS) --64 $< -o $@
+$(USER_OBJ): userspace/hello.S include/suirabox/syscall_abi.h | $(BUILD)
+	$(CC) $(USER_ASFLAGS) -c $< -o $@
 
-$(CHILD_OBJ): userspace/child.S | $(BUILD)
-	$(AS) --64 $< -o $@
+$(CHILD_OBJ): userspace/child.S include/suirabox/syscall_abi.h | $(BUILD)
+	$(CC) $(USER_ASFLAGS) -c $< -o $@
 
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
@@ -164,8 +169,8 @@ $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 
 userspace: $(USER_ELF) $(CHILD_ELF)
 
-$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
+$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
 iso: $(KERNEL) $(USER_ELF) $(CHILD_ELF) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub

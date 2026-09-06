@@ -67,6 +67,11 @@ jobs:
           grep -F "Timer: IRQ0 enabled" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
 
+          # Versioned syscall ABI + page-table-backed user pointer validation.
+          grep -F "Syscall: ABI v1 userspace probe OK" qemu.log
+          grep -F "Userspace: validated user pointer copy OK" qemu.log
+          grep -F "Syscall: invalid user pointer rejected" qemu.log
+
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
           grep -F "Userspace: entering ring3" qemu.log
           grep -F "Userspace: first syscall reached kernel" qemu.log
@@ -100,6 +105,12 @@ jobs:
 
           log = Path("qemu.log").read_text(errors="replace")
           sequences = {
+              "syscall-abi/user-pointer": [
+                  "Userspace: first syscall reached kernel",
+                  "Syscall: ABI v1 userspace probe OK",
+                  "Userspace: validated user pointer copy OK",
+                  "Syscall: invalid user pointer rejected",
+              ],
               "wait/child/reap": [
                   "Userspace: spawn syscall created child process",
                   "Scheduler: user task entered BLOCKED",

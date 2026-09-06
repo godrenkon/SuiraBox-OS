@@ -1,21 +1,42 @@
+#include <suirabox/syscall_abi.h>
+
 .section .text
 .code64
 .global _start
 .type _start, @function
 
 /*
- * Minimal userspace scheduler/process lifecycle smoke program.
+ * Userspace scheduler/process/syscall-boundary smoke program.
  *
- * 1. GET_TICKS proves initial ring3 dispatch.
- * 2. SPAWN creates child PID 2 from a trusted boot image.
- * 3. WAIT(2) blocks this parent. The child must execute under another CR3,
- *    EXIT, have resources reaped, and wake this exact saved syscall frame with
- *    exit status 0 before execution can continue here.
- * 4. SLEEP(5) independently verifies timer-deadline sleeping/wakeup.
+ * 1. Query the formal syscall ABI version and reject a mismatch.
+ * 2. LOG_WRITE copies a real .rodata userspace buffer through page-table
+ *    validation; a null pointer must return SB_SYS_ERROR_FAULT without #PF.
+ * 3. SPAWN + WAIT prove BLOCKED parent/child lifecycle and cross-process CR3.
+ * 4. SLEEP proves independent timer-deadline sleep/wakeup and saved-frame
+ *    resume.
  */
 _start:
-    mov $0, %rax          /* SB_SYS_GET_TICKS */
-    int $0x80
+    mov $SB_SYS_GET_TICKS, %rax
+    int $SB_SYSCALL_VECTOR
+
+    mov $SB_SYS_ABI_VERSION, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYSCALL_ABI_VERSION, %rax
+    jne lifecycle_failed
+
+    lea pointer_message(%rip), %rdi
+    mov $pointer_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $pointer_message_len, %rax
+    jne lifecycle_failed
+
+    xor %rdi, %rdi
+    mov $1, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
 
     mov $50000, %rcx
 preempt_spin:
@@ -23,34 +44,34 @@ preempt_spin:
     dec %rcx
     jnz preempt_spin
 
-    mov $0, %rax          /* SB_SYS_GET_TICKS */
-    int $0x80
+    mov $SB_SYS_GET_TICKS, %rax
+    int $SB_SYSCALL_VECTOR
 
-    mov $4, %rax          /* SB_SYS_SPAWN */
-    mov $1, %rdi          /* SB_SPAWN_IMAGE_CHILD */
-    int $0x80
-    cmp $2, %rax          /* child PID */
+    mov $SB_SYS_SPAWN, %rax
+    mov $SB_SPAWN_IMAGE_CHILD, %rdi
+    int $SB_SYSCALL_VECTOR
+    cmp $2, %rax
     jne lifecycle_failed
 
-    mov $5, %rax          /* SB_SYS_WAIT_PROCESS */
-    mov $2, %rdi          /* child PID */
-    int $0x80
-    test %rax, %rax       /* child exit status must be 0 */
+    mov $SB_SYS_WAIT_PROCESS, %rax
+    mov $2, %rdi
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
     jne lifecycle_failed
 
     /* Kernel logs this next syscall only if WAIT's saved frame really resumed. */
-    mov $0, %rax          /* SB_SYS_GET_TICKS */
+    mov $SB_SYS_GET_TICKS, %rax
     xor %rdi, %rdi
-    int $0x80
+    int $SB_SYSCALL_VECTOR
 
-    mov $3, %rax          /* SB_SYS_SLEEP */
-    mov $5, %rdi          /* five PIT ticks */
-    int $0x80
+    mov $SB_SYS_SLEEP, %rax
+    mov $5, %rdi
+    int $SB_SYSCALL_VECTOR
 
     /* Reaching this syscall proves SLEEP returned only after wake + redispatch. */
-    mov $0, %rax          /* SB_SYS_GET_TICKS */
+    mov $SB_SYS_GET_TICKS, %rax
     xor %rdi, %rdi
-    int $0x80
+    int $SB_SYSCALL_VECTOR
 
 poll:
     mov $50000, %rcx
@@ -59,8 +80,8 @@ spin:
     dec %rcx
     jnz spin
 
-    mov $0, %rax          /* SB_SYS_GET_TICKS */
-    int $0x80
+    mov $SB_SYS_GET_TICKS, %rax
+    int $SB_SYSCALL_VECTOR
     jmp poll
 
 lifecycle_failed:
@@ -68,3 +89,8 @@ lifecycle_failed:
     jmp lifecycle_failed
 
 .size _start, .-_start
+
+.section .rodata
+pointer_message:
+    .ascii "Userspace: validated user pointer copy OK\r\n"
+.set pointer_message_len, . - pointer_message

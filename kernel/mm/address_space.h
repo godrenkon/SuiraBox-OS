@@ -23,6 +23,15 @@ int address_space_map_user(sb_address_space_t *space,
 int address_space_translate_user(const sb_address_space_t *space,
                                  uint64_t virtual_address,
                                  uint64_t *physical_address);
+
+/* Resolve a userspace mapping while enforcing effective write permission when
+ * requested. Every page-table level must remain USER/PRESENT and writable for
+ * a write access, matching x86_64 permission composition. */
+int address_space_translate_user_access(const sb_address_space_t *space,
+                                        uint64_t virtual_address,
+                                        int write_access,
+                                        uint64_t *physical_address);
+
 int address_space_activate(const sb_address_space_t *space);
 void address_space_destroy(sb_address_space_t *space);
 
