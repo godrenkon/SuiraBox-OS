@@ -39,6 +39,7 @@ Current stable errors:
 | `-3` | `SB_SYS_ERROR_LIMIT` | request/table exceeds an ABI or kernel limit |
 | `-4` | `SB_SYS_ERROR_STALE` | opaque handle generation is no longer valid |
 | `-5` | `SB_SYS_ERROR_RIGHTS` | handle exists but lacks required rights |
+| `-6` | `SB_SYS_ERROR_NOT_FOUND` | requested named resource/source does not exist |
 
 New error values may be appended. Existing meanings must not be silently changed within ABI version 1.
 
@@ -58,8 +59,9 @@ New error values may be appended. Existing meanings must not be silently changed
 | 9 | `SB_SYS_PROCESS_OPEN_SELF` | none | opaque current-process handle with QUERY right |
 | 10 | `SB_SYS_HANDLE_INFO` | `rdi=handle`, `rsi=writable sb_handle_info_t*` | 0 and fills public type/rights |
 | 11 | `SB_SYS_HANDLE_CLOSE` | `rdi=handle` | 0; invalidates that handle generation |
+| 12 | `SB_SYS_SPAWN_REQUEST` | `rdi=readable sb_spawn_request_t*` | dynamically allocated child PID |
 
-`SB_SYS_SPAWN` is still a bootstrap interface: selector `SB_SPAWN_IMAGE_CHILD` resolves to a trusted boot module. It will become a validated path/descriptor-based launch interface after the VFS/handle boundary is ready.
+`SB_SYS_SPAWN` remains a legacy ABI v1 bootstrap interface. Selector `SB_SPAWN_IMAGE_CHILD` resolves to the validation child image and remains operational so adding the general request path does not reinterpret or renumber an existing syscall.
 
 ## Userspace pointer rules
 
@@ -77,6 +79,57 @@ Before reading or writing userspace memory the kernel must:
 `SB_SYS_LOG_WRITE` proves the read side: QEMU CI requires a valid `.rodata` pointer to copy successfully and an invalid null pointer to return `SB_SYS_ERROR_FAULT` without causing a page fault.
 
 `SB_SYS_ABI_INFO` proves the write side: QEMU CI requires a writable `.data` destination to receive `sb_syscall_abi_info_t`, then requires the same kernel-to-user copy aimed at `.rodata` to be rejected with `SB_SYS_ERROR_FAULT`. The userspace smoke program verifies the copied ABI version and maximum syscall number itself before continuing.
+
+## General spawn request
+
+`SB_SYS_SPAWN_REQUEST` is the first non-selector process-launch interface. It accepts a fixed-size versioned request rather than assigning new meanings to legacy syscall 4.
+
+Version 1 layout:
+
+```c
+typedef struct {
+    uint32_t size;
+    uint16_t version;
+    uint16_t source;
+    uint64_t flags;
+    uint64_t name;
+    uint32_t name_length;
+    uint32_t reserved;
+} sb_spawn_request_t;
+```
+
+The structure is **32 bytes**. Current accepted values are:
+
+- `size == SB_SPAWN_REQUEST_SIZE`;
+- `version == SB_SPAWN_REQUEST_VERSION`;
+- `source == SB_SPAWN_SOURCE_BOOT_MODULE`;
+- `flags == SB_SPAWN_FLAG_NONE`;
+- `reserved == 0`;
+- `1 <= name_length <= SB_SPAWN_NAME_MAX`.
+
+The kernel first copies the complete request into kernel-owned memory. It then separately copies exactly `name_length` bytes from the userspace `name` pointer into a bounded kernel buffer. Embedded NUL, space, and tab are rejected for the current boot-module identifier source, and the kernel appends its own terminator. The userspace pointer is never retained or passed directly to the Multiboot parser.
+
+If the named registered boot module does not exist, the call returns `SB_SYS_ERROR_NOT_FOUND`. A successful request allocates process/thread identifiers in the kernel and returns the new PID. Userspace must treat returned PID values as dynamically assigned rather than assuming a fixed child number.
+
+The process-creation path remains transactional: failure while creating the process, loading the ELF, creating its initial thread, or registering its scheduler task destroys the partially created process/address-space state.
+
+### Current source limitation
+
+Only `SB_SPAWN_SOURCE_BOOT_MODULE` is implemented today. The request contains an explicit source field so later VFS path or file-handle executable sources can be added without changing the meaning of existing fields. Therefore general process launch is substantially implemented, but full filesystem-backed spawn remains future work.
+
+### QEMU lifecycle proof
+
+The integration smoke keeps the legacy selector path first, then issues a separate `SB_SYS_SPAWN_REQUEST` for `user-child`. For the general request CI requires ordered evidence that:
+
+1. the request and userspace name were copied/validated;
+2. a child with dynamically allocated identifiers was created;
+3. the parent actually entered a blocked WAIT for that child;
+4. the child executed in ring3 and observed its dynamically assigned PID;
+5. the child exited;
+6. after wake, the kernel confirms the child process slot is no longer present (`process_get(pid) == NULL`), proving reap/collection completed;
+7. the parent completed WAIT and continued execution.
+
+The smoke then continues into the independent sleep/wake test, so successful spawn/wait cannot be satisfied by halting at the child lifecycle boundary.
 
 ## Handle model
 
@@ -121,7 +174,8 @@ A host test separately covers rights rejection, type rejection, table exhaustion
 - New syscalls are appended after `SB_SYS_MAX_NUMBER`.
 - Public handle type/right numeric values are stable once exposed in an ABI version.
 - Handle internal slot/generation encoding is **not** ABI and may change without userspace decoding it.
+- Versioned request structs carry explicit `size` and `version` fields rather than silently changing layout semantics.
 - A semantic change that invalidates existing userspace requires a new `SB_SYSCALL_ABI_VERSION`.
 - Kernel and in-tree userspace are compiled against the same canonical headers.
-- QEMU integration tests exercise version query, read/write pointer boundaries, handle generation semantics, and process lifecycle in sequence.
+- QEMU integration tests exercise version query, read/write pointer boundaries, handle generation semantics, legacy spawn compatibility, general spawn/wait/reap, and sleep/wake in sequence.
 - CI treats any serial `Exception:` record as a hard regression even if later markers would otherwise appear.
