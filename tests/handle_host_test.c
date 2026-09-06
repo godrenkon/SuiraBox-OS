@@ -21,6 +21,7 @@ int main(void) {
     sb_handle_t first = SB_HANDLE_INVALID;
     sb_handle_t second = SB_HANDLE_INVALID;
     void *resolved = 0;
+    sb_handle_info_t info = {0};
 
     sb_handle_table_init(&table);
     if (require(sb_handle_count(&table) == 0u, "initial count")) return 1;
@@ -43,12 +44,26 @@ int main(void) {
                 resolved == &object_a,
                 "lookup with matching type/rights")) return 1;
 
+    if (require(sb_handle_query(&table,
+                                first,
+                                SB_HANDLE_RIGHT_QUERY,
+                                &info) == SB_HANDLE_OK &&
+                info.type == SB_HANDLE_ABI_TYPE_EVENT &&
+                info.reserved == 0u &&
+                info.rights == (SB_HANDLE_RIGHT_QUERY | SB_HANDLE_RIGHT_WAIT),
+                "metadata ABI query")) return 1;
+
     if (require(sb_handle_lookup(&table,
                                  first,
                                  SB_HANDLE_TYPE_EVENT,
                                  SB_HANDLE_RIGHT_WRITE,
                                  &resolved) == SB_HANDLE_ERROR_RIGHTS,
                 "rights rejection")) return 1;
+    if (require(sb_handle_query(&table,
+                                first,
+                                SB_HANDLE_RIGHT_WRITE,
+                                &info) == SB_HANDLE_ERROR_RIGHTS,
+                "query rights rejection")) return 1;
     if (require(sb_handle_lookup(&table,
                                  first,
                                  SB_HANDLE_TYPE_FILE,
@@ -66,6 +81,11 @@ int main(void) {
                                  0u,
                                  &resolved) == SB_HANDLE_ERROR_STALE,
                 "stale lookup rejection")) return 1;
+    if (require(sb_handle_query(&table,
+                                first,
+                                0u,
+                                &info) == SB_HANDLE_ERROR_STALE,
+                "stale query rejection")) return 1;
     if (require(sb_handle_close(&table, first) == SB_HANDLE_ERROR_STALE,
                 "stale close rejection")) return 1;
 
