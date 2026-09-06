@@ -30,6 +30,7 @@ typedef struct {
     uint64_t process_id;
     uint64_t runtime_ticks;
     uint64_t dispatch_count;
+    uint64_t wake_tick;
     uint32_t priority;
     sb_task_state_t state;
     sb_task_context_t context;
@@ -56,6 +57,17 @@ int scheduler_add_user_task(uint64_t id,
 /* Selects a runnable task without changing scheduler state. */
 sb_task_t *scheduler_pick_next(void);
 uint32_t scheduler_task_count(void);
+
+/* State transitions for the current single-CPU scheduler. Blocking/sleeping
+ * callers must reschedule before returning to code that belongs to the task. */
+int scheduler_block_current(void);
+int scheduler_sleep_current(uint64_t delay_ticks);
+int scheduler_wake_task(uint64_t id);
+
+/* Save current_frame and immediately choose another runnable execution frame.
+ * This is used by blocking syscalls where waiting until the next timer quantum
+ * would violate sleep/block semantics. */
+sb_irq_frame_t *scheduler_reschedule(sb_irq_frame_t *current_frame);
 
 /* Called from the timer IRQ with a complete register frame. The returned frame
  * is the frame that the IRQ epilogue must restore before iretq. */

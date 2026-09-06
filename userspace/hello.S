@@ -6,13 +6,32 @@
 /*
  * Minimal userspace scheduler smoke program.
  *
- * The first syscall proves the initial ring3 dispatch. Later syscalls are
- * intentionally spaced out so the PIT can preempt this thread, let the kernel
- * task run, and then resume this exact saved user register frame. CI verifies
- * a syscall reached after that second dispatch as the preemption/resume proof.
+ * 1. First GET_TICKS proves the initial ring3 dispatch.
+ * 2. The spin keeps the task alive long enough for timer preemption and a
+ *    saved-frame resume; the next GET_TICKS proves execution after that resume.
+ * 3. SLEEP(5) must deschedule the task directly from syscall entry. The next
+ *    GET_TICKS can execute only after the timer wakes and redispatches it.
  */
 _start:
     mov $0, %rax          /* SB_SYS_GET_TICKS */
+    int $0x80
+
+    mov $50000, %rcx
+preempt_spin:
+    pause
+    dec %rcx
+    jnz preempt_spin
+
+    mov $0, %rax          /* SB_SYS_GET_TICKS */
+    int $0x80
+
+    mov $3, %rax          /* SB_SYS_SLEEP */
+    mov $5, %rdi          /* five PIT ticks */
+    int $0x80
+
+    /* Reaching this syscall proves SLEEP returned only after wake + redispatch. */
+    mov $0, %rax          /* SB_SYS_GET_TICKS */
+    xor %rdi, %rdi
     int $0x80
 
 poll:

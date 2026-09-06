@@ -4,6 +4,8 @@
 
 static int first_user_syscall_logged;
 static int resumed_user_syscall_logged;
+static int sleep_cycle_armed;
+static int woke_user_syscall_logged;
 
 static void syscall_debug_char(char c) {
     while (1) {
@@ -25,7 +27,6 @@ static uint64_t syscall_process_id(void) {
 
 uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
                           uint64_t arg2, uint64_t arg3, uint64_t arg4) {
-    (void)arg0;
     (void)arg1;
     (void)arg2;
     (void)arg3;
@@ -38,14 +39,19 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             return syscall_process_id();
         case SB_SYS_EXIT:
             return 0u;
+        case SB_SYS_SLEEP:
+            return scheduler_sleep_current(arg0) == 0 ? 0u : UINT64_MAX;
         default:
             return UINT64_MAX;
     }
 }
 
-uint64_t sb_syscall_dispatch_entry(uint64_t number, uint64_t arg0, uint64_t arg1,
-                                   uint64_t arg2, uint64_t arg3) {
+sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
+    if (frame == 0) return 0;
+
     sb_task_t *task = scheduler_current();
+    const uint64_t number = frame->rax;
+
     if (task != 0 && task->user_task != 0u) {
         if (!first_user_syscall_logged) {
             first_user_syscall_logged = 1;
@@ -56,10 +62,38 @@ uint64_t sb_syscall_dispatch_entry(uint64_t number, uint64_t arg0, uint64_t arg1
             syscall_debug("Userspace: resumed user thread reached syscall\r\n");
         }
     }
-    return syscall_dispatch(number, arg0, arg1, arg2, arg3, 0u);
+
+    if (number == SB_SYS_SLEEP) {
+        const int result = scheduler_sleep_current(frame->rdi);
+        frame->rax = result == 0 ? 0u : UINT64_MAX;
+        if (result == 0) {
+            sleep_cycle_armed = 1;
+            syscall_debug("Userspace: sleep syscall requested\r\n");
+            return scheduler_reschedule(frame);
+        }
+        return frame;
+    }
+
+    frame->rax = syscall_dispatch(number,
+                                  frame->rdi,
+                                  frame->rsi,
+                                  frame->rdx,
+                                  frame->r10,
+                                  frame->r8);
+
+    if (sleep_cycle_armed && !woke_user_syscall_logged &&
+        task != 0 && task->user_task != 0u && task->dispatch_count >= 3u) {
+        woke_user_syscall_logged = 1;
+        sleep_cycle_armed = 0;
+        syscall_debug("Userspace: woke sleeping user thread reached syscall\r\n");
+    }
+
+    return frame;
 }
 
 void syscall_init(void) {
     first_user_syscall_logged = 0;
     resumed_user_syscall_logged = 0;
+    sleep_cycle_armed = 0;
+    woke_user_syscall_logged = 0;
 }

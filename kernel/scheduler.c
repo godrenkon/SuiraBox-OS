@@ -7,6 +7,7 @@
 #define SB_BOOTSTRAP_PRIORITY 128u
 #define SB_SCHED_MAX_TASKS 64u
 #define SB_INITIAL_RFLAGS 0x202u
+#define SB_MAX_SLEEP_TICKS 0x7FFFFFFFFFFFFFFFull
 
 /* Scheduler starts before the kernel has initialized SIMD/FPU state. Keep the
  * task table volatile so GCC cannot synthesize SSE vector stores for struct
@@ -16,6 +17,7 @@ static uint32_t task_count;
 static uint32_t current_index;
 static uint64_t scheduler_tick_count;
 static uint32_t preemption_validation_stage;
+static uint32_t sleep_validation_stage;
 
 extern char stack_top;
 extern void sb_context_switch(sb_task_context_t *old_context,
@@ -44,11 +46,16 @@ static void write_cr3(uint64_t value) {
     __asm__ volatile ("mov %0, %%cr3" : : "r"(value) : "memory");
 }
 
+static int tick_reached(uint64_t now, uint64_t deadline) {
+    return (int64_t)(now - deadline) >= 0;
+}
+
 static void clear_task(volatile sb_task_t *task) {
     task->id = 0u;
     task->process_id = 0u;
     task->runtime_ticks = 0u;
     task->dispatch_count = 0u;
+    task->wake_tick = 0u;
     task->priority = 0u;
     task->state = SB_TASK_UNUSED;
     task->context = (sb_task_context_t){0};
@@ -70,11 +77,27 @@ static int task_index_of(const sb_task_t *task, uint32_t *index) {
     return -1;
 }
 
-static int task_id_exists(uint64_t id) {
+static sb_task_t *task_by_id(uint64_t id) {
     for (uint32_t i = 0u; i < task_count; ++i) {
-        if (tasks[i].state != SB_TASK_UNUSED && tasks[i].id == id) return 1;
+        if (tasks[i].state != SB_TASK_UNUSED && tasks[i].id == id) {
+            return (sb_task_t *)(uintptr_t)&tasks[i];
+        }
     }
     return 0;
+}
+
+static int task_id_exists(uint64_t id) {
+    return task_by_id(id) != 0;
+}
+
+static void mark_task_ready(sb_task_t *task) {
+    if (task == 0) return;
+    task->state = SB_TASK_READY;
+    task->wake_tick = 0u;
+    if (task->user_task != 0u && sleep_validation_stage == 2u) {
+        sleep_validation_stage = 3u;
+        sched_debug("Scheduler: sleeping user task woke\r\n");
+    }
 }
 
 void scheduler_init(void) {
@@ -85,6 +108,7 @@ void scheduler_init(void) {
     tasks[0].process_id = 0u;
     tasks[0].runtime_ticks = 0u;
     tasks[0].dispatch_count = 1u;
+    tasks[0].wake_tick = 0u;
     tasks[0].priority = SB_BOOTSTRAP_PRIORITY;
     tasks[0].state = SB_TASK_RUNNING;
     tasks[0].address_space_cr3 = read_cr3();
@@ -95,11 +119,20 @@ void scheduler_init(void) {
     current_index = 0u;
     scheduler_tick_count = 0u;
     preemption_validation_stage = 0u;
+    sleep_validation_stage = 0u;
     sched_debug("[SCHED] scalar state ready\r\n");
 }
 
 void scheduler_tick(void) {
     ++scheduler_tick_count;
+
+    for (uint32_t i = 0u; i < task_count; ++i) {
+        if (tasks[i].state == SB_TASK_SLEEPING &&
+            tick_reached(scheduler_tick_count, tasks[i].wake_tick)) {
+            mark_task_ready((sb_task_t *)(uintptr_t)&tasks[i]);
+        }
+    }
+
     if (task_count == 0u) return;
     if (tasks[current_index].state == SB_TASK_RUNNING) ++tasks[current_index].runtime_ticks;
 }
@@ -175,7 +208,7 @@ sb_task_t *scheduler_pick_next(void) {
             return (sb_task_t *)(uintptr_t)&tasks[candidate];
         }
     }
-    return (sb_task_t *)(uintptr_t)&tasks[current_index];
+    return 0;
 }
 
 static sb_task_t *pick_preemptable_next(void) {
@@ -187,7 +220,42 @@ static sb_task_t *pick_preemptable_next(void) {
             return (sb_task_t *)(uintptr_t)&tasks[candidate];
         }
     }
-    return (sb_task_t *)(uintptr_t)&tasks[current_index];
+    return 0;
+}
+
+int scheduler_block_current(void) {
+    sb_task_t *current = scheduler_current();
+    if (current == 0) return -1;
+    if (current->user_task == 0u) return -2; /* bootstrap task is the current idle fallback */
+    if (current->state != SB_TASK_RUNNING) return -3;
+    current->state = SB_TASK_BLOCKED;
+    current->wake_tick = 0u;
+    return 0;
+}
+
+int scheduler_sleep_current(uint64_t delay_ticks) {
+    sb_task_t *current = scheduler_current();
+    if (current == 0) return -1;
+    if (current->user_task == 0u) return -2; /* keep bootstrap runnable as the idle fallback */
+    if (current->state != SB_TASK_RUNNING) return -3;
+    if (delay_ticks > SB_MAX_SLEEP_TICKS) return -4;
+    if (delay_ticks == 0u) delay_ticks = 1u;
+
+    current->wake_tick = scheduler_tick_count + delay_ticks;
+    current->state = SB_TASK_SLEEPING;
+    if (sleep_validation_stage == 0u) {
+        sleep_validation_stage = 1u;
+        sched_debug("Scheduler: user task entered SLEEPING\r\n");
+    }
+    return 0;
+}
+
+int scheduler_wake_task(uint64_t id) {
+    sb_task_t *task = task_by_id(id);
+    if (task == 0) return -1;
+    if (task->state != SB_TASK_BLOCKED && task->state != SB_TASK_SLEEPING) return -2;
+    mark_task_ready(task);
+    return 0;
 }
 
 static void report_preemption_transition(const sb_task_t *current, const sb_task_t *next) {
@@ -212,7 +280,25 @@ static void report_preemption_transition(const sb_task_t *current, const sb_task
     }
 }
 
-sb_irq_frame_t *scheduler_preempt(sb_irq_frame_t *current_frame) {
+static void report_sleep_switch(const sb_task_t *current, const sb_task_t *next, int timer_driven) {
+    if (current == 0 || next == 0) return;
+
+    if (!timer_driven && sleep_validation_stage == 1u &&
+        current->user_task != 0u && current->state == SB_TASK_SLEEPING &&
+        next->user_task == 0u) {
+        sleep_validation_stage = 2u;
+        sched_debug("Scheduler: sleeping user task descheduled\r\n");
+        return;
+    }
+
+    if (timer_driven && sleep_validation_stage == 3u &&
+        current->user_task == 0u && next->user_task != 0u) {
+        sleep_validation_stage = 4u;
+        sched_debug("Scheduler: woke user task selected for resume\r\n");
+    }
+}
+
+static sb_irq_frame_t *scheduler_switch_frame(sb_irq_frame_t *current_frame, int timer_driven) {
     if (current_frame == 0 || task_count == 0u) return current_frame;
 
     sb_task_t *current = scheduler_current();
@@ -225,7 +311,7 @@ sb_irq_frame_t *scheduler_preempt(sb_irq_frame_t *current_frame) {
     uint32_t next_index;
     if (task_index_of(next, &next_index) != 0) return current_frame;
 
-    current->state = SB_TASK_READY;
+    if (current->state == SB_TASK_RUNNING) current->state = SB_TASK_READY;
     next->state = SB_TASK_RUNNING;
     ++next->dispatch_count;
     current_index = next_index;
@@ -235,8 +321,17 @@ sb_irq_frame_t *scheduler_preempt(sb_irq_frame_t *current_frame) {
     }
     if (next->kernel_stack_top != 0u) gdt_set_kernel_stack(next->kernel_stack_top);
 
-    report_preemption_transition(current, next);
+    if (timer_driven) report_preemption_transition(current, next);
+    report_sleep_switch(current, next, timer_driven);
     return (sb_irq_frame_t *)(uintptr_t)next->irq_frame_rsp;
+}
+
+sb_irq_frame_t *scheduler_reschedule(sb_irq_frame_t *current_frame) {
+    return scheduler_switch_frame(current_frame, 0);
+}
+
+sb_irq_frame_t *scheduler_preempt(sb_irq_frame_t *current_frame) {
+    return scheduler_switch_frame(current_frame, 1);
 }
 
 void scheduler_switch_to(sb_task_t *next) {
@@ -248,7 +343,7 @@ void scheduler_switch_to(sb_task_t *next) {
     if (task_index_of(next, &next_index) != 0) return;
 
     interrupts_disable();
-    current->state = SB_TASK_READY;
+    if (current->state == SB_TASK_RUNNING) current->state = SB_TASK_READY;
     next->state = SB_TASK_RUNNING;
     ++next->dispatch_count;
     current_index = next_index;

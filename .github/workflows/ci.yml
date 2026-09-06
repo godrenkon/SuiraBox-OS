@@ -69,12 +69,22 @@ jobs:
           grep -F "Userspace: first user thread scheduled" qemu.log
           grep -F "Timer: IRQ0 enabled" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
+
+          # Timer preemption + saved-frame user resume proof.
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
           grep -F "Userspace: entering ring3" qemu.log
           grep -F "Userspace: first syscall reached kernel" qemu.log
           grep -F "Scheduler: user task preempted back to kernel" qemu.log
           grep -F "Scheduler: saved user IRQ frame selected for resume" qemu.log
           grep -F "Userspace: resumed user thread reached syscall" qemu.log
+
+          # Blocking SLEEP syscall + timer wake + redispatch proof.
+          grep -F "Scheduler: user task entered SLEEPING" qemu.log
+          grep -F "Userspace: sleep syscall requested" qemu.log
+          grep -F "Scheduler: sleeping user task descheduled" qemu.log
+          grep -F "Scheduler: sleeping user task woke" qemu.log
+          grep -F "Scheduler: woke user task selected for resume" qemu.log
+          grep -F "Userspace: woke sleeping user thread reached syscall" qemu.log
 
       - name: Upload kernel artifacts
         if: always()
