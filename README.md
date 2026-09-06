@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **5-5 / 5-6 → 6-4 / 6-5**。timer preemption・saved-frame resume・first user thread起動の実動作確認を完了し、thread state遷移とsleep/wake統合、次のprocess/thread lifecycleへ進みます。
+> **Current focus:** **7-4 handle / descriptor基盤 → 6-4 general spawn**。BLOCKED/SLEEPING、timer wake、cross-process CR3、exit/reap、wait、versioned syscall ABI、read/write user pointer validationまでQEMUで実動作確認済みです。次はuserspace resourceを安全に参照するhandle層を作り、trusted boot-image selectorに限定されたspawnを一般化します。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -96,7 +96,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **3-4** timer初期化
 - [x] **3-5** canonical timer API
 - [x] **3-6** timerからschedulerへのpreemption接続
-- [ ] **3-7** sleep / wake / timeout semanticsの完全化
+- [-] **3-7** sleep / wake / timeout semanticsの完全化
 - [ ] **3-8** 複数timer sourceへの適応
 
 ## 4. Physical / Virtual Memory
@@ -106,7 +106,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **4-3** page table / VMM基盤
 - [x] **4-4** kernel address space維持
 - [x] **4-5** user address space基盤
-- [-] **4-6** processごとのCR3切替検証
+- [x] **4-6** processごとのCR3切替検証
 - [-] **4-7** user stack / kernel stack境界整理
 - [ ] **4-8** copy-on-write / advanced VM features
 - [ ] **4-9** memory pressure / reclamation
@@ -117,8 +117,8 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [-] **5-2** context object / switch ABI
 - [x] **5-3** timer preemption経路
 - [x] **5-4** 保存済みregister frameからのthread resume
-- [*] **5-5** runnable / blocked / sleeping遷移の完全化
-- [*] **5-6** sleep / wakeとschedulerの統合
+- [x] **5-5** runnable / blocked / sleeping遷移の完全化
+- [x] **5-6** sleep / wakeとschedulerの統合
 - [ ] **5-7** CPU accounting
 - [ ] **5-8** priority / affinity基盤
 - [ ] **5-9** SMP scheduling / load balancing
@@ -127,21 +127,21 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 ## 6. Process / Thread
 
 - [x] **6-1** thread object / lifecycleの基本
-- [-] **6-2** process object / address space紐付け
+- [x] **6-2** process object / address space紐付け
 - [x] **6-3** first user thread起動経路
-- [*] **6-4** user threadのfork / spawn相当
-- [*] **6-5** process exit / cleanup
-- [ ] **6-6** wait / parent-child lifecycle
-- [ ] **6-7** 複数thread / 複数process実行
+- [-] **6-4** user threadのfork / spawn相当
+- [x] **6-5** process exit / cleanup
+- [x] **6-6** wait / parent-child lifecycle
+- [-] **6-7** 複数thread / 複数process実行
 - [ ] **6-8** signal / cancellation相当
 - [ ] **6-9** resource accounting / limits
 
 ## 7. Syscall / IPC
 
-- [ ] **7-1** syscall entry/exit ABI
-- [ ] **7-2** syscall番号・ABI versioning
-- [ ] **7-3** user pointer validation
-- [ ] **7-4** handle / descriptor基盤
+- [x] **7-1** syscall entry/exit ABI
+- [x] **7-2** syscall番号・ABI versioning
+- [x] **7-3** user pointer validation
+- [*] **7-4** handle / descriptor基盤
 - [ ] **7-5** pipe
 - [ ] **7-6** message queue
 - [ ] **7-7** event / wait object
@@ -282,29 +282,39 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 ## Current Development Position
 
-### Verified scheduler/userspace boundary
+### Verified scheduler / process lifecycle
 
-**3-6 + 5-3 + 5-4 + 6-3: timer preemption → saved-frame resume → first user thread**
+**3-6 + 4-6 + 5-3〜5-6 + 6-2〜6-3 + 6-5〜6-6**
 
-GitHub Actions上のx86_64 QEMU smoke testで、kernel taskからtimer IRQによってuser taskへ切り替わり、ring3のuser programがsyscallへ到達した後、再びtimer IRQでkernel taskへpreemptされ、保存済みuser IRQ frameから再開してもう一度syscallへ到達する往復経路を確認済みです。
+GitHub Actions上のx86_64 QEMU smoke testで、timer IRQによるring3 taskへのpreemption、保存済みIRQ frameからのresume、PID 1 / PID 2間のCR3切替、BLOCKED / SLEEPING遷移、timer deadline wake、child EXIT、address-space / kernel-stack cleanup、parent WAITのwake/resumeまで実CPU経路で確認済みです。
 
-この経路では、IRQ entryで全GPRを保存し、Schedulerがtask state・CR3・TSS.rsp0を切り替え、選択したregister frameをIRQ epilogueが復元して`iretq`します。
+### Verified syscall boundary
+
+**7-1〜7-3: versioned ABI + user pointer validation**
+
+`int 0x80` entryでは全GPRを保存し、共通ABI headerでsyscall番号・register ABI・error表現・ABI versionを固定しています。user pointerは対象processのpage tableを走査してPRESENT / USER / WRITABLEを検査し、kernelはuser virtual addressを直接dereferenceせず、検証済みphysical mappingをページ単位でcopyします。
+
+QEMU smokeでは、read-only `.rodata`からのcopy-in、NULL pointer拒否、writable `.data`へのcopy-out、read-only `.rodata`へのcopy-out拒否を確認済みです。またNX PTEを使用する前に`IA32_EFER.NXE`を有効化し、非実行user pageがreserved-bit page faultにならないことも実行経路で検証しています。
 
 ### Primary work
 
-**5-5 → 5-6: task state transition + sleep / wake integration**
+**7-4: handle / descriptor foundation**
 
-次はREADY / RUNNINGだけでなく、BLOCKED / SLEEPINGを実際のrun queue選択とtimer wakeupへ接続し、待機中threadを実行対象から確実に除外して期限到達時に再びrunnableへ戻せる状態遷移を完成させます。
+次はraw kernel pointerや内部object IDをuserspace ABIへ露出させず、processごとのresource参照をgeneration付きhandle / descriptorとして管理する基盤を作ります。type・rights・lifetime・close semanticsを最初に固定し、その上へpipe、event、shared memory、VFS objectを載せます。
 
 ### Parallel integration
 
-**6-4 → 6-5: spawn + process exit / cleanup**
+**6-4: general spawn**
 
-first user thread起動経路を基礎に、追加user thread/processを生成できるspawn経路と、終了時のthread・address space・kernel stack・resource cleanupを整備します。
+現行spawnはtrusted boot moduleをselectorで選ぶ最小実装です。user pointer validationが完成したため、今後はpath / image specificationを安全にuserspaceから受け取り、一般的なprocess launchへ拡張します。
 
-### Next boundary
+### Deliberately still partial
 
-上記のlifecycleが安定した後は、**7-1 syscall entry/exit ABI**を正式化し、userspaceとkernelの境界を固定します。
+- **3-7**: sleep/wakeは動作するが、一般timeout semantics全体は未完成
+- **4-7**: user/kernel stackは動作するが、guard page・overflow policy・可変stack policyは未完成
+- **5-2**: IRQ preemption contextとcooperative kernel contextは分離済みだが、context ABI全体の整理は継続中
+- **6-4**: spawnはtrusted boot-image selector限定
+- **6-7**: 複数processの実行は確認済みだが、一般的なmulti-thread/multi-process runtimeは未完成
 
 ---
 
