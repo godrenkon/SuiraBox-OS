@@ -1,0 +1,22 @@
+name: file-handle-refresh-host
+
+on:
+  push:
+    branches:
+      - feat/gui-framebuffer-bootstrap
+  pull_request:
+    branches:
+      - feat/gui-framebuffer-bootstrap
+
+jobs:
+  file-handle-refresh-host:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile multi-handle refresh test
+        run: |
+          gcc -std=c11 -Wall -Wextra -Werror -Ikernel \
+            tests/file_handle_refresh_host_test.c kernel/fs_syscall.c \
+            -o /tmp/file-handle-refresh-host-test
+      - name: Run multi-handle refresh test
+        run: /tmp/file-handle-refresh-host-test
