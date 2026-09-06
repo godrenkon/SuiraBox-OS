@@ -4,6 +4,8 @@
 #include "process.h"
 #include "process_exec.h"
 #include "user_access.h"
+#include "vfs_object.h"
+#include "vfs_boot_module.h"
 #include <stddef.h>
 
 #define SB_INIT_PID 1u
@@ -23,12 +25,16 @@ _Static_assert(offsetof(sb_irq_frame_t, rdx) == 11u * sizeof(uint64_t),
                "syscall ABI rdx frame offset changed");
 _Static_assert(offsetof(sb_irq_frame_t, rax) == 14u * sizeof(uint64_t),
                "syscall ABI rax frame offset changed");
-_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_SPAWN_REQUEST,
+_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_FILE_SEEK,
                "syscall ABI max-number table is stale");
 _Static_assert(SB_HANDLE_TYPE_PROCESS == SB_HANDLE_ABI_TYPE_PROCESS,
                "kernel/public process handle type mismatch");
+_Static_assert(SB_HANDLE_TYPE_FILE == SB_HANDLE_ABI_TYPE_FILE,
+               "kernel/public file handle type mismatch");
 _Static_assert(SB_HANDLE_RIGHT_QUERY == SB_HANDLE_ABI_RIGHT_QUERY,
                "kernel/public handle rights mismatch");
+_Static_assert(SB_HANDLE_RIGHT_READ == SB_HANDLE_ABI_RIGHT_READ,
+               "kernel/public read right mismatch");
 
 static int first_user_syscall_logged;
 static uint64_t first_user_task_id;
@@ -49,6 +55,10 @@ static int handle_open_logged;
 static int handle_query_logged;
 static int handle_close_logged;
 static int stale_handle_logged;
+static int file_open_logged;
+static int file_fault_logged;
+static int file_read_logged;
+static int file_seek_logged;
 static int general_spawn_request_logged;
 static int general_spawn_created_logged;
 static uint64_t general_spawn_pid;
@@ -92,6 +102,21 @@ static uint64_t syscall_handle_error(int result) {
     }
 }
 
+static uint64_t syscall_vfs_error(int result) {
+    switch (result) {
+        case SB_VFS_OBJECT_ACCESS:
+            return syscall_error(SB_SYS_ERROR_RIGHTS);
+        case SB_VFS_OBJECT_IO:
+            return syscall_error(SB_SYS_ERROR_IO);
+        case SB_VFS_OBJECT_INVALID:
+        case SB_VFS_OBJECT_NOT_SUPPORTED:
+        case SB_VFS_OBJECT_CLOSED:
+        case SB_VFS_OBJECT_RANGE:
+        default:
+            return syscall_error(SB_SYS_ERROR_INVALID);
+    }
+}
+
 static uint64_t syscall_process_id(void) {
     sb_task_t *task = scheduler_current();
     return task != 0 ? task->process_id : 0u;
@@ -120,6 +145,9 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_HANDLE_INFO:
         case SB_SYS_HANDLE_CLOSE:
         case SB_SYS_SPAWN_REQUEST:
+        case SB_SYS_FILE_OPEN_BOOT_MODULE:
+        case SB_SYS_FILE_READ:
+        case SB_SYS_FILE_SEEK:
             return syscall_error(SB_SYS_ERROR_INVALID);
         case SB_SYS_SLEEP:
             return scheduler_sleep_current(arg0) == 0
@@ -288,6 +316,168 @@ static sb_irq_frame_t *syscall_handle_close(sb_irq_frame_t *frame,
     return frame;
 }
 
+static sb_irq_frame_t *syscall_file_open_boot_module(sb_irq_frame_t *frame,
+                                                      sb_task_t *task) {
+    sb_process_t *process = syscall_current_process(task);
+    if (process == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    const uint64_t length = frame->rsi;
+    if (length == 0u) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+    if (length > SB_SYS_FILE_NAME_MAX) {
+        frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
+        return frame;
+    }
+
+    char module_name[SB_SYS_FILE_NAME_MAX + 1u];
+    if (user_copy_from(process, module_name, frame->rdi, length) != 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
+        return frame;
+    }
+    for (uint64_t i = 0u; i < length; ++i) {
+        if (module_name[i] == '\0' || module_name[i] == ' ' || module_name[i] == '\t') {
+            frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+            return frame;
+        }
+    }
+    module_name[length] = '\0';
+
+    if (!process_registered_boot_module_exists(module_name)) {
+        frame->rax = syscall_error(SB_SYS_ERROR_NOT_FOUND);
+        return frame;
+    }
+
+    sb_vfs_file_t *file = 0;
+    const int open_result = sb_vfs_boot_module_open(module_name, &file);
+    if (open_result != SB_VFS_OBJECT_OK || file == 0) {
+        frame->rax = syscall_vfs_error(open_result);
+        return frame;
+    }
+
+    sb_handle_t handle = SB_HANDLE_INVALID;
+    const int handle_result = sb_handle_allocate(&process->handles,
+                                                 SB_HANDLE_TYPE_FILE,
+                                                 SB_HANDLE_RIGHT_READ |
+                                                     SB_HANDLE_RIGHT_QUERY,
+                                                 file,
+                                                 sb_vfs_file_handle_close,
+                                                 &handle);
+    if (handle_result != SB_HANDLE_OK) {
+        sb_vfs_file_handle_close(file);
+        frame->rax = syscall_handle_error(handle_result);
+        return frame;
+    }
+
+    frame->rax = handle;
+    if (!file_open_logged) {
+        file_open_logged = 1;
+        syscall_debug("File: boot module opened as FILE handle\r\n");
+    }
+    return frame;
+}
+
+static sb_irq_frame_t *syscall_file_read(sb_irq_frame_t *frame,
+                                          sb_task_t *task) {
+    sb_process_t *process = syscall_current_process(task);
+    if (process == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    sb_vfs_file_t *file = 0;
+    const int lookup_result = sb_handle_lookup(&process->handles,
+                                               (sb_handle_t)frame->rdi,
+                                               SB_HANDLE_TYPE_FILE,
+                                               SB_HANDLE_RIGHT_READ,
+                                               (void **)&file);
+    if (lookup_result != SB_HANDLE_OK || file == 0) {
+        frame->rax = syscall_handle_error(lookup_result);
+        return frame;
+    }
+
+    const uint64_t length = frame->rdx;
+    if (length > SB_SYS_FILE_IO_MAX) {
+        frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
+        return frame;
+    }
+    if (length == 0u) {
+        frame->rax = 0u;
+        return frame;
+    }
+
+    if (user_access_validate(process,
+                             frame->rsi,
+                             length,
+                             SB_USER_ACCESS_WRITE) != 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
+        if (!file_fault_logged) {
+            file_fault_logged = 1;
+            syscall_debug("File: invalid output pointer rejected before read\r\n");
+        }
+        return frame;
+    }
+
+    uint8_t buffer[SB_SYS_FILE_IO_MAX];
+    uint64_t bytes_read = 0u;
+    const uint64_t original_offset = file->offset;
+    const int read_result = sb_vfs_file_read(file, buffer, length, &bytes_read);
+    if (read_result != SB_VFS_OBJECT_OK) {
+        frame->rax = syscall_vfs_error(read_result);
+        return frame;
+    }
+
+    if (bytes_read != 0u && user_copy_to(process, frame->rsi, buffer, bytes_read) != 0) {
+        (void)sb_vfs_file_seek(file, original_offset);
+        frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
+        return frame;
+    }
+
+    frame->rax = bytes_read;
+    if (bytes_read != 0u && !file_read_logged) {
+        file_read_logged = 1;
+        syscall_debug("File: FILE handle read copied to userspace\r\n");
+    }
+    return frame;
+}
+
+static sb_irq_frame_t *syscall_file_seek(sb_irq_frame_t *frame,
+                                          sb_task_t *task) {
+    sb_process_t *process = syscall_current_process(task);
+    if (process == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    sb_vfs_file_t *file = 0;
+    const int lookup_result = sb_handle_lookup(&process->handles,
+                                               (sb_handle_t)frame->rdi,
+                                               SB_HANDLE_TYPE_FILE,
+                                               SB_HANDLE_RIGHT_READ,
+                                               (void **)&file);
+    if (lookup_result != SB_HANDLE_OK || file == 0) {
+        frame->rax = syscall_handle_error(lookup_result);
+        return frame;
+    }
+
+    const int seek_result = sb_vfs_file_seek(file, frame->rsi);
+    if (seek_result != SB_VFS_OBJECT_OK) {
+        frame->rax = syscall_vfs_error(seek_result);
+        return frame;
+    }
+
+    frame->rax = 0u;
+    if (!file_seek_logged) {
+        file_seek_logged = 1;
+        syscall_debug("File: FILE handle seek OK\r\n");
+    }
+    return frame;
+}
+
 static sb_irq_frame_t *syscall_spawn_request(sb_irq_frame_t *frame,
                                               sb_task_t *task) {
     sb_process_t *parent = syscall_current_process(task);
@@ -422,6 +612,18 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
 
     if (number == SB_SYS_HANDLE_CLOSE) {
         return syscall_handle_close(frame, task);
+    }
+
+    if (number == SB_SYS_FILE_OPEN_BOOT_MODULE) {
+        return syscall_file_open_boot_module(frame, task);
+    }
+
+    if (number == SB_SYS_FILE_READ) {
+        return syscall_file_read(frame, task);
+    }
+
+    if (number == SB_SYS_FILE_SEEK) {
+        return syscall_file_seek(frame, task);
     }
 
     if (number == SB_SYS_SPAWN_REQUEST) {
@@ -596,6 +798,10 @@ void syscall_init(void) {
     handle_query_logged = 0;
     handle_close_logged = 0;
     stale_handle_logged = 0;
+    file_open_logged = 0;
+    file_fault_logged = 0;
+    file_read_logged = 0;
+    file_seek_logged = 0;
     general_spawn_request_logged = 0;
     general_spawn_created_logged = 0;
     general_spawn_pid = 0u;

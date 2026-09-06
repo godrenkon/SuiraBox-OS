@@ -14,10 +14,13 @@
  *    aimed at .rodata and must be rejected as non-writable without #PF.
  * 4. Open/query/close a process-local handle and prove the old generation is
  *    rejected as stale after close.
- * 5. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
- * 6. SPAWN_REQUEST copies a versioned userspace request + module name, assigns
+ * 5. Open a boot module through the VFS object layer as a FILE handle, verify
+ *    type/rights, prove failed output validation does not consume bytes, read
+ *    the ELF magic, seek, read again, close, and reject the stale handle.
+ * 6. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
+ * 7. SPAWN_REQUEST copies a versioned userspace request + module name, assigns
  *    dynamic PID/TID values, executes the child, and waits for its exit.
- * 7. SLEEP proves timer-deadline sleep/wakeup and saved-frame resume.
+ * 8. SLEEP proves timer-deadline sleep/wakeup and saved-frame resume.
  */
 _start:
     mov $SB_SYS_GET_TICKS, %rax
@@ -94,6 +97,85 @@ _start:
     cmp $SB_SYS_ERROR_STALE, %rax
     jne lifecycle_failed
 
+    /* Transitional boot-module provider, but a real generic VFS file object and
+     * process-local FILE handle. */
+    lea file_module_name(%rip), %rdi
+    mov $file_module_name_len, %rsi
+    mov $SB_SYS_FILE_OPEN_BOOT_MODULE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+
+    mov %r12, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_HANDLE_ABI_TYPE_FILE, SB_HANDLE_INFO_TYPE_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $(SB_HANDLE_ABI_RIGHT_READ | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+
+    /* This destination is read-only. The kernel must reject it before touching
+     * the file object, so the next valid read still starts at offset zero. */
+    mov %r12, %rdi
+    lea pointer_message(%rip), %rsi
+    mov $4, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    lea file_header_buffer(%rip), %rsi
+    mov $4, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $4, %rax
+    jne lifecycle_failed
+    cmpl $0x464c457f, file_header_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    xor %rsi, %rsi
+    mov $SB_SYS_FILE_SEEK, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    movl $0, file_header_buffer(%rip)
+    mov %r12, %rdi
+    lea file_header_buffer(%rip), %rsi
+    mov $4, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $4, %rax
+    jne lifecycle_failed
+    cmpl $0x464c457f, file_header_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_STALE, %rax
+    jne lifecycle_failed
+
+    lea file_message(%rip), %rdi
+    mov $file_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $file_message_len, %rax
+    jne lifecycle_failed
+
     mov $50000, %rcx
 preempt_spin:
     pause
@@ -166,6 +248,14 @@ pointer_message:
     .ascii "Userspace: validated user pointer copy OK\r\n"
 .set pointer_message_len, . - pointer_message
 
+file_message:
+    .ascii "Userspace: FILE handle read/seek lifecycle OK\r\n"
+.set file_message_len, . - file_message
+
+file_module_name:
+    .ascii "user-child"
+.set file_module_name_len, . - file_module_name
+
 spawn_module_name:
     .ascii "user-child"
 .set spawn_module_name_len, . - spawn_module_name
@@ -178,6 +268,8 @@ abi_info_buffer:
 handle_info_buffer:
     .long 0
     .long 0
+    .quad 0
+file_header_buffer:
     .quad 0
 
 .align 8

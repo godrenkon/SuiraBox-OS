@@ -80,6 +80,13 @@ jobs:
           grep -F "Handle: close invalidated generation" qemu.log
           grep -F "Handle: stale generation rejected" qemu.log
 
+          # Generic VFS file object exposed through a process-local FILE handle.
+          grep -F "File: boot module opened as FILE handle" qemu.log
+          grep -F "File: invalid output pointer rejected before read" qemu.log
+          grep -F "File: FILE handle read copied to userspace" qemu.log
+          grep -F "File: FILE handle seek OK" qemu.log
+          grep -F "Userspace: FILE handle read/seek lifecycle OK" qemu.log
+
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
           grep -F "Userspace: entering ring3" qemu.log
           grep -F "Userspace: first syscall reached kernel" qemu.log
@@ -145,6 +152,13 @@ jobs:
                   "Handle: type and rights query OK",
                   "Handle: close invalidated generation",
                   "Handle: stale generation rejected",
+              ],
+              "vfs-file-handle": [
+                  "File: boot module opened as FILE handle",
+                  "File: invalid output pointer rejected before read",
+                  "File: FILE handle read copied to userspace",
+                  "File: FILE handle seek OK",
+                  "Userspace: FILE handle read/seek lifecycle OK",
               ],
               "legacy-wait/child/reap": [
                   "Userspace: spawn syscall created child process",

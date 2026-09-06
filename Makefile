@@ -27,6 +27,7 @@ PCI_OBJ := $(BUILD)/pci.o
 BLOCK_OBJ := $(BUILD)/block.o
 VFS_OBJ := $(BUILD)/vfs.o
 VFS_OBJECT_OBJ := $(BUILD)/vfs_object.o
+VFS_BOOT_MODULE_OBJ := $(BUILD)/vfs_boot_module.o
 STORAGE_TEST_OBJ := $(BUILD)/storage_selftest.o
 ATA_OBJ := $(BUILD)/ata_pio.o
 FAT32_OBJ := $(BUILD)/fat32.o
@@ -87,6 +88,9 @@ $(VFS_OBJ): kernel/vfs.c kernel/vfs.h kernel/block.h | $(BUILD)
 $(VFS_OBJECT_OBJ): kernel/vfs_object.c kernel/vfs_object.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
+$(VFS_BOOT_MODULE_OBJ): kernel/vfs_boot_module.c kernel/vfs_boot_module.h kernel/vfs_object.h kernel/process_exec.h kernel/mm/heap.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
+
 $(STORAGE_TEST_OBJ): kernel/storage_selftest.c kernel/vfs.h kernel/vfs_object.h kernel/block.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
@@ -141,8 +145,8 @@ $(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.
 $(USER_ACCESS_OBJ): kernel/user_access.c kernel/user_access.h kernel/process.h kernel/handle.h include/suirabox/handle_abi.h kernel/mm/address_space.h kernel/mm/pmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
-	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/vfs_object.h kernel/vfs_boot_module.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
 $(SYSCALL_ARCH_OBJ): kernel/arch/x86_64/syscall.S kernel/arch/x86_64/irq_frame.h | $(BUILD)
 	$(AS) --64 $< -o $@
@@ -179,8 +183,8 @@ $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 
 userspace: $(USER_ELF) $(CHILD_ELF)
 
-$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
+$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
 iso: $(KERNEL) $(USER_ELF) $(CHILD_ELF) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub
