@@ -22,8 +22,21 @@ int main(void) {
     assert(sb_desktop_shell_key(&shell, 0x48u) == 0);
     assert(shell.launcher.selected == 0u);
 
+    assert(sb_desktop_shell_key(&shell, 0x50u) == 0);
+    assert(sb_desktop_shell_key(&shell, 0x50u) == 0);
+    assert(shell.launcher.selected == 2u);
+    activated = 0;
+    assert(sb_desktop_shell_key(&shell, 0x1Cu) == 0);
+    assert(activated == 0);
+    assert(shell.launcher.open == 0u);
+
+    assert(sb_desktop_shell_toggle_launcher(&shell) == 0);
+    assert(shell.launcher.open == 1u);
+    assert(sb_desktop_shell_key(&shell, 0x48u) == 0);
+    assert(shell.launcher.selected == 1u);
+    activated = 0;
     assert(sb_desktop_shell_click(&shell, 40, 598, &activated) == 0);
-    assert(activated != 0 && activated[0] == 's');
+    assert(activated != 0 && activated[0] == 'f');
     assert(shell.launcher.open == 0u);
 
     activated = 0;
