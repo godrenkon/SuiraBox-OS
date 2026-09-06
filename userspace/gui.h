@@ -47,6 +47,7 @@ typedef struct {
 
 typedef struct {
     uint32_t id;
+    uint32_t app_id;
     int32_t x;
     int32_t y;
     uint32_t width;
@@ -72,6 +73,10 @@ void sb_gui_init(sb_gui_window_manager_t *wm);
 sb_gui_window_t *sb_gui_create_window(sb_gui_window_manager_t *wm,
                                         int32_t x, int32_t y,
                                         uint32_t width, uint32_t height);
+sb_gui_window_t *sb_gui_create_app_window(sb_gui_window_manager_t *wm,
+                                           uint32_t app_id,
+                                           int32_t x, int32_t y,
+                                           uint32_t width, uint32_t height);
 int sb_gui_destroy_window(sb_gui_window_manager_t *wm, uint32_t id);
 int sb_gui_move_window(sb_gui_window_manager_t *wm, uint32_t id, int32_t x, int32_t y);
 int sb_gui_resize_window(sb_gui_window_manager_t *wm, uint32_t id,
