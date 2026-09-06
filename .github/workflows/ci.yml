@@ -102,6 +102,14 @@ jobs:
           grep -F "Scheduler: woke user task selected for resume" qemu.log
           grep -F "Userspace: woke sleeping user thread reached syscall" qemu.log
 
+          # Any exception is a hard regression, even if later marker checks
+          # would otherwise happen to pass.
+          if grep -Fq "Exception:" qemu.log; then
+            echo "unexpected kernel/user exception detected"
+            grep -F "Exception:" qemu.log
+            exit 1
+          fi
+
           python3 - <<'PY'
           from pathlib import Path
 
