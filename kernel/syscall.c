@@ -222,6 +222,12 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_APP_LAUNCH:
             if (arg0 > UINT32_MAX) return UINT64_MAX;
             return sb_app_launch((uint32_t)arg0) == 0 ? 0u : UINT64_MAX;
+        case SB_SYS_APP_TERMINATE:
+            if (arg0 > UINT32_MAX) return UINT64_MAX;
+            return sb_app_terminate_for_current((uint32_t)arg0, arg1) == 0 ? 0u : UINT64_MAX;
+        case SB_SYS_APP_STATUS:
+            if (arg0 > UINT32_MAX) return 0u;
+            return sb_app_is_running_for_current((uint32_t)arg0) != 0 ? 1u : 0u;
         case SB_SYS_FS_LIST_ROOT:
         case SB_SYS_FS_STAT_ROOT:
         case SB_SYS_FS_READ_ROOT:
