@@ -123,10 +123,10 @@ int sb_app_terminate(uint32_t app_id, uint64_t exit_code) {
 int sb_app_terminate_for_current(uint32_t app_id, uint64_t exit_code) {
     sb_app_instance_t *instance;
     if (!app_id_is_valid(app_id)) return -1;
-    (void)sb_app_reap_exited();
     instance = find_instance(app_id);
     if (!instance_owned_by_current(instance)) return -1;
-    return sb_app_terminate(app_id, exit_code);
+    if (instance->process->state == SB_PROCESS_EXITED) return 0;
+    return process_terminate(instance->process, exit_code);
 }
 
 int sb_app_is_running(uint32_t app_id) {
