@@ -23,8 +23,12 @@ _Static_assert(offsetof(sb_irq_frame_t, rdx) == 11u * sizeof(uint64_t),
                "syscall ABI rdx frame offset changed");
 _Static_assert(offsetof(sb_irq_frame_t, rax) == 14u * sizeof(uint64_t),
                "syscall ABI rax frame offset changed");
-_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_ABI_INFO,
+_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_HANDLE_CLOSE,
                "syscall ABI max-number table is stale");
+_Static_assert(SB_HANDLE_TYPE_PROCESS == SB_HANDLE_ABI_TYPE_PROCESS,
+               "kernel/public process handle type mismatch");
+_Static_assert(SB_HANDLE_RIGHT_QUERY == SB_HANDLE_ABI_RIGHT_QUERY,
+               "kernel/public handle rights mismatch");
 
 static int first_user_syscall_logged;
 static uint64_t first_user_task_id;
@@ -41,6 +45,10 @@ static int abi_version_logged;
 static int invalid_pointer_logged;
 static int writable_pointer_logged;
 static int readonly_pointer_logged;
+static int handle_open_logged;
+static int handle_query_logged;
+static int handle_close_logged;
+static int stale_handle_logged;
 
 static void syscall_debug_char(char c) {
     while (1) {
@@ -57,6 +65,21 @@ static void syscall_debug(const char *s) {
 
 static uint64_t syscall_error(int64_t code) {
     return (uint64_t)code;
+}
+
+static uint64_t syscall_handle_error(int result) {
+    switch (result) {
+        case SB_HANDLE_ERROR_NO_SPACE:
+            return syscall_error(SB_SYS_ERROR_LIMIT);
+        case SB_HANDLE_ERROR_STALE:
+            return syscall_error(SB_SYS_ERROR_STALE);
+        case SB_HANDLE_ERROR_RIGHTS:
+            return syscall_error(SB_SYS_ERROR_RIGHTS);
+        case SB_HANDLE_ERROR_INVALID:
+        case SB_HANDLE_ERROR_TYPE:
+        default:
+            return syscall_error(SB_SYS_ERROR_INVALID);
+    }
 }
 
 static uint64_t syscall_process_id(void) {
@@ -83,6 +106,9 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_WAIT_PROCESS:
         case SB_SYS_LOG_WRITE:
         case SB_SYS_ABI_INFO:
+        case SB_SYS_PROCESS_OPEN_SELF:
+        case SB_SYS_HANDLE_INFO:
+        case SB_SYS_HANDLE_CLOSE:
             return syscall_error(SB_SYS_ERROR_INVALID);
         case SB_SYS_SLEEP:
             return scheduler_sleep_current(arg0) == 0
@@ -158,6 +184,90 @@ static sb_irq_frame_t *syscall_abi_info(sb_irq_frame_t *frame, sb_task_t *task) 
     return frame;
 }
 
+static sb_irq_frame_t *syscall_process_open_self(sb_irq_frame_t *frame,
+                                                  sb_task_t *task) {
+    sb_process_t *process = syscall_current_process(task);
+    if (process == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    sb_handle_t handle = SB_HANDLE_INVALID;
+    const int result = sb_handle_allocate(&process->handles,
+                                          SB_HANDLE_TYPE_PROCESS,
+                                          SB_HANDLE_RIGHT_QUERY,
+                                          process,
+                                          0,
+                                          &handle);
+    if (result != SB_HANDLE_OK) {
+        frame->rax = syscall_handle_error(result);
+        return frame;
+    }
+
+    frame->rax = handle;
+    if (!handle_open_logged) {
+        handle_open_logged = 1;
+        syscall_debug("Handle: userspace process handle opened\r\n");
+    }
+    return frame;
+}
+
+static sb_irq_frame_t *syscall_handle_info(sb_irq_frame_t *frame,
+                                            sb_task_t *task) {
+    sb_process_t *process = syscall_current_process(task);
+    if (process == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    sb_handle_info_t info;
+    const int result = sb_handle_query(&process->handles,
+                                       (sb_handle_t)frame->rdi,
+                                       SB_HANDLE_RIGHT_QUERY,
+                                       &info);
+    if (result != SB_HANDLE_OK) {
+        frame->rax = syscall_handle_error(result);
+        if (result == SB_HANDLE_ERROR_STALE && !stale_handle_logged) {
+            stale_handle_logged = 1;
+            syscall_debug("Handle: stale generation rejected\r\n");
+        }
+        return frame;
+    }
+
+    if (user_copy_to(process, frame->rsi, &info, sizeof(info)) != 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
+        return frame;
+    }
+
+    frame->rax = 0u;
+    if (!handle_query_logged) {
+        handle_query_logged = 1;
+        syscall_debug("Handle: type and rights query OK\r\n");
+    }
+    return frame;
+}
+
+static sb_irq_frame_t *syscall_handle_close(sb_irq_frame_t *frame,
+                                             sb_task_t *task) {
+    sb_process_t *process = syscall_current_process(task);
+    if (process == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    const int result = sb_handle_close(&process->handles,
+                                       (sb_handle_t)frame->rdi);
+    frame->rax = result == SB_HANDLE_OK ? 0u : syscall_handle_error(result);
+    if (result == SB_HANDLE_OK && !handle_close_logged) {
+        handle_close_logged = 1;
+        syscall_debug("Handle: close invalidated generation\r\n");
+    } else if (result == SB_HANDLE_ERROR_STALE && !stale_handle_logged) {
+        stale_handle_logged = 1;
+        syscall_debug("Handle: stale generation rejected\r\n");
+    }
+    return frame;
+}
+
 sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
     if (frame == 0) return 0;
 
@@ -191,6 +301,18 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
 
     if (number == SB_SYS_ABI_INFO) {
         return syscall_abi_info(frame, task);
+    }
+
+    if (number == SB_SYS_PROCESS_OPEN_SELF) {
+        return syscall_process_open_self(frame, task);
+    }
+
+    if (number == SB_SYS_HANDLE_INFO) {
+        return syscall_handle_info(frame, task);
+    }
+
+    if (number == SB_SYS_HANDLE_CLOSE) {
+        return syscall_handle_close(frame, task);
     }
 
     if (number == SB_SYS_SLEEP) {
@@ -333,4 +455,8 @@ void syscall_init(void) {
     invalid_pointer_logged = 0;
     writable_pointer_logged = 0;
     readonly_pointer_logged = 0;
+    handle_open_logged = 0;
+    handle_query_logged = 0;
+    handle_close_logged = 0;
+    stale_handle_logged = 0;
 }
