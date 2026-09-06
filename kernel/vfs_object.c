@@ -1,6 +1,8 @@
 #include "vfs_object.h"
 #include <stdint.h>
 
+#define SB_VFS_LOOKUP_NAME_MAX 63u
+
 static int valid_capabilities(uint32_t capabilities) {
     const uint32_t known = SB_VFS_CAP_READ | SB_VFS_CAP_WRITE | SB_VFS_CAP_LOOKUP;
     return (capabilities & ~known) == 0u;
@@ -62,6 +64,41 @@ int sb_vfs_node_release(sb_vfs_node_t *node) {
         sb_vfs_node_release_fn release = node->ops != 0 ? node->ops->release : 0;
         if (release != 0) release(node);
     }
+    return SB_VFS_OBJECT_OK;
+}
+
+int sb_vfs_node_lookup(sb_vfs_node_t *directory,
+                       const char *name,
+                       uint64_t name_length,
+                       sb_vfs_node_t **node_out) {
+    if (node_out != 0) *node_out = 0;
+    if (directory == 0 || name == 0 || node_out == 0 ||
+        directory->type != SB_VFS_NODE_DIRECTORY || directory->ref_count == 0u ||
+        (directory->capabilities & SB_VFS_CAP_LOOKUP) == 0u ||
+        directory->ops == 0 || directory->ops->lookup == 0 ||
+        name_length == 0u || name_length > SB_VFS_LOOKUP_NAME_MAX) {
+        return SB_VFS_OBJECT_INVALID;
+    }
+
+    for (uint64_t i = 0u; i < name_length; ++i) {
+        if (name[i] == '\0' || name[i] == '/') return SB_VFS_OBJECT_INVALID;
+    }
+
+    sb_vfs_node_t *borrowed = 0;
+    const int result = directory->ops->lookup(directory,
+                                              name,
+                                              name_length,
+                                              &borrowed);
+    if (result != SB_VFS_OBJECT_OK) return result;
+    if (borrowed == 0 || borrowed->type == SB_VFS_NODE_NONE ||
+        borrowed->ref_count == 0u) {
+        return SB_VFS_OBJECT_IO;
+    }
+    if (sb_vfs_node_acquire(borrowed) != SB_VFS_OBJECT_OK) {
+        return SB_VFS_OBJECT_IO;
+    }
+
+    *node_out = borrowed;
     return SB_VFS_OBJECT_OK;
 }
 
