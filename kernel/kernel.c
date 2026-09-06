@@ -14,14 +14,9 @@
 #include "syscall.h"
 #include "arch/x86_64/interrupts.h"
 #include "arch/x86_64/gdt.h"
-#include "arch/x86_64/user_mode.h"
 #include "framebuffer.h"
 
-extern int scheduler_add_kernel_task(uint64_t id, uint32_t priority);
-extern sb_task_t *scheduler_pick_next(void);
-extern uint32_t scheduler_task_count(void);
 extern void sb_syscall_int80_stub(void);
-extern void arch_enter_user(uint64_t entry_point, uint64_t user_stack);
 extern int sb_storage_selftest(void);
 extern char __kernel_start;
 extern char __kernel_end;
@@ -137,20 +132,28 @@ static int heap_selftest(void) {
 }
 
 static int scheduler_selftest(void) {
-    if (scheduler_current() == 0 || scheduler_task_count() != 1u) return 0;
+    if (scheduler_current() == 0 || scheduler_current()->id != 1u || scheduler_task_count() != 1u) return 0;
     if (scheduler_add_kernel_task(2u, 128u) != 0 || scheduler_add_kernel_task(3u, 128u) != 0 || scheduler_task_count() != 3u) return 0;
-    if (scheduler_pick_next() == 0 || scheduler_current()->id != 2u) return 0;
-    if (scheduler_pick_next() == 0 || scheduler_current()->id != 3u) return 0;
-    if (scheduler_pick_next() == 0 || scheduler_current()->id != 1u) return 0;
-    return 1;
+    sb_task_t *next = scheduler_pick_next();
+    if (next == 0 || next->id != 2u) return 0;
+    if (scheduler_current() == 0 || scheduler_current()->id != 1u) return 0;
+    if (scheduler_add_kernel_task(2u, 128u) != -2) return 0;
+    return scheduler_task_count() == 3u;
 }
 
 static int process_syscall_selftest(void) {
     sb_process_t *process; sb_thread_t *thread;
     process_init(); syscall_init();
-    process = process_create(100u); if (process == 0 || process_count() != 1u) return 0;
-    thread = process_create_thread(process, 1001u, 128u); if (thread == 0 || process->thread_count != 1u) return 0;
-    return process_get(100u) == process;
+    process = process_create(100u);
+    if (process == 0 || process_count() != 1u) return 0;
+    thread = process_create_thread(process, 1001u, 128u);
+    if (thread == 0 || process->thread_count != 1u) {
+        process_destroy(process);
+        return 0;
+    }
+    const int ok = process_get(100u) == process;
+    process_destroy(process);
+    return ok && process_count() == 0u;
 }
 
 static sb_process_t *prepare_init_process(uint64_t multiboot_info, sb_process_image_t *image) {
@@ -235,7 +238,11 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
 
     serial_write("CPU: initializing GDT/TSS...\r\n"); gdt_init(); serial_write("CPU: GDT/TSS ready\r\n");
     serial_write("Scheduler: initializing...\r\n"); scheduler_init();
-    serial_write(scheduler_selftest() ? "Scheduler: task table/round-robin selection OK\r\n" : "Scheduler: task table/round-robin selection FAILED\r\n");
+    const int scheduler_ok = scheduler_selftest();
+    serial_write(scheduler_ok ? "Scheduler: selection/commit separation OK\r\n" : "Scheduler: selection/commit separation FAILED\r\n");
+    scheduler_init();
+    serial_write("Scheduler: runtime task table reset\r\n");
+
     serial_write("Process: initializing...\r\n");
     serial_write(process_syscall_selftest() ? "Process/Syscall: model and dispatch OK\r\n" : "Process/Syscall: model and dispatch FAILED\r\n");
 
@@ -247,22 +254,33 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     init_process = prepare_init_process(multiboot_info, &init_image);
     serial_write(init_process != 0 ? "Userspace: ELF + address-space + stack preparation OK\r\n" : "Userspace: ELF + address-space + stack preparation FAILED\r\n");
 
+    int user_task_ready = 0;
+    if (init_process != 0 && init_process->thread_count > 0u) {
+        sb_thread_t *init_thread = &init_process->threads[0];
+        const int add_result = scheduler_add_user_task(init_thread->tid,
+                                                       init_process->pid,
+                                                       init_thread->priority,
+                                                       init_process->address_space.pml4_physical,
+                                                       init_image.entry_point,
+                                                       init_image.user_stack_top);
+        if (add_result == 0) {
+            init_process->state = SB_PROCESS_RUNNING;
+            init_thread->state = SB_PROCESS_RUNNING;
+            user_task_ready = 1;
+            serial_write("Userspace: first user thread scheduled\r\n");
+        } else {
+            serial_write("Userspace: scheduler registration FAILED\r\n");
+        }
+    }
+
     serial_write("Timer: initializing PIT at 100 Hz...\r\n");
     timer_init(100u);
     serial_write("Timer: IRQ0 enabled\r\n");
-    serial_write("Userspace: ring3 execution path prepared\r\n");
+    serial_write("Userspace: scheduler-owned ring3 launch armed\r\n");
     serial_write("Phase 1 bootstrap complete.\r\n");
 
-    if (init_process != 0) {
-        serial_write("Userspace: activating init address space\r\n");
-        init_process->state = SB_PROCESS_RUNNING;
-        if (process_activate(init_process) == 0) {
-            serial_write("Userspace: entering ring3\r\n");
-            arch_enter_user(init_image.entry_point, init_image.user_stack_top);
-            serial_write("Userspace: returned unexpectedly; staying in kernel halt loop\r\n");
-        } else {
-            serial_write("Userspace: address-space activation FAILED\r\n");
-        }
+    if (!user_task_ready) {
+        serial_write("Userspace: no runnable init thread; staying in kernel halt loop\r\n");
     }
 
     for (;;) __asm__ volatile ("hlt");

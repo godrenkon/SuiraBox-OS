@@ -94,9 +94,14 @@ void timer_init(uint32_t frequency_hz) {
 }
 
 uint64_t timer_ticks(void) { return ticks; }
-void sb_timer_tick(void) {
+
+sb_irq_frame_t *sb_timer_tick(sb_irq_frame_t *frame) {
     ++ticks;
     scheduler_tick();
-    if ((ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u && scheduler_task_count() > 1u)
-        (void)scheduler_pick_next();
+    if (frame != 0 &&
+        (ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u &&
+        scheduler_task_count() > 1u) {
+        return scheduler_preempt(frame);
+    }
+    return frame;
 }
