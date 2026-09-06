@@ -126,14 +126,36 @@ static void present_damage(sb_surface_t *surface, uint32_t width, uint32_t heigh
     sb_desktop_shell_present_launcher();
 }
 
+static uint32_t shell_app_id(const char *id) {
+    if (id == 0) return 0u;
+    if (id[0] == 's' && id[1] == 'e' && id[2] == 't' && id[3] == 't') return 1u;
+    if (id[0] == 'f' && id[1] == 'i' && id[2] == 'l' && id[3] == 'e') return 2u;
+    if (id[0] == 't' && id[1] == 'e' && id[2] == 'r' && id[3] == 'm') return 3u;
+    return 0u;
+}
+
 static int shell_open_app(sb_gui_window_manager_t *wm, const char *id, uint32_t width, uint32_t height) {
     int32_t x;
     int32_t y;
-    if (wm == 0 || id == 0 || width < SB_GUI_MIN_WINDOW_WIDTH || height < SB_GUI_MIN_WINDOW_HEIGHT) return -1;
-    if (id[0] == 's') { x = 170; y = 120; }
-    else if (id[0] == 'f') { x = 230; y = 150; }
+    const uint32_t app_id = shell_app_id(id);
+    if (wm == 0 || app_id == 0u || width < SB_GUI_MIN_WINDOW_WIDTH || height < SB_GUI_MIN_WINDOW_HEIGHT) return -1;
+    if (app_id == 1u) { x = 170; y = 120; }
+    else if (app_id == 2u) { x = 230; y = 150; }
     else { x = 290; y = 180; }
-    return sb_gui_create_window(wm, x, y, width, height) != 0 ? 0 : -1;
+    return sb_gui_create_app_window(wm, app_id, x, y, width, height) != 0 ? 0 : -1;
+}
+
+static void sync_app_windows(sb_gui_window_manager_t *wm) {
+    uint32_t index = 0u;
+    if (wm == 0) return;
+    while (index < wm->count) {
+        sb_gui_window_t *window = &wm->windows[index];
+        if (window->app_id != 0u && sb_app_is_running(window->app_id) == 0u) {
+            (void)sb_gui_destroy_window(wm, window->id);
+            continue;
+        }
+        ++index;
+    }
 }
 
 void sb_desktop_main(void) {
@@ -184,6 +206,7 @@ void sb_desktop_main(void) {
     else present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
 
     for (;;) {
+        sync_app_windows(&wm);
         const uint64_t key = sb_input_key();
         if (key != 0u && (key & 0x80u) == 0u) {
             sb_gui_event_t event = {SB_GUI_EVENT_KEY, g_cursor_x, g_cursor_y, 0, 0, 0, (uint8_t)key};
@@ -220,6 +243,13 @@ void sb_desktop_main(void) {
                         sb_surface_damage_all(&surface);
                         present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
                         if (shell.launcher.open != 0u) draw_launcher(&shell);
+                    } else if (event.key == 0x1Cu) {
+                        const char *activated_id = 0;
+                        if (sb_desktop_shell_activate_selected(&shell, &activated_id) == 0 && activated_id != 0 &&
+                            shell_open_app(&wm, activated_id, 420u, 260u) == 0) {
+                            sb_surface_damage_all(&surface);
+                            present_damage(&surface, width, height, &wm, damage, SB_SURFACE_MAX_DAMAGE);
+                        }
                     }
                 }
             }
@@ -289,12 +319,18 @@ void sb_desktop_main(void) {
                             sb_gui_window_t *hit = sb_gui_hit_test(&wm, g_cursor_x, g_cursor_y);
                             if (hit != 0) {
                                 const uint32_t id = hit->id;
+                                const uint32_t app_id = hit->app_id;
                                 const int32_t wx = hit->x; const int32_t wy = hit->y;
                                 const uint32_t ww = hit->width; const uint32_t wh = hit->height;
                                 const sb_gui_control_t control = sb_gui_hit_control(hit, g_cursor_x, g_cursor_y);
                                 const sb_gui_resize_edge_t edge = sb_gui_hit_resize(hit, g_cursor_x, g_cursor_y);
                                 (void)sb_gui_focus_window(&wm, id);
-                                if (control == SB_GUI_CONTROL_CLOSE) { mark_damage(&surface, wx, wy, ww, wh); (void)sb_gui_destroy_window(&wm, id); dragging = 0u; resizing = SB_GUI_RESIZE_NONE; }
+                                if (control == SB_GUI_CONTROL_CLOSE) {
+                                    mark_damage(&surface, wx, wy, ww, wh);
+                                    if (app_id != 0u) (void)sb_app_terminate(app_id, 0u);
+                                    (void)sb_gui_destroy_window(&wm, id);
+                                    dragging = 0u; resizing = SB_GUI_RESIZE_NONE;
+                                }
                                 else if (control == SB_GUI_CONTROL_MINIMIZE) { mark_damage(&surface, wx, wy, ww, wh); mark_taskbar_damage(&surface, width, height); (void)sb_gui_set_minimized(&wm, id, 1u); dragging = 0u; resizing = SB_GUI_RESIZE_NONE; }
                                 else if (control == SB_GUI_CONTROL_MAXIMIZE) { mark_damage(&surface, wx, wy, ww, wh); (void)sb_gui_set_maximized(&wm, id, hit->maximized == 0u ? 1u : 0u, width, height); dragging = 0u; resizing = SB_GUI_RESIZE_NONE; }
                                 else if (edge != SB_GUI_RESIZE_NONE) { resizing = edge; dragging = 0u; drag_dx = g_cursor_x - wx; drag_dy = g_cursor_y - wy; }
