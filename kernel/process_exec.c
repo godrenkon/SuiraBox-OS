@@ -125,6 +125,15 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
     return process;
 }
 
+int process_registered_boot_module_exists(const char *module_name) {
+    if (registered_multiboot_info == 0u || module_name == 0) return 0;
+    sb_multiboot_module_t module;
+    return multiboot_find_module(registered_multiboot_info,
+                                 module_name,
+                                 &module) == 0 &&
+           module.end > module.start;
+}
+
 sb_process_t *process_spawn_registered_boot_module(const char *module_name,
                                                    uint64_t pid,
                                                    uint64_t parent_pid,
