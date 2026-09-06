@@ -19,5 +19,5 @@ int sb_fat32_read_directory_entry(sb_fat32_t *fs, uint32_t directory_cluster,
 int sb_fat32_refresh_dirent(sb_fat32_t *fs, sb_fat32_dirent_t *entry) {
     (void)fs;
     (void)entry;
-    return 0;
+    return 1;
 }
