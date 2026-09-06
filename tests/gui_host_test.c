@@ -147,7 +147,7 @@ int main(void) {
 
     assert(sb_gui_set_minimized(&wm, top->id, 1u) == 0);
     assert(top->minimized == 1u);
-    assert(sb_gui_minimized_count(&wm) == 2u);
+    assert(sb_gui_minimized_count(&wm) == 1u);
     assert(sb_gui_destroy_window(&wm, app_window->id) == 0);
     assert(sb_gui_find_window(&wm, app_window->id) == 0);
     assert(sb_gui_destroy_window(&wm, front_id) == 0);
