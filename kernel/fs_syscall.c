@@ -241,6 +241,15 @@ static sb_fs_handle_t *handle_for(sb_process_t *process, uint64_t fd) {
     return handle->in_use != 0u && handle->owner == process ? handle : 0;
 }
 
+static int refresh_handle(sb_process_t *process, sb_fs_handle_t *handle) {
+    sb_fat32_t *fs;
+    if (process == 0 || handle == 0 || handle->owner != process || handle->in_use == 0u) return -1;
+    fs = sb_storage_fat32();
+    if (fs == 0 || !sb_fat32_refresh_dirent(fs, &handle->entry)) return -1;
+    if (handle->offset > handle->entry.file_size) handle->offset = handle->entry.file_size;
+    return 0;
+}
+
 static uint64_t open_file(const char *user_path, uint32_t path_length,
                           uint32_t flags, uint32_t initial_size) {
     sb_process_t *process = current_process();
@@ -299,6 +308,7 @@ static uint64_t read_file_handle(uint64_t fd, void *user_buffer, uint32_t length
         (handle->flags & SB_FS_OPEN_READ) == 0u) return UINT64_MAX;
     if (length == 0u) return 0u;
     if (validate_user(user_buffer, length, 1u) != 0) return UINT64_MAX;
+    if (refresh_handle(process, handle) != 0) return UINT64_MAX;
     offset = handle->offset;
     if (offset >= handle->entry.file_size) return 0u;
     if (length > handle->entry.file_size - offset) length = handle->entry.file_size - offset;
@@ -326,6 +336,7 @@ static uint64_t write_file_handle(uint64_t fd, const void *user_buffer, uint32_t
         (handle->flags & SB_FS_OPEN_WRITE) == 0u) return UINT64_MAX;
     if (length == 0u) return 0u;
     if (validate_user(user_buffer, length, 0u) != 0) return UINT64_MAX;
+    if (refresh_handle(process, handle) != 0) return UINT64_MAX;
     offset = handle->offset;
     if (offset > handle->entry.file_size || length > UINT32_MAX - offset) return UINT64_MAX;
     remaining = length;
@@ -347,6 +358,7 @@ static uint64_t seek_file_handle(uint64_t fd, int64_t offset, uint32_t whence) {
     int64_t base;
     int64_t position;
     if (handle == 0) return UINT64_MAX;
+    if (refresh_handle(process, handle) != 0) return UINT64_MAX;
     switch (whence) {
         case SB_FS_SEEK_SET: base = 0; break;
         case SB_FS_SEEK_CUR: base = (int64_t)handle->offset; break;
