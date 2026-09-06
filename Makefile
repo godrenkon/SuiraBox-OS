@@ -70,7 +70,7 @@ $(SETUP_OBJ): kernel/setup.c kernel/setup.h | $(BUILD)
 $(FRAMEBUFFER_OBJ): kernel/framebuffer.c kernel/framebuffer.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(KERNEL_OBJ): kernel/kernel.c kernel/pci.h kernel/vfs.h kernel/block.h kernel/ata_pio.h kernel/fs/fat32.h kernel/framebuffer.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/mm/heap.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/syscall.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h | $(BUILD)
+$(KERNEL_OBJ): kernel/kernel.c kernel/pci.h kernel/vfs.h kernel/block.h kernel/ata_pio.h kernel/fs/fat32.h kernel/framebuffer.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/mm/heap.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/syscall.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -Ikernel/mm -Ikernel/arch/x86_64 -c $< -o $@
 
 $(PCI_OBJ): kernel/pci.c kernel/pci.h | $(BUILD)
@@ -124,19 +124,19 @@ $(SCHED_OBJ): kernel/scheduler.c kernel/scheduler.h kernel/arch/x86_64/irq_frame
 $(CONTEXT_OBJ): kernel/arch/x86_64/context.S kernel/arch/x86_64/context.h | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(HANDLE_OBJ): kernel/handle.c kernel/handle.h | $(BUILD)
+$(HANDLE_OBJ): kernel/handle.c kernel/handle.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/handle.h kernel/scheduler.h kernel/mm/address_space.h | $(BUILD)
+$(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/handle.h include/suirabox/handle_abi.h kernel/scheduler.h kernel/mm/address_space.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.h kernel/scheduler.h kernel/elf_loader.h kernel/mm/address_space.h kernel/mm/multiboot_modules.h kernel/mm/pmm.h kernel/mm/vmm.h | $(BUILD)
+$(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.h kernel/handle.h include/suirabox/handle_abi.h kernel/scheduler.h kernel/elf_loader.h kernel/mm/address_space.h kernel/mm/multiboot_modules.h kernel/mm/pmm.h kernel/mm/vmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(USER_ACCESS_OBJ): kernel/user_access.c kernel/user_access.h kernel/process.h kernel/mm/address_space.h kernel/mm/pmm.h | $(BUILD)
+$(USER_ACCESS_OBJ): kernel/user_access.c kernel/user_access.h kernel/process.h kernel/handle.h include/suirabox/handle_abi.h kernel/mm/address_space.h kernel/mm/pmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h | $(BUILD)
+$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(SYSCALL_ARCH_OBJ): kernel/arch/x86_64/syscall.S kernel/arch/x86_64/irq_frame.h | $(BUILD)
@@ -160,10 +160,10 @@ $(USERMODE_OBJ): kernel/arch/x86_64/user_mode.S kernel/arch/x86_64/user_mode.h |
 $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel/mm -c $< -o $@
 
-$(USER_OBJ): userspace/hello.S include/suirabox/syscall_abi.h | $(BUILD)
+$(USER_OBJ): userspace/hello.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(USER_ASFLAGS) -c $< -o $@
 
-$(CHILD_OBJ): userspace/child.S include/suirabox/syscall_abi.h | $(BUILD)
+$(CHILD_OBJ): userspace/child.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(USER_ASFLAGS) -c $< -o $@
 
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
@@ -197,8 +197,8 @@ $(FAT32_HOST_TEST): tests/fat32_host_test.c kernel/fs/fat32.c kernel/fs/fat32.h 
 host-fat32-test: $(FAT32_HOST_TEST)
 	$(FAT32_HOST_TEST)
 
-$(HANDLE_HOST_TEST): tests/handle_host_test.c kernel/handle.c kernel/handle.h | $(BUILD)
-	$(CC) -Wall -Wextra -Werror -Ikernel tests/handle_host_test.c kernel/handle.c -o $@
+$(HANDLE_HOST_TEST): tests/handle_host_test.c kernel/handle.c kernel/handle.h include/suirabox/handle_abi.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iinclude -Ikernel tests/handle_host_test.c kernel/handle.c -o $@
 
 host-handle-test: $(HANDLE_HOST_TEST)
 	$(HANDLE_HOST_TEST)
