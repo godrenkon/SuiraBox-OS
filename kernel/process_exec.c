@@ -37,7 +37,6 @@ int process_prepare_elf(sb_process_t *process,
                         sb_process_image_t *image_info) {
     if (process == 0 || image == 0 || image_size == 0u || image_info == 0) return -1;
 
-    /* process_create() normally creates the address space already. */
     if (process->address_space.pml4_physical == 0u &&
         address_space_create(&process->address_space) != 0) {
         return -1;
@@ -86,15 +85,18 @@ int process_prepare_boot_module(sb_process_t *process,
 sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
                                         const char *module_name,
                                         uint64_t pid,
+                                        uint64_t parent_pid,
                                         uint64_t tid,
                                         uint32_t priority,
                                         sb_process_image_t *image_info) {
     if (multiboot_info == 0u || module_name == 0 || pid == 0u || tid == 0u) return 0;
+    if (parent_pid != 0u && process_get(parent_pid) == 0) return 0;
 
     sb_process_image_t local_image;
     sb_process_image_t *prepared = image_info != 0 ? image_info : &local_image;
     sb_process_t *process = process_create(pid);
     if (process == 0) return 0;
+    process->parent_pid = parent_pid;
 
     if (process_prepare_boot_module(process, multiboot_info, module_name, prepared) != 0) {
         process_destroy(process);
@@ -125,6 +127,7 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
 
 sb_process_t *process_spawn_registered_boot_module(const char *module_name,
                                                    uint64_t pid,
+                                                   uint64_t parent_pid,
                                                    uint64_t tid,
                                                    uint32_t priority,
                                                    sb_process_image_t *image_info) {
@@ -132,6 +135,7 @@ sb_process_t *process_spawn_registered_boot_module(const char *module_name,
     return process_spawn_boot_module(registered_multiboot_info,
                                      module_name,
                                      pid,
+                                     parent_pid,
                                      tid,
                                      priority,
                                      image_info);

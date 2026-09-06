@@ -15,6 +15,9 @@ static int resumed_user_syscall_logged;
 static int sleep_cycle_armed;
 static uint64_t sleep_task_id;
 static int woke_user_syscall_logged;
+static int wait_cycle_armed;
+static uint64_t wait_task_id;
+static int wait_resume_logged;
 static int child_pid_syscall_logged;
 static int child_spawn_logged;
 
@@ -50,8 +53,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
             return syscall_process_id();
         case SB_SYS_EXIT:
         case SB_SYS_SPAWN:
-            /* These require scheduler/process state and are handled by the
-             * complete saved-frame path below. */
+        case SB_SYS_WAIT_PROCESS:
             return UINT64_MAX;
         case SB_SYS_SLEEP:
             return scheduler_sleep_current(arg0) == 0 ? 0u : UINT64_MAX;
@@ -79,6 +81,14 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         }
     }
 
+    if (wait_cycle_armed && !wait_resume_logged && number != SB_SYS_WAIT_PROCESS &&
+        task != 0 && task->id == wait_task_id && task->user_task != 0u) {
+        wait_resume_logged = 1;
+        wait_cycle_armed = 0;
+        wait_task_id = 0u;
+        syscall_debug("Userspace: parent wait resumed after child exit\r\n");
+    }
+
     if (number == SB_SYS_SLEEP) {
         const int result = scheduler_sleep_current(frame->rdi);
         frame->rax = result == 0 ? 0u : UINT64_MAX;
@@ -101,6 +111,7 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         sb_process_image_t child_image;
         sb_process_t *child = process_spawn_registered_boot_module("user-child",
                                                                    SB_VALIDATION_CHILD_PID,
+                                                                   task->process_id,
                                                                    SB_VALIDATION_CHILD_TID,
                                                                    SB_DEFAULT_USER_PRIORITY,
                                                                    &child_image);
@@ -117,6 +128,37 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         return frame;
     }
 
+    if (number == SB_SYS_WAIT_PROCESS) {
+        if (task == 0 || task->user_task == 0u || task->process_id == 0u) {
+            frame->rax = UINT64_MAX;
+            return frame;
+        }
+
+        int64_t exit_code = 0;
+        const uint64_t child_pid = frame->rdi;
+        const int wait_result = process_wait_child(task->process_id,
+                                                   child_pid,
+                                                   task->id,
+                                                   &exit_code);
+        if (wait_result == 0) {
+            frame->rax = (uint64_t)exit_code;
+            return frame;
+        }
+        if (wait_result < 0 || scheduler_block_current() != 0) {
+            if (wait_result > 0) (void)process_cancel_wait(child_pid, task->id);
+            frame->rax = UINT64_MAX;
+            return frame;
+        }
+
+        /* The saved frame's RAX is replaced with the child's exit status by
+         * scheduler_wake_task_with_result() after deferred resource reaping. */
+        frame->rax = UINT64_MAX;
+        wait_cycle_armed = 1;
+        wait_task_id = task->id;
+        syscall_debug("Userspace: wait syscall blocked for child\r\n");
+        return scheduler_reschedule(frame);
+    }
+
     if (number == SB_SYS_EXIT) {
         if (task == 0 || task->user_task == 0u || task->process_id == 0u ||
             process_get(task->process_id) == 0) {
@@ -131,9 +173,6 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
             return frame;
         }
         if (process_mark_exited(pid, exit_code) != 0) {
-            /* The process object was validated above, so reaching this path
-             * indicates an internal consistency failure. Never return to a
-             * task whose scheduler state is already EXITED. */
             syscall_debug("Process: exit state consistency failure\r\n");
         }
 
@@ -177,6 +216,9 @@ void syscall_init(void) {
     sleep_cycle_armed = 0;
     sleep_task_id = 0u;
     woke_user_syscall_logged = 0;
+    wait_cycle_armed = 0;
+    wait_task_id = 0u;
+    wait_resume_logged = 0;
     child_pid_syscall_logged = 0;
     child_spawn_logged = 0;
 }

@@ -48,7 +48,6 @@ jobs:
           grep -F "PCI: scanning bus/device/function space..." qemu.log
           grep -F "PCI: scan complete." qemu.log
 
-          # Headless QEMU may legitimately receive no Multiboot framebuffer.
           if grep -Fq "Display: framebuffer ready" qemu.log; then
             grep -F "Display: framebuffer mapped" qemu.log
             grep -F "Display: framebuffer clear OK" qemu.log
@@ -68,7 +67,6 @@ jobs:
           grep -F "Timer: IRQ0 enabled" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
 
-          # Timer preemption + saved-frame user resume proof.
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
           grep -F "Userspace: entering ring3" qemu.log
           grep -F "Userspace: first syscall reached kernel" qemu.log
@@ -76,7 +74,20 @@ jobs:
           grep -F "Scheduler: saved user IRQ frame selected for resume" qemu.log
           grep -F "Userspace: resumed user thread reached syscall" qemu.log
 
-          # Blocking SLEEP syscall + timer wake + redispatch proof.
+          # BLOCKED + parent/child wait lifecycle.
+          grep -F "Userspace: spawn syscall created child process" qemu.log
+          grep -F "Scheduler: user task entered BLOCKED" qemu.log
+          grep -F "Userspace: wait syscall blocked for child" qemu.log
+          grep -F "Scheduler: cross-process CR3 switch verified" qemu.log
+          grep -F "Scheduler: blocked user task descheduled" qemu.log
+          grep -F "Userspace: child process PID syscall OK" qemu.log
+          grep -F "Userspace: child requested process exit" qemu.log
+          grep -F "Scheduler: blocked user task woke" qemu.log
+          grep -F "Process: exited process resources reaped" qemu.log
+          grep -F "Scheduler: woke blocked user task selected for resume" qemu.log
+          grep -F "Userspace: parent wait resumed after child exit" qemu.log
+
+          # SLEEP remains an independent deadline-driven transition.
           grep -F "Scheduler: user task entered SLEEPING" qemu.log
           grep -F "Userspace: sleep syscall requested" qemu.log
           grep -F "Scheduler: sleeping user task descheduled" qemu.log
@@ -84,20 +95,24 @@ jobs:
           grep -F "Scheduler: woke user task selected for resume" qemu.log
           grep -F "Userspace: woke sleeping user thread reached syscall" qemu.log
 
-          # Second process, independent CR3, EXIT and deferred resource reap.
-          grep -F "Userspace: spawn syscall created child process" qemu.log
-          grep -F "Scheduler: cross-process CR3 switch verified" qemu.log
-          grep -F "Userspace: child process PID syscall OK" qemu.log
-          grep -F "Userspace: child requested process exit" qemu.log
-          grep -F "Process: exited process resources reaped" qemu.log
-
-          # Presence alone can hide impossible event order. Verify the critical
-          # state-machine transitions occurred monotonically in the QEMU log.
           python3 - <<'PY'
           from pathlib import Path
 
           log = Path("qemu.log").read_text(errors="replace")
           sequences = {
+              "wait/child/reap": [
+                  "Userspace: spawn syscall created child process",
+                  "Scheduler: user task entered BLOCKED",
+                  "Userspace: wait syscall blocked for child",
+                  "Scheduler: cross-process CR3 switch verified",
+                  "Scheduler: blocked user task descheduled",
+                  "Userspace: child process PID syscall OK",
+                  "Userspace: child requested process exit",
+                  "Scheduler: blocked user task woke",
+                  "Process: exited process resources reaped",
+                  "Scheduler: woke blocked user task selected for resume",
+                  "Userspace: parent wait resumed after child exit",
+              ],
               "sleep/wake": [
                   "Scheduler: user task entered SLEEPING",
                   "Userspace: sleep syscall requested",
@@ -105,13 +120,6 @@ jobs:
                   "Scheduler: sleeping user task woke",
                   "Scheduler: woke user task selected for resume",
                   "Userspace: woke sleeping user thread reached syscall",
-              ],
-              "spawn/exit/reap": [
-                  "Userspace: spawn syscall created child process",
-                  "Scheduler: cross-process CR3 switch verified",
-                  "Userspace: child process PID syscall OK",
-                  "Userspace: child requested process exit",
-                  "Process: exited process resources reaped",
               ],
           }
 

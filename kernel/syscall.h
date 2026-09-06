@@ -4,11 +4,12 @@
 #include <stdint.h>
 #include "arch/x86_64/irq_frame.h"
 
-#define SB_SYS_GET_TICKS  0u
-#define SB_SYS_PROCESS_ID 1u
-#define SB_SYS_EXIT       2u
-#define SB_SYS_SLEEP      3u
-#define SB_SYS_SPAWN      4u
+#define SB_SYS_GET_TICKS    0u
+#define SB_SYS_PROCESS_ID   1u
+#define SB_SYS_EXIT         2u
+#define SB_SYS_SLEEP        3u
+#define SB_SYS_SPAWN        4u
+#define SB_SYS_WAIT_PROCESS 5u
 
 /* Temporary bootstrap executable selector. This avoids taking a userspace
  * string pointer before 7-3 user-pointer validation exists. */

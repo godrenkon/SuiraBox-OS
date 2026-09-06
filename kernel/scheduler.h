@@ -64,6 +64,9 @@ uint32_t scheduler_task_count(void);
 int scheduler_block_current(void);
 int scheduler_sleep_current(uint64_t delay_ticks);
 int scheduler_wake_task(uint64_t id);
+/* Complete a blocked syscall by writing its eventual RAX result into the saved
+ * frame before making the task runnable again. */
+int scheduler_wake_task_with_result(uint64_t id, uint64_t result);
 
 /* Process exit is two-phase. This marks all tasks in the current user process
  * EXITED. Their stacks are freed later from a different scheduler context. */

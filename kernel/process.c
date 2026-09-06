@@ -10,6 +10,12 @@ static void clear_process(sb_process_t *process) {
     process->state = SB_PROCESS_UNUSED;
 }
 
+static void collect_process_slot(sb_process_t *process) {
+    if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
+    clear_process(process);
+    if (process_count_value > 0u) --process_count_value;
+}
+
 void process_init(void) {
     for (uint32_t i = 0; i < SB_MAX_PROCESSES; ++i) {
         clear_process(&processes[i]);
@@ -51,7 +57,8 @@ sb_process_t *process_create(uint64_t pid) {
 
 sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t priority) {
     if (process == 0 || tid == 0u || process->thread_count >= SB_MAX_THREADS_PER_PROCESS ||
-        process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED) {
+        process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED ||
+        process->state == SB_PROCESS_ZOMBIE) {
         return 0;
     }
 
@@ -72,7 +79,8 @@ uint32_t process_count(void) {
 }
 
 int process_activate(sb_process_t *process) {
-    if (process == 0 || process->state == SB_PROCESS_UNUSED || process->state == SB_PROCESS_EXITED) {
+    if (process == 0 || process->state == SB_PROCESS_UNUSED ||
+        process->state == SB_PROCESS_EXITED || process->state == SB_PROCESS_ZOMBIE) {
         return -1;
     }
     return address_space_activate(&process->address_space);
@@ -80,7 +88,8 @@ int process_activate(sb_process_t *process) {
 
 int process_mark_exited(uint64_t pid, int64_t exit_code) {
     sb_process_t *process = process_get(pid);
-    if (process == 0 || process->state == SB_PROCESS_EXITED) return -1;
+    if (process == 0 || process->state == SB_PROCESS_EXITED ||
+        process->state == SB_PROCESS_ZOMBIE) return -1;
 
     process->exit_code = exit_code;
     process->state = SB_PROCESS_EXITED;
@@ -90,11 +99,39 @@ int process_mark_exited(uint64_t pid, int64_t exit_code) {
     return 0;
 }
 
+int process_wait_child(uint64_t parent_pid,
+                       uint64_t child_pid,
+                       uint64_t waiter_tid,
+                       int64_t *exit_code) {
+    if (parent_pid == 0u || child_pid == 0u || waiter_tid == 0u || exit_code == 0) return -1;
+
+    sb_process_t *parent = process_get(parent_pid);
+    sb_process_t *child = process_get(child_pid);
+    if (parent == 0 || child == 0 || child->parent_pid != parent_pid) return -2;
+    if (parent->state == SB_PROCESS_EXITED || parent->state == SB_PROCESS_ZOMBIE) return -3;
+
+    if (child->state == SB_PROCESS_ZOMBIE) {
+        *exit_code = child->exit_code;
+        process_destroy(child);
+        return 0;
+    }
+
+    if (child->waiter_tid != 0u && child->waiter_tid != waiter_tid) return -4;
+    child->waiter_tid = waiter_tid;
+    return 1;
+}
+
+int process_cancel_wait(uint64_t child_pid, uint64_t waiter_tid) {
+    sb_process_t *child = process_get(child_pid);
+    if (child == 0 || waiter_tid == 0u || child->waiter_tid != waiter_tid) return -1;
+    child->waiter_tid = 0u;
+    return 0;
+}
+
 void process_destroy(sb_process_t *process) {
     if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
     address_space_destroy(&process->address_space);
-    clear_process(process);
-    if (process_count_value > 0u) --process_count_value;
+    collect_process_slot(process);
 }
 
 uint32_t process_reap_exited(void) {
@@ -107,8 +144,26 @@ uint32_t process_reap_exited(void) {
         const int task_result = scheduler_reap_process(process->pid);
         if (task_result < 0) continue;
 
-        process_destroy(process);
+        /* Task stacks are gone and this CR3 is no longer executing. Release
+         * user leaf pages + page-table hierarchy before making exit visible
+         * to a waiting parent. */
+        address_space_destroy(&process->address_space);
+        process->entry_point = 0u;
+        process->user_stack_top = 0u;
         ++reaped;
+
+        if (process->waiter_tid != 0u) {
+            const uint64_t waiter_tid = process->waiter_tid;
+            const uint64_t result = (uint64_t)process->exit_code;
+            if (scheduler_wake_task_with_result(waiter_tid, result) == 0) {
+                collect_process_slot(process);
+                continue;
+            }
+            process->waiter_tid = 0u;
+        }
+
+        /* No active waiter: preserve only process metadata/exit status. */
+        process->state = SB_PROCESS_ZOMBIE;
     }
 
     return reaped;

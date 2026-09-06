@@ -12,7 +12,8 @@ typedef enum {
     SB_PROCESS_CREATED,
     SB_PROCESS_RUNNING,
     SB_PROCESS_SLEEPING,
-    SB_PROCESS_EXITED
+    SB_PROCESS_EXITED,
+    SB_PROCESS_ZOMBIE
 } sb_process_state_t;
 
 typedef struct {
@@ -24,6 +25,8 @@ typedef struct {
 
 typedef struct {
     uint64_t pid;
+    uint64_t parent_pid;
+    uint64_t waiter_tid;
     sb_process_state_t state;
     int64_t exit_code;
     uint32_t thread_count;
@@ -40,8 +43,19 @@ sb_process_t *process_get(uint64_t pid);
 uint32_t process_count(void);
 int process_activate(sb_process_t *process);
 int process_mark_exited(uint64_t pid, int64_t exit_code);
+
+/* Wait return values: 0 = already collected and exit_code filled,
+ * 1 = waiter registered and caller must BLOCK+reschedule, <0 = invalid. */
+int process_wait_child(uint64_t parent_pid,
+                       uint64_t child_pid,
+                       uint64_t waiter_tid,
+                       int64_t *exit_code);
+int process_cancel_wait(uint64_t child_pid, uint64_t waiter_tid);
+
 /* Reap EXITED processes whose scheduler tasks are no longer executing.
- * Returns the number of process objects/resources reclaimed. */
+ * Address-space/kernel-stack resources are released first. If a parent waiter
+ * exists it is completed and the process slot is collected; otherwise the
+ * process remains a lightweight ZOMBIE until a later wait collects status. */
 uint32_t process_reap_exited(void);
 void process_destroy(sb_process_t *process);
 

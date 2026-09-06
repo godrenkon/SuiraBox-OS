@@ -20,6 +20,8 @@ static uint64_t scheduler_tick_count;
 static uint32_t preemption_validation_stage;
 static uint32_t sleep_validation_stage;
 static uint64_t sleep_validation_task_id;
+static uint32_t block_validation_stage;
+static uint64_t block_validation_task_id;
 static int cross_process_switch_logged;
 
 extern char stack_top;
@@ -127,6 +129,14 @@ static void mark_task_ready(sb_task_t *task) {
     }
 }
 
+static void report_block_wake(const sb_task_t *task) {
+    if (task == 0) return;
+    if (block_validation_stage == 2u && task->id == block_validation_task_id) {
+        block_validation_stage = 3u;
+        sched_debug("Scheduler: blocked user task woke\r\n");
+    }
+}
+
 void scheduler_init(void) {
     sched_debug("[SCHED] init begin\r\n");
     for (uint32_t i = 0u; i < SB_SCHED_MAX_TASKS; ++i) clear_task(&tasks[i]);
@@ -148,6 +158,8 @@ void scheduler_init(void) {
     preemption_validation_stage = 0u;
     sleep_validation_stage = 0u;
     sleep_validation_task_id = 0u;
+    block_validation_stage = 0u;
+    block_validation_task_id = 0u;
     cross_process_switch_logged = 0;
     sched_debug("[SCHED] scalar state ready\r\n");
 }
@@ -260,17 +272,22 @@ static sb_task_t *pick_preemptable_next(void) {
 int scheduler_block_current(void) {
     sb_task_t *current = scheduler_current();
     if (current == 0) return -1;
-    if (current->user_task == 0u) return -2; /* bootstrap task is the current idle fallback */
+    if (current->user_task == 0u) return -2;
     if (current->state != SB_TASK_RUNNING) return -3;
     current->state = SB_TASK_BLOCKED;
     current->wake_tick = 0u;
+    if (block_validation_stage == 0u) {
+        block_validation_stage = 1u;
+        block_validation_task_id = current->id;
+        sched_debug("Scheduler: user task entered BLOCKED\r\n");
+    }
     return 0;
 }
 
 int scheduler_sleep_current(uint64_t delay_ticks) {
     sb_task_t *current = scheduler_current();
     if (current == 0) return -1;
-    if (current->user_task == 0u) return -2; /* keep bootstrap runnable as the idle fallback */
+    if (current->user_task == 0u) return -2;
     if (current->state != SB_TASK_RUNNING) return -3;
     if (delay_ticks > SB_MAX_SLEEP_TICKS) return -4;
     if (delay_ticks == 0u) delay_ticks = 1u;
@@ -289,7 +306,21 @@ int scheduler_wake_task(uint64_t id) {
     sb_task_t *task = task_by_id(id);
     if (task == 0) return -1;
     if (task->state != SB_TASK_BLOCKED && task->state != SB_TASK_SLEEPING) return -2;
+    const int was_blocked = task->state == SB_TASK_BLOCKED;
     mark_task_ready(task);
+    if (was_blocked) report_block_wake(task);
+    return 0;
+}
+
+int scheduler_wake_task_with_result(uint64_t id, uint64_t result) {
+    sb_task_t *task = task_by_id(id);
+    if (task == 0) return -1;
+    if (task->state != SB_TASK_BLOCKED || task->irq_frame_rsp == 0u) return -2;
+
+    sb_irq_frame_t *frame = (sb_irq_frame_t *)(uintptr_t)task->irq_frame_rsp;
+    frame->rax = result;
+    mark_task_ready(task);
+    report_block_wake(task);
     return 0;
 }
 
@@ -371,6 +402,22 @@ static void report_sleep_switch(const sb_task_t *current, const sb_task_t *next,
     }
 }
 
+static void report_block_switch(const sb_task_t *current, const sb_task_t *next, int timer_driven) {
+    if (current == 0 || next == 0) return;
+
+    if (!timer_driven && block_validation_stage == 1u &&
+        current->id == block_validation_task_id && current->state == SB_TASK_BLOCKED) {
+        block_validation_stage = 2u;
+        sched_debug("Scheduler: blocked user task descheduled\r\n");
+        return;
+    }
+
+    if (block_validation_stage == 3u && next->id == block_validation_task_id) {
+        block_validation_stage = 4u;
+        sched_debug("Scheduler: woke blocked user task selected for resume\r\n");
+    }
+}
+
 static void report_cross_process_switch(const sb_task_t *current, const sb_task_t *next) {
     if (cross_process_switch_logged || current == 0 || next == 0) return;
     if (current->user_task == 0u || next->user_task == 0u) return;
@@ -410,6 +457,7 @@ static sb_irq_frame_t *scheduler_switch_frame(sb_irq_frame_t *current_frame, int
 
     if (timer_driven) report_preemption_transition(current, next);
     report_sleep_switch(current, next, timer_driven);
+    report_block_switch(current, next, timer_driven);
     return (sb_irq_frame_t *)(uintptr_t)next->irq_frame_rsp;
 }
 

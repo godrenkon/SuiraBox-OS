@@ -25,6 +25,7 @@ int process_prepare_boot_module(sb_process_t *process,
 sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
                                         const char *module_name,
                                         uint64_t pid,
+                                        uint64_t parent_pid,
                                         uint64_t tid,
                                         uint32_t priority,
                                         sb_process_image_t *image_info);
@@ -35,6 +36,7 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
  * accepting an unchecked userspace string pointer. */
 sb_process_t *process_spawn_registered_boot_module(const char *module_name,
                                                    uint64_t pid,
+                                                   uint64_t parent_pid,
                                                    uint64_t tid,
                                                    uint32_t priority,
                                                    sb_process_image_t *image_info);
