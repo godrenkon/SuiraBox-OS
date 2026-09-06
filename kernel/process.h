@@ -2,6 +2,7 @@
 #define SB_KERNEL_PROCESS_H
 
 #include <stdint.h>
+#include "handle.h"
 #include "mm/address_space.h"
 
 #define SB_MAX_PROCESSES 32u
@@ -32,6 +33,7 @@ typedef struct {
     uint32_t thread_count;
     sb_thread_t threads[SB_MAX_THREADS_PER_PROCESS];
     sb_address_space_t address_space;
+    sb_handle_table_t handles;
     uint64_t entry_point;
     uint64_t user_stack_top;
 } sb_process_t;
@@ -53,9 +55,9 @@ int process_wait_child(uint64_t parent_pid,
 int process_cancel_wait(uint64_t child_pid, uint64_t waiter_tid);
 
 /* Reap EXITED processes whose scheduler tasks are no longer executing.
- * Address-space/kernel-stack resources are released first. If a parent waiter
- * exists it is completed and the process slot is collected; otherwise the
- * process remains a lightweight ZOMBIE until a later wait collects status. */
+ * Scheduler-owned stacks are released first, then process-local handles and
+ * address-space resources. If a parent waiter exists it is completed and the
+ * process slot is collected; otherwise only lightweight zombie metadata stays. */
 uint32_t process_reap_exited(void);
 void process_destroy(sb_process_t *process);
 
