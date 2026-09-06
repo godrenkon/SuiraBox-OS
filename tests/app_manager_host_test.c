@@ -55,13 +55,16 @@ int main(void){
     assert(sb_app_terminate(SB_APP_FILES,17u)==0); assert(terminate_calls==1u); assert(sb_app_is_running(SB_APP_FILES)==0); assert(sb_app_count()==3u);
     assert(sb_app_terminate(SB_APP_FILES,18u)!=0); assert(terminate_calls==1u); assert(sb_app_count()==2u);
 
-    fail_terminate=1; assert(sb_app_terminate(SB_APP_TERMINAL,19u)!=0); assert(terminate_calls==2u); assert(sb_app_is_running(SB_APP_TERMINAL)==1u); fail_terminate=0;
-    assert(sb_app_terminate(SB_APP_TERMINAL,20u)==0); assert(sb_app_is_running(SB_APP_TERMINAL)==0); assert(terminate_calls==3u);
-    assert(sb_app_reap_exited()==1u); assert(sb_app_count()==0u);
+    fail_terminate=1; assert(sb_app_terminate(SB_APP_TERMINAL,19u)!=0); assert(terminate_calls==2u); assert(sb_app_is_running(SB_APP_TERMINAL)==1u); assert(sb_app_count()==2u); fail_terminate=0;
+    assert(sb_app_terminate(SB_APP_TERMINAL,20u)==0); assert(sb_app_is_running(SB_APP_TERMINAL)==0); assert(terminate_calls==3u); assert(sb_app_count()==2u);
+    assert(sb_app_reap_exited()==1u); assert(sb_app_count()==1u);
 
-    assert(sb_app_launch(SB_APP_SETTINGS)==0); assert(sb_app_count()==1u);
-    fail_scheduler=1; assert(sb_app_launch(SB_APP_FILES)!=0); fail_scheduler=0; assert(sb_app_count()==1u); assert(sb_app_launch(SB_APP_FILES)==0); assert(sb_app_count()==2u);
-    assert(sb_app_terminate(SB_APP_SETTINGS,21u)==0); assert(sb_app_reap_exited()==1u); assert(sb_app_count()==1u);
+    assert(sb_app_launch(SB_APP_SETTINGS)!=0);
+    assert(sb_app_terminate(SB_APP_SETTINGS,21u)==0); assert(sb_app_count()==1u);
+    assert(sb_app_reap_exited()==1u); assert(sb_app_count()==0u);
+    assert(sb_app_launch(SB_APP_FILES)==0); assert(sb_app_count()==1u);
+
+    fail_scheduler=1; assert(sb_app_launch(SB_APP_SETTINGS)!=0); fail_scheduler=0; assert(sb_app_count()==1u); assert(sb_app_launch(SB_APP_SETTINGS)!=0); assert(sb_app_count()==1u);
 
     for (uint32_t i=0u;i<16u;++i) { processes[i]=(sb_process_t){0}; threads[i]=(sb_thread_t){0}; }
     process_count_value=0u;
