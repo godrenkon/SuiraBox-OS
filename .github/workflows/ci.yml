@@ -43,28 +43,45 @@ jobs:
             -no-reboot \
             -no-shutdown \
             2>&1 | tee qemu.log || test ${PIPESTATUS[0]} -eq 124
+
           grep -F "Kernel initialized." qemu.log
           grep -F "PCI: scanning bus/device/function space..." qemu.log
           grep -F "PCI: scan complete." qemu.log
-          grep -F "Display: framebuffer ready" qemu.log
-          grep -F "Display: framebuffer mapped" qemu.log
-          grep -F "Display: framebuffer clear OK" qemu.log
+
+          # Headless QEMU may legitimately receive no Multiboot framebuffer.
+          # If GRUB supplies one, validate its mapping path; otherwise require
+          # the explicit fallback-console path rather than failing CI.
+          if grep -Fq "Display: framebuffer ready" qemu.log; then
+            grep -F "Display: framebuffer mapped" qemu.log
+            grep -F "Display: framebuffer clear OK" qemu.log
+          else
+            grep -F "Display: framebuffer unavailable; using fallback console" qemu.log
+          fi
+
           grep -F "Memory: PMM bootstrap free pages =" qemu.log
           grep -F "Memory: VMM map/translate/unmap OK" qemu.log
           grep -F "Memory: kernel heap alloc/free OK" qemu.log
           grep -F "CPU: GDT/TSS ready" qemu.log
-          grep -F "Scheduler: task table/round-robin selection OK" qemu.log
+          grep -F "Scheduler: selection/commit separation OK" qemu.log
           grep -F "Process/Syscall: model and dispatch OK" qemu.log
           grep -F "Syscall: int 0x80 user gate ready" qemu.log
           grep -F "Userspace: ELF + address-space + stack preparation OK" qemu.log
+          grep -F "Userspace: first user thread scheduled" qemu.log
           grep -F "Timer: IRQ0 enabled" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
+          grep -F "Scheduler: timer preemption switched to user task" qemu.log
           grep -F "Userspace: entering ring3" qemu.log
+          grep -F "Userspace: first syscall reached kernel" qemu.log
+          grep -F "Scheduler: user task preempted back to kernel" qemu.log
+          grep -F "Scheduler: saved user IRQ frame selected for resume" qemu.log
+          grep -F "Userspace: resumed user thread reached syscall" qemu.log
 
       - name: Upload kernel artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: suirabox-kernel
+          if-no-files-found: ignore
           path: |
             build/suirabox.iso
             build/suirabox.elf

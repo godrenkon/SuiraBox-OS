@@ -29,6 +29,7 @@ typedef struct {
     uint64_t id;
     uint64_t process_id;
     uint64_t runtime_ticks;
+    uint64_t dispatch_count;
     uint32_t priority;
     sb_task_state_t state;
     sb_task_context_t context;

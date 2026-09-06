@@ -15,7 +15,7 @@ static volatile sb_task_t tasks[SB_SCHED_MAX_TASKS];
 static uint32_t task_count;
 static uint32_t current_index;
 static uint64_t scheduler_tick_count;
-static int user_switch_announced;
+static uint32_t preemption_validation_stage;
 
 extern char stack_top;
 extern void sb_context_switch(sb_task_context_t *old_context,
@@ -48,6 +48,7 @@ static void clear_task(volatile sb_task_t *task) {
     task->id = 0u;
     task->process_id = 0u;
     task->runtime_ticks = 0u;
+    task->dispatch_count = 0u;
     task->priority = 0u;
     task->state = SB_TASK_UNUSED;
     task->context = (sb_task_context_t){0};
@@ -83,6 +84,7 @@ void scheduler_init(void) {
     tasks[0].id = SB_BOOTSTRAP_TASK_ID;
     tasks[0].process_id = 0u;
     tasks[0].runtime_ticks = 0u;
+    tasks[0].dispatch_count = 1u;
     tasks[0].priority = SB_BOOTSTRAP_PRIORITY;
     tasks[0].state = SB_TASK_RUNNING;
     tasks[0].address_space_cr3 = read_cr3();
@@ -92,7 +94,7 @@ void scheduler_init(void) {
     task_count = 1u;
     current_index = 0u;
     scheduler_tick_count = 0u;
-    user_switch_announced = 0;
+    preemption_validation_stage = 0u;
     sched_debug("[SCHED] scalar state ready\r\n");
 }
 
@@ -188,6 +190,28 @@ static sb_task_t *pick_preemptable_next(void) {
     return (sb_task_t *)(uintptr_t)&tasks[current_index];
 }
 
+static void report_preemption_transition(const sb_task_t *current, const sb_task_t *next) {
+    if (current == 0 || next == 0) return;
+
+    if (preemption_validation_stage == 0u && current->user_task == 0u && next->user_task != 0u) {
+        preemption_validation_stage = 1u;
+        sched_debug("Scheduler: timer preemption switched to user task\r\n");
+        sched_debug("Userspace: entering ring3\r\n");
+        return;
+    }
+
+    if (preemption_validation_stage == 1u && current->user_task != 0u && next->user_task == 0u) {
+        preemption_validation_stage = 2u;
+        sched_debug("Scheduler: user task preempted back to kernel\r\n");
+        return;
+    }
+
+    if (preemption_validation_stage == 2u && current->user_task == 0u && next->user_task != 0u) {
+        preemption_validation_stage = 3u;
+        sched_debug("Scheduler: saved user IRQ frame selected for resume\r\n");
+    }
+}
+
 sb_irq_frame_t *scheduler_preempt(sb_irq_frame_t *current_frame) {
     if (current_frame == 0 || task_count == 0u) return current_frame;
 
@@ -203,6 +227,7 @@ sb_irq_frame_t *scheduler_preempt(sb_irq_frame_t *current_frame) {
 
     current->state = SB_TASK_READY;
     next->state = SB_TASK_RUNNING;
+    ++next->dispatch_count;
     current_index = next_index;
 
     if (next->address_space_cr3 != 0u && next->address_space_cr3 != read_cr3()) {
@@ -210,12 +235,7 @@ sb_irq_frame_t *scheduler_preempt(sb_irq_frame_t *current_frame) {
     }
     if (next->kernel_stack_top != 0u) gdt_set_kernel_stack(next->kernel_stack_top);
 
-    if (next->user_task != 0u && !user_switch_announced) {
-        user_switch_announced = 1;
-        sched_debug("Scheduler: timer preemption switched to user task\r\n");
-        sched_debug("Userspace: entering ring3\r\n");
-    }
-
+    report_preemption_transition(current, next);
     return (sb_irq_frame_t *)(uintptr_t)next->irq_frame_rsp;
 }
 
@@ -230,6 +250,7 @@ void scheduler_switch_to(sb_task_t *next) {
     interrupts_disable();
     current->state = SB_TASK_READY;
     next->state = SB_TASK_RUNNING;
+    ++next->dispatch_count;
     current_index = next_index;
     sb_context_switch((sb_task_context_t *)(uintptr_t)&current->context,
                       (const sb_task_context_t *)(uintptr_t)&next->context);

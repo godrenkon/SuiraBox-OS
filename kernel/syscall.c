@@ -3,6 +3,7 @@
 #include "scheduler.h"
 
 static int first_user_syscall_logged;
+static int resumed_user_syscall_logged;
 
 static void syscall_debug_char(char c) {
     while (1) {
@@ -45,13 +46,20 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
 uint64_t sb_syscall_dispatch_entry(uint64_t number, uint64_t arg0, uint64_t arg1,
                                    uint64_t arg2, uint64_t arg3) {
     sb_task_t *task = scheduler_current();
-    if (!first_user_syscall_logged && task != 0 && task->user_task != 0u) {
-        first_user_syscall_logged = 1;
-        syscall_debug("Userspace: first syscall reached kernel\r\n");
+    if (task != 0 && task->user_task != 0u) {
+        if (!first_user_syscall_logged) {
+            first_user_syscall_logged = 1;
+            syscall_debug("Userspace: first syscall reached kernel\r\n");
+        }
+        if (!resumed_user_syscall_logged && task->dispatch_count >= 2u) {
+            resumed_user_syscall_logged = 1;
+            syscall_debug("Userspace: resumed user thread reached syscall\r\n");
+        }
     }
     return syscall_dispatch(number, arg0, arg1, arg2, arg3, 0u);
 }
 
 void syscall_init(void) {
     first_user_syscall_logged = 0;
+    resumed_user_syscall_logged = 0;
 }
