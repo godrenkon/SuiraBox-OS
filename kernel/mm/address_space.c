@@ -1,6 +1,7 @@
 #include "address_space.h"
 #include "pmm.h"
 #include "vmm.h"
+#include "../arch/x86_64/cpu_features.h"
 
 #define PT_ENTRIES 512u
 #define ENTRY_ADDR_MASK 0x000FFFFFFFFFF000ull
@@ -65,6 +66,11 @@ int address_space_map_user(sb_address_space_t *space,
         (physical_address & PAGE_OFFSET_MASK) != 0u ||
         pml4_index(virtual_address) != SB_USER_PML4_INDEX ||
         virtual_address >= SB_USER_LIMIT) return -1;
+
+    /* Bit 63 is reserved unless EFER.NXE is enabled. Guarantee the CPU mode
+     * before publishing an NX PTE so a non-executable user page cannot turn
+     * into a reserved-bit page fault on first access. */
+    if ((flags & SB_VMM_NX) != 0u && sb_cpu_enable_nx() != 0) return -3;
 
     uint64_t *pml4 = (uint64_t *)(uintptr_t)space->pml4_physical;
     const uint64_t user_flags = flags | SB_VMM_USER;
