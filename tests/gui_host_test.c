@@ -12,6 +12,7 @@ int main(void) {
     sb_gui_window_t extreme;
     uint32_t back_id;
     uint32_t front_id;
+    uint32_t app_window_id;
     const uint32_t screen_width = 1024u;
     const uint32_t screen_height = 768u;
 
@@ -30,9 +31,10 @@ int main(void) {
 
     app_window = sb_gui_create_app_window(&wm, 3u, 60, 70, 200u, 120u);
     assert(app_window != 0 && app_window->app_id == 3u);
+    app_window_id = app_window->id;
     assert(sb_gui_create_app_window(&wm, 0u, 0, 0, 200u, 120u) == 0);
 
-    assert(sb_gui_hit_test(&wm, 65, 75)->id == app_window->id);
+    assert(sb_gui_hit_test(&wm, 65, 75)->id == app_window_id);
     assert(sb_gui_hit_test(&wm, 45, 55)->id == front_id);
     assert(sb_gui_hit_test(&wm, 15, 25)->id == back_id);
     assert(sb_gui_hit_test(&wm, 1000, 1000) == 0);
@@ -148,8 +150,8 @@ int main(void) {
     assert(sb_gui_set_minimized(&wm, top->id, 1u) == 0);
     assert(top->minimized == 1u);
     assert(sb_gui_minimized_count(&wm) == 1u);
-    assert(sb_gui_destroy_window(&wm, app_window->id) == 0);
-    assert(sb_gui_find_window(&wm, app_window->id) == 0);
+    assert(sb_gui_destroy_window(&wm, app_window_id) == 0);
+    assert(sb_gui_find_window(&wm, app_window_id) == 0);
     assert(sb_gui_destroy_window(&wm, front_id) == 0);
     assert(wm.count == 2u);
     assert(sb_gui_find_window(&wm, front_id) == 0);
