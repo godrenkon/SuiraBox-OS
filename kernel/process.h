@@ -39,6 +39,12 @@ typedef struct {
 } sb_process_t;
 
 void process_init(void);
+
+/* Allocate globally unique identifiers among live process/thread objects.
+ * Identifiers are monotonic for the current boot and are never zero. */
+uint64_t process_allocate_pid(void);
+uint64_t process_allocate_tid(void);
+
 sb_process_t *process_create(uint64_t pid);
 sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t priority);
 sb_process_t *process_get(uint64_t pid);
