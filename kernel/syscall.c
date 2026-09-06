@@ -74,19 +74,6 @@ static void syscall_user_smoke_fs_result(const char *name, uint64_t result) {
 }
 #endif
 
-static void syscall_user_smoke_char(char c) {
-#if !defined(SB_RUNTIME_SMOKE)
-    (void)c;
-#else
-    while (1) {
-        uint8_t status;
-        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
-        if ((status & 0x20u) != 0u) break;
-    }
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
-#endif
-}
-
 static void syscall_user_smoke_mark(void) {
 #if __STDC_HOSTED__ == 0
     if (syscall_user_smoke_seen != 0u) return;
