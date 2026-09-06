@@ -38,6 +38,13 @@ static int app_already_running(uint32_t app_id) {
     return 0;
 }
 
+static sb_app_instance_t *find_instance(uint32_t app_id) {
+    for (uint32_t i = 0u; i < SB_APP_MAX_RUNNING; ++i) {
+        if (instances[i].active != 0u && instances[i].app_id == app_id) return &instances[i];
+    }
+    return 0;
+}
+
 void sb_app_manager_init(uint64_t multiboot_info) {
     multiboot_info_value = multiboot_info;
     next_pid = SB_APP_PID_BASE;
@@ -95,6 +102,24 @@ int sb_app_launch(uint32_t app_id) {
     instances[slot].process = process;
     instances[slot].thread = thread;
     return 0;
+}
+
+int sb_app_terminate(uint32_t app_id, uint64_t exit_code) {
+    sb_app_instance_t *instance;
+    if (!app_id_is_valid(app_id)) return -1;
+    (void)sb_app_reap_exited();
+    instance = find_instance(app_id);
+    if (instance == 0 || instance->process == 0) return -1;
+    if (instance->process->state == SB_PROCESS_EXITED) return 0;
+    return process_terminate(instance->process, exit_code);
+}
+
+int sb_app_is_running(uint32_t app_id) {
+    sb_app_instance_t *instance;
+    if (!app_id_is_valid(app_id)) return 0;
+    instance = find_instance(app_id);
+    if (instance == 0 || instance->process == 0) return 0;
+    return instance->process->state != SB_PROCESS_EXITED ? 1 : 0;
 }
 
 uint32_t sb_app_count(void) {
