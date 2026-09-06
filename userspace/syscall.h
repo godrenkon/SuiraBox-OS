@@ -60,44 +60,7 @@ static inline uint64_t sb_syscall5(uint64_t number, uint64_t arg0, uint64_t arg1
 static inline uint64_t sb_get_ticks(void) { return sb_syscall0(SB_SYS_GET_TICKS); }
 static inline uint64_t sb_process_id(void) { return sb_syscall0(SB_SYS_PROCESS_ID); }
 static inline uint64_t sb_syscall_abi_version(void) { return sb_syscall0(SB_SYS_ABI_VERSION); }
-static inline uint64_t sb_display_info(void) {
-#ifdef SB_RUNTIME_SMOKE
-    static uint8_t attempted;
-    static uint8_t smoke_ok;
-    if (attempted == 0u) {
-        char directory[] = "/SBRUN";
-        char path[] = "/SBRUN/SBOK.TST";
-        char stage_name[] = "SBSTAGE.TXT";
-        char stage_data[] = "F";
-        char write_data[] = "SBOK";
-        char read_data[4] = {0};
-        attempted = 1u;
-        const uint64_t stage_create = sb_syscall3(SB_SYS_FS_CREATE_ROOT, (uint64_t)(uintptr_t)stage_name,
-                                                   sizeof(stage_name) - 1u, 1u);
-        const uint64_t mkdir_result = sb_syscall2(SB_SYS_FS_MKDIR, (uint64_t)(uintptr_t)directory, sizeof(directory) - 1u);
-        stage_data[0] = mkdir_result == UINT64_MAX ? 'F' : 'S';
-        if (stage_create == 0u) {
-            (void)sb_syscall5(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)stage_name, sizeof(stage_name) - 1u,
-                               (uint64_t)(uintptr_t)stage_data, 1u, 0u);
-        }
-        const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path, sizeof(path) - 1u,
-                                         SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 4u);
-        if (fd != UINT64_MAX) {
-            if (sb_syscall3(SB_SYS_FS_WRITE, fd, (uint64_t)(uintptr_t)write_data, 4u) == 4u &&
-                sb_syscall3(SB_SYS_FS_SEEK, fd, 0u, SB_FS_SEEK_SET) == 0u &&
-                sb_syscall3(SB_SYS_FS_READ, fd, (uint64_t)(uintptr_t)read_data, 4u) == 4u &&
-                read_data[0] == 'S' && read_data[1] == 'B' && read_data[2] == 'O' && read_data[3] == 'K' &&
-                sb_syscall1(SB_SYS_FS_CLOSE, fd) == 0u) {
-                smoke_ok = 1u;
-            } else {
-                (void)sb_syscall1(SB_SYS_FS_CLOSE, fd);
-            }
-        }
-    }
-    (void)smoke_ok;
-#endif
-    return sb_syscall0(SB_SYS_DISPLAY_INFO);
-}
+static inline uint64_t sb_display_info(void) { return sb_syscall0(SB_SYS_DISPLAY_INFO); }
 static inline uint64_t sb_display_clear(uint32_t rgb) { return sb_syscall1(SB_SYS_DISPLAY_CLEAR, rgb); }
 static inline uint64_t sb_display_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height, uint32_t rgb) { return sb_syscall5(SB_SYS_DISPLAY_RECT,x,y,width,height,rgb); }
 static inline uint64_t sb_input_key(void) { return sb_syscall0(SB_SYS_INPUT_KEY); }
@@ -125,6 +88,43 @@ static inline uint64_t sb_fs_mkdir(const char *path,uint32_t path_length){return
 static inline uint64_t sb_wait_child(uint64_t child_pid,uint64_t *exit_code){return sb_syscall2(SB_SYS_WAIT_CHILD,child_pid,(uint64_t)(uintptr_t)exit_code);}
 static inline uint64_t sb_sleep(uint64_t ticks){return sb_syscall1(SB_SYS_SLEEP,ticks);}
 static inline uint64_t sb_yield(void){return sb_syscall0(SB_SYS_YIELD);}
+
+#ifdef SB_RUNTIME_SMOKE
+static inline int sb_runtime_fs_smoke(void) {
+    static uint8_t attempted;
+    static int smoke_ok;
+    if (attempted != 0u) return smoke_ok;
+    attempted = 1u;
+    char directory[] = "/SBRUN";
+    char path[] = "/SBRUN/SBOK.TST";
+    char stage_name[] = "SBSTAGE.TXT";
+    char stage_data[] = "F";
+    char write_data[] = "SBOK";
+    char read_data[4] = {0};
+    const uint64_t stage_create = sb_syscall3(SB_SYS_FS_CREATE_ROOT, (uint64_t)(uintptr_t)stage_name,
+                                               sizeof(stage_name) - 1u, 1u);
+    const uint64_t mkdir_result = sb_syscall2(SB_SYS_FS_MKDIR, (uint64_t)(uintptr_t)directory,
+                                               sizeof(directory) - 1u);
+    stage_data[0] = mkdir_result == UINT64_MAX ? 'F' : 'S';
+    if (stage_create == 0u) {
+        (void)sb_syscall5(SB_SYS_FS_WRITE_ROOT, (uint64_t)(uintptr_t)stage_name,
+                           sizeof(stage_name) - 1u, (uint64_t)(uintptr_t)stage_data, 1u, 0u);
+    }
+    const uint64_t fd = sb_syscall4(SB_SYS_FS_OPEN, (uint64_t)(uintptr_t)path,
+                                     sizeof(path) - 1u, SB_FS_OPEN_READ | SB_FS_OPEN_WRITE | SB_FS_OPEN_CREATE, 4u);
+    if (fd == UINT64_MAX) return 0;
+    if (sb_syscall3(SB_SYS_FS_WRITE, fd, (uint64_t)(uintptr_t)write_data, 4u) != 4u ||
+        sb_syscall3(SB_SYS_FS_SEEK, fd, 0u, SB_FS_SEEK_SET) != 0u ||
+        sb_syscall3(SB_SYS_FS_READ, fd, (uint64_t)(uintptr_t)read_data, 4u) != 4u ||
+        read_data[0] != 'S' || read_data[1] != 'B' || read_data[2] != 'O' || read_data[3] != 'K' ||
+        sb_syscall1(SB_SYS_FS_CLOSE, fd) != 0u) {
+        (void)sb_syscall1(SB_SYS_FS_CLOSE, fd);
+        return 0;
+    }
+    smoke_ok = 1;
+    return smoke_ok;
+}
+#endif
 #endif
 
 #endif
