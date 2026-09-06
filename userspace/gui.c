@@ -36,6 +36,7 @@ sb_gui_window_t *sb_gui_create_window(sb_gui_window_manager_t *wm,
     window = &wm->windows[wm->count++];
     window->id = wm->next_id++;
     if (window->id == 0u) window->id = wm->next_id++;
+    window->app_id = 0u;
     window->x = x;
     window->y = y;
     window->width = width;
@@ -49,6 +50,18 @@ sb_gui_window_t *sb_gui_create_window(sb_gui_window_manager_t *wm,
     window->minimized = 0u;
     window->maximized = 0u;
     wm->focused_id = window->id;
+    return window;
+}
+
+sb_gui_window_t *sb_gui_create_app_window(sb_gui_window_manager_t *wm,
+                                           uint32_t app_id,
+                                           int32_t x, int32_t y,
+                                           uint32_t width, uint32_t height) {
+    sb_gui_window_t *window;
+    if (app_id == 0u) return 0;
+    window = sb_gui_create_window(wm, x, y, width, height);
+    if (window == 0) return 0;
+    window->app_id = app_id;
     return window;
 }
 
