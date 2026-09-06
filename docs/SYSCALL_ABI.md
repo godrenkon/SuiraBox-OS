@@ -35,7 +35,7 @@ Current stable errors:
 | Value | Name | Meaning |
 | ---: | --- | --- |
 | `-1` | `SB_SYS_ERROR_INVALID` | invalid syscall/argument/state |
-| `-2` | `SB_SYS_ERROR_FAULT` | userspace pointer is unmapped or inaccessible |
+| `-2` | `SB_SYS_ERROR_FAULT` | userspace pointer is unmapped or lacks required access |
 | `-3` | `SB_SYS_ERROR_LIMIT` | request exceeds an ABI limit |
 
 New error values may be appended. Existing meanings must not be silently changed within ABI version 1.
@@ -52,6 +52,7 @@ New error values may be appended. Existing meanings must not be silently changed
 | 5 | `SB_SYS_WAIT_PROCESS` | `rdi=child_pid` | child exit code after wait |
 | 6 | `SB_SYS_ABI_VERSION` | none | `SB_SYSCALL_ABI_VERSION` |
 | 7 | `SB_SYS_LOG_WRITE` | `rdi=user_buffer`, `rsi=length` | bytes written |
+| 8 | `SB_SYS_ABI_INFO` | `rdi=writeable sb_syscall_abi_info_t*` | 0 and fills ABI info |
 
 `SB_SYS_SPAWN` is still a bootstrap interface: selector `SB_SPAWN_IMAGE_CHILD` resolves to a trusted boot module. It will become a validated path/descriptor-based launch interface after the VFS/handle boundary is ready.
 
@@ -68,7 +69,9 @@ Before reading or writing userspace memory the kernel must:
 5. split copies at page boundaries and validate every touched page;
 6. access the resolved physical mapping rather than directly dereferencing the untrusted userspace VA.
 
-`SB_SYS_LOG_WRITE` is the first runtime proof of this boundary. QEMU CI requires a valid `.rodata` pointer to copy successfully and an invalid null pointer to return `SB_SYS_ERROR_FAULT` without causing a page fault.
+`SB_SYS_LOG_WRITE` proves the read side: QEMU CI requires a valid `.rodata` pointer to copy successfully and an invalid null pointer to return `SB_SYS_ERROR_FAULT` without causing a page fault.
+
+`SB_SYS_ABI_INFO` proves the write side: QEMU CI requires a writable `.data` destination to receive `sb_syscall_abi_info_t`, then requires the same kernel-to-user copy aimed at `.rodata` to be rejected with `SB_SYS_ERROR_FAULT`. The userspace smoke program verifies the copied ABI version and maximum syscall number itself before continuing to process lifecycle tests.
 
 ## Compatibility policy
 
@@ -76,4 +79,4 @@ Before reading or writing userspace memory the kernel must:
 - New syscalls are appended after `SB_SYS_MAX_NUMBER`.
 - A semantic change that invalidates existing userspace requires a new `SB_SYSCALL_ABI_VERSION`.
 - Kernel and in-tree userspace are compiled against the same canonical header.
-- QEMU integration tests must exercise the version query before lifecycle tests, so an ABI mismatch cannot be hidden by later scheduler success.
+- QEMU integration tests exercise the version query and read/write pointer boundary before lifecycle tests, so an ABI mismatch or unsafe copy path cannot be hidden by later scheduler success.

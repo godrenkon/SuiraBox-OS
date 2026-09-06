@@ -23,7 +23,7 @@ _Static_assert(offsetof(sb_irq_frame_t, rdx) == 11u * sizeof(uint64_t),
                "syscall ABI rdx frame offset changed");
 _Static_assert(offsetof(sb_irq_frame_t, rax) == 14u * sizeof(uint64_t),
                "syscall ABI rax frame offset changed");
-_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_LOG_WRITE,
+_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_ABI_INFO,
                "syscall ABI max-number table is stale");
 
 static int first_user_syscall_logged;
@@ -39,6 +39,8 @@ static int child_pid_syscall_logged;
 static int child_spawn_logged;
 static int abi_version_logged;
 static int invalid_pointer_logged;
+static int writable_pointer_logged;
+static int readonly_pointer_logged;
 
 static void syscall_debug_char(char c) {
     while (1) {
@@ -80,6 +82,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_SPAWN:
         case SB_SYS_WAIT_PROCESS:
         case SB_SYS_LOG_WRITE:
+        case SB_SYS_ABI_INFO:
             return syscall_error(SB_SYS_ERROR_INVALID);
         case SB_SYS_SLEEP:
             return scheduler_sleep_current(arg0) == 0
@@ -89,8 +92,14 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
     }
 }
 
+static sb_process_t *syscall_current_process(const sb_task_t *task) {
+    if (task == 0 || task->user_task == 0u || task->process_id == 0u) return 0;
+    return process_get(task->process_id);
+}
+
 static sb_irq_frame_t *syscall_log_write(sb_irq_frame_t *frame, sb_task_t *task) {
-    if (task == 0 || task->user_task == 0u || task->process_id == 0u) {
+    sb_process_t *process = syscall_current_process(task);
+    if (process == 0) {
         frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
         return frame;
     }
@@ -102,12 +111,6 @@ static sb_irq_frame_t *syscall_log_write(sb_irq_frame_t *frame, sb_task_t *task)
     }
     if (length == 0u) {
         frame->rax = 0u;
-        return frame;
-    }
-
-    sb_process_t *process = process_get(task->process_id);
-    if (process == 0) {
-        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
         return frame;
     }
 
@@ -123,6 +126,35 @@ static sb_irq_frame_t *syscall_log_write(sb_irq_frame_t *frame, sb_task_t *task)
 
     for (uint64_t i = 0u; i < length; ++i) syscall_debug_char((char)buffer[i]);
     frame->rax = length;
+    return frame;
+}
+
+static sb_irq_frame_t *syscall_abi_info(sb_irq_frame_t *frame, sb_task_t *task) {
+    sb_process_t *process = syscall_current_process(task);
+    if (process == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    const sb_syscall_abi_info_t info = {
+        .abi_version = SB_SYSCALL_ABI_VERSION,
+        .max_syscall_number = SB_SYS_MAX_NUMBER,
+    };
+
+    if (user_copy_to(process, frame->rdi, &info, sizeof(info)) != 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
+        if (!readonly_pointer_logged) {
+            readonly_pointer_logged = 1;
+            syscall_debug("Syscall: read-only user pointer write rejected\r\n");
+        }
+        return frame;
+    }
+
+    frame->rax = 0u;
+    if (!writable_pointer_logged) {
+        writable_pointer_logged = 1;
+        syscall_debug("Syscall: writable user pointer copy OK\r\n");
+    }
     return frame;
 }
 
@@ -155,6 +187,10 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
 
     if (number == SB_SYS_LOG_WRITE) {
         return syscall_log_write(frame, task);
+    }
+
+    if (number == SB_SYS_ABI_INFO) {
+        return syscall_abi_info(frame, task);
     }
 
     if (number == SB_SYS_SLEEP) {
@@ -218,8 +254,6 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
             return frame;
         }
 
-        /* The saved frame's RAX is replaced with the child's exit status by
-         * scheduler_wake_task_with_result() after deferred resource reaping. */
         frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
         wait_cycle_armed = 1;
         wait_task_id = task->id;
@@ -297,4 +331,6 @@ void syscall_init(void) {
     child_spawn_logged = 0;
     abi_version_logged = 0;
     invalid_pointer_logged = 0;
+    writable_pointer_logged = 0;
+    readonly_pointer_logged = 0;
 }

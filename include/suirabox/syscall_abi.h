@@ -15,9 +15,6 @@
  * Return:
  *   rax >= 0 : success/result
  *   rax <  0 : stable ABI error code
- *
- * Keep this header preprocessor-only so it can be included by both C and
- * assembler-with-cpp userspace sources.
  */
 #define SB_SYSCALL_ABI_VERSION 1
 #define SB_SYSCALL_VECTOR      0x80
@@ -30,19 +27,33 @@
 #define SB_SYS_WAIT_PROCESS    5
 #define SB_SYS_ABI_VERSION     6
 #define SB_SYS_LOG_WRITE       7
-#define SB_SYS_MAX_NUMBER      7
+#define SB_SYS_ABI_INFO        8
+#define SB_SYS_MAX_NUMBER      8
 
 /* Temporary bootstrap executable selector. It remains until spawn accepts a
  * validated userspace path/descriptor rather than a trusted boot-image ID. */
 #define SB_SPAWN_IMAGE_CHILD   1
 
-/* Version-1 negative return values. More specific codes can be appended
- * without changing the entry register contract. */
 #define SB_SYS_ERROR_INVALID  -1
 #define SB_SYS_ERROR_FAULT    -2
 #define SB_SYS_ERROR_LIMIT    -3
 
-/* Bound early-console writes so a single syscall cannot monopolize ring0. */
 #define SB_SYS_LOG_MAX         256
+
+/* Fixed ABI_INFO output layout, also usable by assembler tests. */
+#define SB_ABI_INFO_VERSION_OFFSET     0
+#define SB_ABI_INFO_MAX_SYSCALL_OFFSET 8
+#define SB_ABI_INFO_SIZE               16
+
+#ifndef __ASSEMBLER__
+#include <stdint.h>
+typedef struct {
+    uint64_t abi_version;
+    uint64_t max_syscall_number;
+} sb_syscall_abi_info_t;
+
+_Static_assert(sizeof(sb_syscall_abi_info_t) == SB_ABI_INFO_SIZE,
+               "syscall ABI info layout mismatch");
+#endif
 
 #endif /* SUIRABOX_SYSCALL_ABI_H */

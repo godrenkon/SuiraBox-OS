@@ -9,11 +9,11 @@
  * Userspace scheduler/process/syscall-boundary smoke program.
  *
  * 1. Query the formal syscall ABI version and reject a mismatch.
- * 2. LOG_WRITE copies a real .rodata userspace buffer through page-table
- *    validation; a null pointer must return SB_SYS_ERROR_FAULT without #PF.
- * 3. SPAWN + WAIT prove BLOCKED parent/child lifecycle and cross-process CR3.
- * 4. SLEEP proves independent timer-deadline sleep/wakeup and saved-frame
- *    resume.
+ * 2. LOG_WRITE validates/copies a .rodata userspace buffer; null must fault.
+ * 3. ABI_INFO copies kernel data into writable .data, then the same syscall is
+ *    aimed at .rodata and must be rejected as non-writable without #PF.
+ * 4. SPAWN + WAIT prove BLOCKED parent/child lifecycle and cross-process CR3.
+ * 5. SLEEP proves timer-deadline sleep/wakeup and saved-frame resume.
  */
 _start:
     mov $SB_SYS_GET_TICKS, %rax
@@ -34,6 +34,24 @@ _start:
     xor %rdi, %rdi
     mov $1, %rsi
     mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+
+    lea abi_info_buffer(%rip), %rdi
+    mov $SB_SYS_ABI_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpq $SB_SYSCALL_ABI_VERSION, SB_ABI_INFO_VERSION_OFFSET+abi_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $SB_SYS_MAX_NUMBER, SB_ABI_INFO_MAX_SYSCALL_OFFSET+abi_info_buffer(%rip)
+    jne lifecycle_failed
+
+    /* .rodata is readable to userspace but must not pass kernel-to-user write
+     * validation. The kernel must return FAULT rather than taking a page fault. */
+    lea pointer_message(%rip), %rdi
+    mov $SB_SYS_ABI_INFO, %rax
     int $SB_SYSCALL_VECTOR
     cmp $SB_SYS_ERROR_FAULT, %rax
     jne lifecycle_failed
@@ -59,7 +77,6 @@ preempt_spin:
     test %rax, %rax
     jne lifecycle_failed
 
-    /* Kernel logs this next syscall only if WAIT's saved frame really resumed. */
     mov $SB_SYS_GET_TICKS, %rax
     xor %rdi, %rdi
     int $SB_SYSCALL_VECTOR
@@ -68,7 +85,6 @@ preempt_spin:
     mov $5, %rdi
     int $SB_SYSCALL_VECTOR
 
-    /* Reaching this syscall proves SLEEP returned only after wake + redispatch. */
     mov $SB_SYS_GET_TICKS, %rax
     xor %rdi, %rdi
     int $SB_SYSCALL_VECTOR
@@ -94,3 +110,9 @@ lifecycle_failed:
 pointer_message:
     .ascii "Userspace: validated user pointer copy OK\r\n"
 .set pointer_message_len, . - pointer_message
+
+.section .data
+.align 8
+abi_info_buffer:
+    .quad 0
+    .quad 0

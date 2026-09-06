@@ -71,6 +71,8 @@ jobs:
           grep -F "Syscall: ABI v1 userspace probe OK" qemu.log
           grep -F "Userspace: validated user pointer copy OK" qemu.log
           grep -F "Syscall: invalid user pointer rejected" qemu.log
+          grep -F "Syscall: writable user pointer copy OK" qemu.log
+          grep -F "Syscall: read-only user pointer write rejected" qemu.log
 
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
           grep -F "Userspace: entering ring3" qemu.log
@@ -110,6 +112,8 @@ jobs:
                   "Syscall: ABI v1 userspace probe OK",
                   "Userspace: validated user pointer copy OK",
                   "Syscall: invalid user pointer rejected",
+                  "Syscall: writable user pointer copy OK",
+                  "Syscall: read-only user pointer write rejected",
               ],
               "wait/child/reap": [
                   "Userspace: spawn syscall created child process",
