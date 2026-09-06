@@ -21,20 +21,23 @@
 #define SB_SYSCALL_ABI_VERSION 1
 #define SB_SYSCALL_VECTOR      0x80
 
-#define SB_SYS_GET_TICKS         0
-#define SB_SYS_PROCESS_ID        1
-#define SB_SYS_EXIT              2
-#define SB_SYS_SLEEP             3
-#define SB_SYS_SPAWN             4
-#define SB_SYS_WAIT_PROCESS      5
-#define SB_SYS_ABI_VERSION       6
-#define SB_SYS_LOG_WRITE         7
-#define SB_SYS_ABI_INFO          8
-#define SB_SYS_PROCESS_OPEN_SELF 9
-#define SB_SYS_HANDLE_INFO       10
-#define SB_SYS_HANDLE_CLOSE      11
-#define SB_SYS_SPAWN_REQUEST     12
-#define SB_SYS_MAX_NUMBER        12
+#define SB_SYS_GET_TICKS             0
+#define SB_SYS_PROCESS_ID            1
+#define SB_SYS_EXIT                  2
+#define SB_SYS_SLEEP                 3
+#define SB_SYS_SPAWN                 4
+#define SB_SYS_WAIT_PROCESS          5
+#define SB_SYS_ABI_VERSION           6
+#define SB_SYS_LOG_WRITE             7
+#define SB_SYS_ABI_INFO              8
+#define SB_SYS_PROCESS_OPEN_SELF     9
+#define SB_SYS_HANDLE_INFO           10
+#define SB_SYS_HANDLE_CLOSE          11
+#define SB_SYS_SPAWN_REQUEST         12
+#define SB_SYS_FILE_OPEN_BOOT_MODULE 13
+#define SB_SYS_FILE_READ             14
+#define SB_SYS_FILE_SEEK             15
+#define SB_SYS_MAX_NUMBER            15
 
 /* Legacy bootstrap selector retained for ABI v1 compatibility. New code should
  * use SB_SYS_SPAWN_REQUEST and an explicit source/name request. */
@@ -46,8 +49,11 @@
 #define SB_SYS_ERROR_STALE      -4
 #define SB_SYS_ERROR_RIGHTS     -5
 #define SB_SYS_ERROR_NOT_FOUND  -6
+#define SB_SYS_ERROR_IO         -7
 
-#define SB_SYS_LOG_MAX         256
+#define SB_SYS_LOG_MAX          256
+#define SB_SYS_FILE_IO_MAX      256
+#define SB_SYS_FILE_NAME_MAX    63
 
 /* Fixed ABI_INFO output layout, also usable by assembler tests. */
 #define SB_ABI_INFO_VERSION_OFFSET     0
