@@ -49,8 +49,6 @@ jobs:
           grep -F "PCI: scan complete." qemu.log
 
           # Headless QEMU may legitimately receive no Multiboot framebuffer.
-          # If GRUB supplies one, validate its mapping path; otherwise require
-          # the explicit fallback-console path rather than failing CI.
           if grep -Fq "Display: framebuffer ready" qemu.log; then
             grep -F "Display: framebuffer mapped" qemu.log
             grep -F "Display: framebuffer clear OK" qemu.log
@@ -86,6 +84,49 @@ jobs:
           grep -F "Scheduler: woke user task selected for resume" qemu.log
           grep -F "Userspace: woke sleeping user thread reached syscall" qemu.log
 
+          # Second process, independent CR3, EXIT and deferred resource reap.
+          grep -F "Userspace: spawn syscall created child process" qemu.log
+          grep -F "Scheduler: cross-process CR3 switch verified" qemu.log
+          grep -F "Userspace: child process PID syscall OK" qemu.log
+          grep -F "Userspace: child requested process exit" qemu.log
+          grep -F "Process: exited process resources reaped" qemu.log
+
+          # Presence alone can hide impossible event order. Verify the critical
+          # state-machine transitions occurred monotonically in the QEMU log.
+          python3 - <<'PY'
+          from pathlib import Path
+
+          log = Path("qemu.log").read_text(errors="replace")
+          sequences = {
+              "sleep/wake": [
+                  "Scheduler: user task entered SLEEPING",
+                  "Userspace: sleep syscall requested",
+                  "Scheduler: sleeping user task descheduled",
+                  "Scheduler: sleeping user task woke",
+                  "Scheduler: woke user task selected for resume",
+                  "Userspace: woke sleeping user thread reached syscall",
+              ],
+              "spawn/exit/reap": [
+                  "Userspace: spawn syscall created child process",
+                  "Scheduler: cross-process CR3 switch verified",
+                  "Userspace: child process PID syscall OK",
+                  "Userspace: child requested process exit",
+                  "Process: exited process resources reaped",
+              ],
+          }
+
+          for name, markers in sequences.items():
+              cursor = -1
+              for marker in markers:
+                  position = log.find(marker, cursor + 1)
+                  if position < 0:
+                      raise SystemExit(f"missing {name} marker: {marker}")
+                  if position <= cursor:
+                      raise SystemExit(f"out-of-order {name} marker: {marker}")
+                  cursor = position
+              print(f"ordered QEMU proof OK: {name}")
+          PY
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -95,4 +136,6 @@ jobs:
           path: |
             build/suirabox.iso
             build/suirabox.elf
+            build/user-hello.elf
+            build/user-child.elf
             qemu.log

@@ -1,6 +1,7 @@
 #include "timer.h"
 #include "arch/x86_64/interrupts.h"
 #include "scheduler.h"
+#include "process.h"
 #include <stdint.h>
 
 #define PIT_COMMAND 0x43u
@@ -14,6 +15,7 @@ struct __attribute__((packed)) debug_desc_ptr { uint16_t limit; uint64_t base; }
 struct __attribute__((packed)) debug_idt_entry { uint16_t offset_low; uint16_t selector; uint8_t ist; uint8_t type_attr; uint16_t offset_mid; uint32_t offset_high; uint32_t zero; };
 
 static volatile uint64_t ticks;
+static int process_reap_logged;
 
 static void outb(uint16_t port, uint8_t value) {
     __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
@@ -79,6 +81,7 @@ void timer_init(uint32_t frequency_hz) {
     if (divisor == 0u) divisor = 1u;
     if (divisor > 0xFFFFu) divisor = 0xFFFFu;
     ticks = 0;
+    process_reap_logged = 0;
     timer_debug("[TIMER] PIC remap begin\r\n"); pic_remap(); timer_debug("[TIMER] PIC remap complete\r\n");
     timer_debug("[TIMER] PIT program begin\r\n");
     outb(PIT_COMMAND, 0x36u); outb(PIT_CHANNEL0, (uint8_t)(divisor & 0xFFu)); outb(PIT_CHANNEL0, (uint8_t)((divisor >> 8) & 0xFFu));
@@ -98,6 +101,16 @@ uint64_t timer_ticks(void) { return ticks; }
 sb_irq_frame_t *sb_timer_tick(sb_irq_frame_t *frame) {
     ++ticks;
     scheduler_tick();
+
+    /* EXIT is deliberately two-phase. The syscall first switches away from
+     * the exiting stack/CR3; a later timer interrupt can then safely reclaim
+     * EXITED scheduler stacks and process address-space pages. */
+    const uint32_t reaped = process_reap_exited();
+    if (reaped != 0u && !process_reap_logged) {
+        process_reap_logged = 1;
+        timer_debug("Process: exited process resources reaped\r\n");
+    }
+
     if (frame != 0 &&
         (ticks % (uint64_t)SB_SCHED_QUANTUM_TICKS) == 0u &&
         scheduler_task_count() > 1u) {

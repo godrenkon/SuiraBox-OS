@@ -49,10 +49,15 @@ int elf64_load_image(sb_address_space_t *space,
 
         uint64_t virtual_start;
         uint64_t virtual_end;
+        uint64_t file_virtual_end;
+        uint64_t segment_file_end;
         if (range_end(load_bias, ph->virtual_address, &virtual_start) ||
             range_end(virtual_start, ph->memory_size, &virtual_end) ||
+            range_end(virtual_start, ph->file_size, &file_virtual_end) ||
+            range_end(ph->offset, ph->file_size, &segment_file_end) ||
             virtual_start < SB_USER_BASE || virtual_end > SB_USER_LIMIT ||
-            virtual_end <= virtual_start) {
+            virtual_end <= virtual_start || file_virtual_end > virtual_end ||
+            segment_file_end > image_size) {
             return -1;
         }
 
@@ -60,7 +65,7 @@ int elf64_load_image(sb_address_space_t *space,
         uint64_t map_end;
         if (align_up_checked(virtual_end, &map_end)) return -1;
 
-        uint64_t flags = SB_VMM_USER;
+        uint64_t flags = SB_VMM_USER | SB_VMM_OWNED;
         if ((ph->flags & PF_W) != 0u) flags |= SB_VMM_WRITABLE;
         if ((ph->flags & PF_X) == 0u) flags |= SB_VMM_NX;
 
@@ -71,27 +76,16 @@ int elf64_load_image(sb_address_space_t *space,
             uint8_t *dst = (uint8_t *)page;
             for (uint32_t j = 0; j < SB_PAGE_SIZE; ++j) dst[j] = 0;
 
-            uint64_t page_file_start = 0;
-            uint64_t page_file_end = 0;
-            uint64_t segment_file_start = 0;
-            uint64_t segment_file_end = 0;
-            if (range_end(ph->offset, ph->file_size, &segment_file_end)) return -1;
-            segment_file_start = ph->offset;
-
             if (va < virtual_end && va + SB_PAGE_SIZE > virtual_start) {
-                uint64_t copy_start = va > virtual_start ? va : virtual_start;
-                uint64_t copy_end = (va + SB_PAGE_SIZE) < (virtual_start + ph->file_size)
-                    ? (va + SB_PAGE_SIZE) : (virtual_start + ph->file_size);
-                if (copy_end > copy_start &&
-                    copy_start >= virtual_start &&
-                    copy_end <= virtual_start + ph->file_size) {
-                    page_file_start = segment_file_start + (copy_start - virtual_start);
-                    page_file_end = segment_file_start + (copy_end - virtual_start);
-                    if (page_file_start < segment_file_start || page_file_end > segment_file_end ||
-                        page_file_end > image_size) return -1;
-                    uint64_t dst_offset = copy_start - va;
+                const uint64_t copy_start = va > virtual_start ? va : virtual_start;
+                const uint64_t page_end = va + SB_PAGE_SIZE;
+                const uint64_t copy_end = page_end < file_virtual_end ? page_end : file_virtual_end;
+                if (copy_end > copy_start) {
+                    const uint64_t page_file_start = ph->offset + (copy_start - virtual_start);
+                    const uint64_t copy_size = copy_end - copy_start;
+                    const uint64_t dst_offset = copy_start - va;
                     const uint8_t *src = (const uint8_t *)image + page_file_start;
-                    for (uint64_t j = 0; j < page_file_end - page_file_start; ++j) {
+                    for (uint64_t j = 0; j < copy_size; ++j) {
                         dst[dst_offset + j] = src[j];
                     }
                 }
@@ -104,8 +98,8 @@ int elf64_load_image(sb_address_space_t *space,
                 return -1;
             }
 
-            uint64_t page_end = va + SB_PAGE_SIZE;
-            uint64_t entry_virtual = load_bias + header->entry;
+            const uint64_t page_end = va + SB_PAGE_SIZE;
+            const uint64_t entry_virtual = load_bias + header->entry;
             if (entry_virtual >= va && entry_virtual < page_end) entry_mapped = 1;
         }
     }

@@ -31,6 +31,7 @@ typedef struct {
     uint64_t runtime_ticks;
     uint64_t dispatch_count;
     uint64_t wake_tick;
+    int64_t exit_code;
     uint32_t priority;
     sb_task_state_t state;
     sb_task_context_t context;
@@ -64,9 +65,16 @@ int scheduler_block_current(void);
 int scheduler_sleep_current(uint64_t delay_ticks);
 int scheduler_wake_task(uint64_t id);
 
+/* Process exit is two-phase. This marks all tasks in the current user process
+ * EXITED. Their stacks are freed later from a different scheduler context. */
+int scheduler_exit_current_process(int64_t exit_code);
+/* Reclaim EXITED task slots and kernel stacks for pid. Never reaps the current
+ * process. Returns a non-negative number of task slots reclaimed. */
+int scheduler_reap_process(uint64_t pid);
+
 /* Save current_frame and immediately choose another runnable execution frame.
- * This is used by blocking syscalls where waiting until the next timer quantum
- * would violate sleep/block semantics. */
+ * This is used by blocking/exit syscalls where waiting until the next timer
+ * quantum would violate the syscall semantics. */
 sb_irq_frame_t *scheduler_reschedule(sb_irq_frame_t *current_frame);
 
 /* Called from the timer IRQ with a complete register frame. The returned frame

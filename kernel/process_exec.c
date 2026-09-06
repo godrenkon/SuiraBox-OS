@@ -1,11 +1,14 @@
 #include "process_exec.h"
 #include "elf_loader.h"
+#include "scheduler.h"
 #include "mm/address_space.h"
 #include "mm/multiboot_modules.h"
 #include "mm/pmm.h"
 #include "mm/vmm.h"
 
 #define SB_USER_STACK_PAGES 4u
+
+static uint64_t registered_multiboot_info;
 
 static int map_user_stack(sb_address_space_t *space,
                           uint64_t bottom,
@@ -20,7 +23,7 @@ static int map_user_stack(sb_address_space_t *space,
         }
         if (address_space_map_user(space, va,
                                    (uint64_t)(uintptr_t)page,
-                                   SB_VMM_WRITABLE | SB_VMM_NX) != 0) {
+                                   SB_VMM_WRITABLE | SB_VMM_NX | SB_VMM_OWNED) != 0) {
             pmm_free_page(page);
             return -1;
         }
@@ -66,10 +69,70 @@ int process_prepare_boot_module(sb_process_t *process,
                                 const char *module_name,
                                 sb_process_image_t *image_info) {
     sb_multiboot_module_t module;
-    if (multiboot_find_module(multiboot_info, module_name, &module) != 0) return -1;
+    if (multiboot_info == 0u ||
+        multiboot_find_module(multiboot_info, module_name, &module) != 0) return -1;
     if (module.end <= module.start) return -1;
-    return process_prepare_elf(process,
-                                (const void *)(uintptr_t)module.start,
-                                module.end - module.start,
-                                image_info);
+
+    const int result = process_prepare_elf(process,
+                                           (const void *)(uintptr_t)module.start,
+                                           module.end - module.start,
+                                           image_info);
+    if (result == 0 && registered_multiboot_info == 0u) {
+        registered_multiboot_info = multiboot_info;
+    }
+    return result;
+}
+
+sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
+                                        const char *module_name,
+                                        uint64_t pid,
+                                        uint64_t tid,
+                                        uint32_t priority,
+                                        sb_process_image_t *image_info) {
+    if (multiboot_info == 0u || module_name == 0 || pid == 0u || tid == 0u) return 0;
+
+    sb_process_image_t local_image;
+    sb_process_image_t *prepared = image_info != 0 ? image_info : &local_image;
+    sb_process_t *process = process_create(pid);
+    if (process == 0) return 0;
+
+    if (process_prepare_boot_module(process, multiboot_info, module_name, prepared) != 0) {
+        process_destroy(process);
+        return 0;
+    }
+
+    sb_thread_t *thread = process_create_thread(process, tid, priority);
+    if (thread == 0) {
+        process_destroy(process);
+        return 0;
+    }
+
+    const int add_result = scheduler_add_user_task(thread->tid,
+                                                   process->pid,
+                                                   thread->priority,
+                                                   process->address_space.pml4_physical,
+                                                   prepared->entry_point,
+                                                   prepared->user_stack_top);
+    if (add_result != 0) {
+        process_destroy(process);
+        return 0;
+    }
+
+    process->state = SB_PROCESS_RUNNING;
+    thread->state = SB_PROCESS_RUNNING;
+    return process;
+}
+
+sb_process_t *process_spawn_registered_boot_module(const char *module_name,
+                                                   uint64_t pid,
+                                                   uint64_t tid,
+                                                   uint32_t priority,
+                                                   sb_process_image_t *image_info) {
+    if (registered_multiboot_info == 0u) return 0;
+    return process_spawn_boot_module(registered_multiboot_info,
+                                     module_name,
+                                     pid,
+                                     tid,
+                                     priority,
+                                     image_info);
 }

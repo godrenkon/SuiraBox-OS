@@ -25,6 +25,7 @@ typedef struct {
 typedef struct {
     uint64_t pid;
     sb_process_state_t state;
+    int64_t exit_code;
     uint32_t thread_count;
     sb_thread_t threads[SB_MAX_THREADS_PER_PROCESS];
     sb_address_space_t address_space;
@@ -38,6 +39,10 @@ sb_thread_t *process_create_thread(sb_process_t *process, uint64_t tid, uint32_t
 sb_process_t *process_get(uint64_t pid);
 uint32_t process_count(void);
 int process_activate(sb_process_t *process);
+int process_mark_exited(uint64_t pid, int64_t exit_code);
+/* Reap EXITED processes whose scheduler tasks are no longer executing.
+ * Returns the number of process objects/resources reclaimed. */
+uint32_t process_reap_exited(void);
 void process_destroy(sb_process_t *process);
 
 #endif

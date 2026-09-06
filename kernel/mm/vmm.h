@@ -6,6 +6,9 @@
 #define SB_VMM_PRESENT  (1ull << 0)
 #define SB_VMM_WRITABLE (1ull << 1)
 #define SB_VMM_USER     (1ull << 2)
+/* Software-owned mapping bit. x86_64 leaves PTE bits 9-11 available to the OS.
+ * Address-space teardown frees a leaf page only when this bit is present. */
+#define SB_VMM_OWNED    (1ull << 9)
 #define SB_VMM_NX       (1ull << 63)
 
 int vmm_map_page(uint64_t virtual_address, uint64_t physical_address, uint64_t flags);
