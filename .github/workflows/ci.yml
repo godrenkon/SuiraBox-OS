@@ -100,12 +100,15 @@ jobs:
           grep -F "Scheduler: woke blocked user task selected for resume" qemu.log
           grep -F "Userspace: parent wait resumed after child exit" qemu.log
 
-          # Versioned general spawn request: validated userspace request/name,
-          # dynamic identifiers, child execution, exit/reap, parent wake.
+          # Versioned general spawn request: request/name validation, dynamic
+          # identifiers, actual parent blocking, child execution/exit, process
+          # slot removal after reap, and parent WAIT completion.
           grep -F "Spawn: userspace request copied and validated" qemu.log
           grep -F "Spawn: general child process created" qemu.log
+          grep -F "Spawn: parent blocked waiting for general child" qemu.log
           grep -F "Spawn: general child PID syscall OK" qemu.log
           grep -F "Spawn: general child requested process exit" qemu.log
+          grep -F "Spawn: general child resources reaped" qemu.log
           grep -F "Spawn: general child wait completed" qemu.log
 
           # SLEEP remains an independent deadline-driven transition.
@@ -159,14 +162,11 @@ jobs:
               "general-spawn/wait/reap": [
                   "Spawn: userspace request copied and validated",
                   "Spawn: general child process created",
-                  "Scheduler: user task entered BLOCKED",
+                  "Spawn: parent blocked waiting for general child",
                   "Userspace: wait syscall blocked for child",
-                  "Scheduler: blocked user task descheduled",
                   "Spawn: general child PID syscall OK",
                   "Spawn: general child requested process exit",
-                  "Scheduler: blocked user task woke",
-                  "Process: exited process resources reaped",
-                  "Scheduler: woke blocked user task selected for resume",
+                  "Spawn: general child resources reaped",
                   "Spawn: general child wait completed",
               ],
               "sleep/wake": [
