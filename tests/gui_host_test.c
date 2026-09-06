@@ -54,7 +54,7 @@ int main(void) {
     front = sb_gui_find_window(&wm, front_id);
     assert(front != 0);
     assert(sb_gui_move_window(&wm, front_id, 100, 100) == 0);
-    assert(sb_gui_hit_test(&wm, 105, 105)->id == front_id);
+    assert(sb_gui_hit_test(&wm, 105, 105)->id == app_window->id);
     assert(sb_gui_focus_window(&wm, front_id) == 0);
     assert(sb_gui_hit_test(&wm, 105, 105)->id == front_id);
     assert(sb_gui_resize_window(&wm, front_id, 320u, 240u) == 0);
