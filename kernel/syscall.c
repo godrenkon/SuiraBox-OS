@@ -54,6 +54,8 @@ static int general_spawn_created_logged;
 static uint64_t general_spawn_pid;
 static int general_child_pid_logged;
 static int general_child_exit_logged;
+static int general_parent_block_logged;
+static int general_resources_reaped_logged;
 static int general_wait_armed;
 static uint64_t general_wait_task_id;
 static int general_wait_completed_logged;
@@ -130,6 +132,15 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
 static sb_process_t *syscall_current_process(const sb_task_t *task) {
     if (task == 0 || task->user_task == 0u || task->process_id == 0u) return 0;
     return process_get(task->process_id);
+}
+
+static void report_general_child_collected(void) {
+    if (general_spawn_pid == 0u || general_resources_reaped_logged ||
+        process_get(general_spawn_pid) != 0) {
+        return;
+    }
+    general_resources_reaped_logged = 1;
+    syscall_debug("Spawn: general child resources reaped\r\n");
 }
 
 static sb_irq_frame_t *syscall_log_write(sb_irq_frame_t *frame, sb_task_t *task) {
@@ -388,6 +399,7 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         task->id == general_wait_task_id && task->user_task != 0u) {
         general_wait_armed = 0;
         general_wait_task_id = 0u;
+        report_general_child_collected();
         general_wait_completed_logged = 1;
         syscall_debug("Spawn: general child wait completed\r\n");
     }
@@ -470,6 +482,7 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         if (wait_result == 0) {
             frame->rax = (uint64_t)exit_code;
             if (child_pid == general_spawn_pid && !general_wait_completed_logged) {
+                report_general_child_collected();
                 general_wait_completed_logged = 1;
                 syscall_debug("Spawn: general child wait completed\r\n");
             }
@@ -487,6 +500,10 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         if (child_pid == general_spawn_pid) {
             general_wait_armed = 1;
             general_wait_task_id = task->id;
+            if (!general_parent_block_logged) {
+                general_parent_block_logged = 1;
+                syscall_debug("Spawn: parent blocked waiting for general child\r\n");
+            }
         }
         syscall_debug("Userspace: wait syscall blocked for child\r\n");
         return scheduler_reschedule(frame);
@@ -584,6 +601,8 @@ void syscall_init(void) {
     general_spawn_pid = 0u;
     general_child_pid_logged = 0;
     general_child_exit_logged = 0;
+    general_parent_block_logged = 0;
+    general_resources_reaped_logged = 0;
     general_wait_armed = 0;
     general_wait_task_id = 0u;
     general_wait_completed_logged = 0;
