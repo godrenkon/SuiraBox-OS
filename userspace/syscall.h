@@ -32,6 +32,8 @@ uint64_t sb_display_glyph_pair(uint32_t x, uint32_t y, uint64_t bitmap_a, uint64
 uint64_t sb_config_get(void);
 uint64_t sb_config_set_with_options(uint32_t language, uint32_t optional_enabled_mask);
 uint64_t sb_app_launch(uint32_t app_id);
+uint64_t sb_app_terminate(uint32_t app_id, uint64_t exit_code);
+uint64_t sb_app_is_running(uint32_t app_id);
 uint64_t sb_fs_list_root(char *buffer, uint32_t capacity);
 uint64_t sb_fs_list(const char *path, uint32_t path_length, void *buffer, uint32_t capacity);
 uint64_t sb_fs_stat_root(const char *name, uint32_t name_length);
@@ -106,6 +108,8 @@ static inline uint64_t sb_config_get(void) { return sb_syscall0(SB_SYS_CONFIG_GE
 static inline uint64_t sb_config_set_with_options(uint32_t language,uint32_t optional_enabled_mask){return sb_syscall2(SB_SYS_CONFIG_SET,language,optional_enabled_mask);}
 static inline uint64_t sb_config_set(uint32_t language){return sb_config_set_with_options(language,SB_CONFIG_SET_KEEP_OPTIONS);}
 static inline uint64_t sb_app_launch(uint32_t app_id){return sb_syscall1(SB_SYS_APP_LAUNCH,app_id);}
+static inline uint64_t sb_app_terminate(uint32_t app_id,uint64_t exit_code){return sb_syscall2(SB_SYS_APP_TERMINATE,app_id,exit_code);}
+static inline uint64_t sb_app_is_running(uint32_t app_id){return sb_syscall1(SB_SYS_APP_STATUS,app_id);}
 static inline uint64_t sb_fs_list_root(char *buffer,uint32_t capacity){return sb_syscall2(SB_SYS_FS_LIST_ROOT,(uint64_t)(uintptr_t)buffer,capacity);}
 static inline uint64_t sb_fs_list(const char *path,uint32_t path_length,void *buffer,uint32_t capacity){return sb_syscall4(SB_SYS_FS_LIST,(uint64_t)(uintptr_t)path,path_length,(uint64_t)(uintptr_t)buffer,capacity);}
 static inline uint64_t sb_fs_stat_root(const char *name,uint32_t name_length){return sb_syscall2(SB_SYS_FS_STAT_ROOT,(uint64_t)(uintptr_t)name,name_length);}
