@@ -203,7 +203,8 @@ static int path_find_free_directory_slot(sb_fat32_t *fs, uint32_t directory_clus
         }
         uint32_t next;
         if (!path_next_cluster(fs, cluster, &next)) return 0;
-        if (next >= SB_FAT32_PATH_EOC_MIN || !path_valid_cluster(fs, next)) return 0;
+        if (next >= SB_FAT32_PATH_EOC_MIN) return 0;
+        if (!path_valid_cluster(fs, next)) return 0;
         cluster = next;
     }
     return 0;
@@ -364,7 +365,7 @@ int sb_fat32_create_directory_in_directory(sb_fat32_t *fs, uint32_t parent_clust
     uint32_t slot_index = 0u;
     uint32_t new_cluster = 0u;
     if (fs == 0 || name == 0 || directory_cluster == 0 || entry == 0 ||
-        fs->bytes_per_sector != SB_FAT32_PATH_SECTOR_BYTES || fs->sectors_per_cluster != 1u ||
+        fs->bytes_per_sector != SB_FAT32_PATH_SECTOR_BYTES || fs->sectors_per_cluster == 0u ||
         !path_valid_cluster(fs, parent_cluster) || !path_format_name_83(name, raw_name, canonical)) return 0;
     if (path_find_in_directory(fs, parent_cluster, canonical, entry)) return 0;
     if (!path_find_free_directory_slot(fs, parent_cluster, &lba, &entry_offset, &slot_index)) return 0;
@@ -384,7 +385,6 @@ int sb_fat32_create_directory_in_directory(sb_fat32_t *fs, uint32_t parent_clust
     directory_sector[11] = SB_FAT32_ATTR_DIRECTORY;
     put_le16_path(&directory_sector[20u], (uint16_t)(new_cluster >> 16));
     put_le16_path(&directory_sector[26u], (uint16_t)new_cluster);
-    for (uint32_t i = 13u; i < 32u; ++i) directory_sector[i] = 0u;
     directory_sector[32u] = '.';
     directory_sector[33u] = '.';
     for (uint32_t i = 34u; i < 43u; ++i) directory_sector[i] = ' ';
