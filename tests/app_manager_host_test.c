@@ -73,6 +73,18 @@ int main(void){
     assert(sb_app_launch(SB_APP_SETTINGS)==0);
     assert(process_count_value==2u);
     assert(processes[1].parent_pid==processes[0].pid);
+    assert(sb_app_is_running_for_current(SB_APP_SETTINGS)==1);
+    {
+        sb_process_t outsider=(sb_process_t){.pid=0x1234567890ABCDEFuLL,.state=SB_PROCESS_RUNNING};
+        current_parent=&outsider;
+        assert(sb_app_is_running_for_current(SB_APP_SETTINGS)==0);
+        assert(sb_app_terminate_for_current(SB_APP_SETTINGS,31u)!=0);
+        assert(processes[1].state==SB_PROCESS_CREATED);
+    }
+    current_parent=&processes[0];
+    assert(sb_app_terminate_for_current(SB_APP_SETTINGS,32u)==0);
+    assert(processes[1].state==SB_PROCESS_EXITED);
+    assert(sb_app_is_running_for_current(SB_APP_SETTINGS)==0);
     current_parent=0;
     return 0;
 }
