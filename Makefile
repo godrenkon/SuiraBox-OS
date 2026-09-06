@@ -5,6 +5,7 @@ USER_ELF := $(BUILD)/user-hello.elf
 CHILD_ELF := $(BUILD)/user-child.elf
 PMM_HOST_TEST := $(BUILD)/pmm-host-test
 FAT32_HOST_TEST := $(BUILD)/fat32-host-test
+HANDLE_HOST_TEST := $(BUILD)/handle-host-test
 
 CC ?= gcc
 AS ?= as
@@ -38,6 +39,7 @@ PANIC_OBJ := $(BUILD)/panic.o
 TIMER_OBJ := $(BUILD)/timer.o
 SCHED_OBJ := $(BUILD)/scheduler.o
 CONTEXT_OBJ := $(BUILD)/context.o
+HANDLE_OBJ := $(BUILD)/handle.o
 PROCESS_OBJ := $(BUILD)/process.o
 PROCESS_EXEC_OBJ := $(BUILD)/process_exec.o
 USER_ACCESS_OBJ := $(BUILD)/user_access.o
@@ -52,7 +54,7 @@ MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
 CHILD_OBJ := $(BUILD)/user-child.o
 
-.PHONY: all clean iso userspace check host-pmm-test host-fat32-test
+.PHONY: all clean iso userspace check host-pmm-test host-fat32-test host-handle-test
 
 all: iso
 
@@ -122,7 +124,10 @@ $(SCHED_OBJ): kernel/scheduler.c kernel/scheduler.h kernel/arch/x86_64/irq_frame
 $(CONTEXT_OBJ): kernel/arch/x86_64/context.S kernel/arch/x86_64/context.h | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/scheduler.h kernel/mm/address_space.h | $(BUILD)
+$(HANDLE_OBJ): kernel/handle.c kernel/handle.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
+$(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/handle.h kernel/scheduler.h kernel/mm/address_space.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
 $(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.h kernel/scheduler.h kernel/elf_loader.h kernel/mm/address_space.h kernel/mm/multiboot_modules.h kernel/mm/pmm.h kernel/mm/vmm.h | $(BUILD)
@@ -137,7 +142,7 @@ $(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/ti
 $(SYSCALL_ARCH_OBJ): kernel/arch/x86_64/syscall.S kernel/arch/x86_64/irq_frame.h | $(BUILD)
 	$(AS) --64 $< -o $@
 
-$(ADDRSPACE_OBJ): kernel/mm/address_space.c kernel/mm/address_space.h kernel/mm/pmm.h kernel/mm/vmm.h | $(BUILD)
+$(ADDRSPACE_OBJ): kernel/mm/address_space.c kernel/mm/address_space.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/arch/x86_64/cpu_features.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel/mm -c $< -o $@
 
 $(ELF_OBJ): kernel/elf.c kernel/elf.h | $(BUILD)
@@ -169,8 +174,8 @@ $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 
 userspace: $(USER_ELF) $(CHILD_ELF)
 
-$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
+$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(VFS_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
 iso: $(KERNEL) $(USER_ELF) $(CHILD_ELF) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub
@@ -178,7 +183,7 @@ iso: $(KERNEL) $(USER_ELF) $(CHILD_ELF) boot/grub.cfg
 	cp $(USER_ELF) $(BUILD)/iso/boot/user-hello.elf
 	cp $(CHILD_ELF) $(BUILD)/iso/boot/user-child.elf
 	cp boot/grub.cfg $(BUILD)/iso/boot/grub/grub.cfg
-	grub-mkrescue -o $(ISO) $(BUILD)/iso >/dev/null
+	grub-mkrescue -o $(ISO) $(BUILD)/suirabox.iso $(BUILD)/iso >/dev/null
 
 $(PMM_HOST_TEST): tests/pmm_host_test.c kernel/mm/pmm.c kernel/mm/pmm.h | $(BUILD)
 	$(CC) -Wall -Wextra -Werror -Ikernel/mm tests/pmm_host_test.c kernel/mm/pmm.c -o $@
@@ -192,7 +197,13 @@ $(FAT32_HOST_TEST): tests/fat32_host_test.c kernel/fs/fat32.c kernel/fs/fat32.h 
 host-fat32-test: $(FAT32_HOST_TEST)
 	$(FAT32_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-fat32-test
+$(HANDLE_HOST_TEST): tests/handle_host_test.c kernel/handle.c kernel/handle.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/handle_host_test.c kernel/handle.c -o $@
+
+host-handle-test: $(HANDLE_HOST_TEST)
+	$(HANDLE_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-fat32-test host-handle-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
