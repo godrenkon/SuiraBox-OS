@@ -26,6 +26,7 @@ typedef enum {
     SB_VFS_OBJECT_IO = -4,
     SB_VFS_OBJECT_CLOSED = -5,
     SB_VFS_OBJECT_RANGE = -6,
+    SB_VFS_OBJECT_NOT_FOUND = -7,
 } sb_vfs_object_result_t;
 
 struct sb_vfs_node;
@@ -41,6 +42,8 @@ typedef int (*sb_vfs_node_write_fn)(sb_vfs_node_t *node,
                                     const void *buffer,
                                     uint64_t length,
                                     uint64_t *bytes_written);
+/* Backend lookup returns a borrowed live node pointer. Callers use
+ * sb_vfs_node_lookup(), which validates and acquires the returned node. */
 typedef int (*sb_vfs_node_lookup_fn)(sb_vfs_node_t *directory,
                                      const char *name,
                                      uint64_t name_length,
@@ -78,6 +81,11 @@ int sb_vfs_node_init(sb_vfs_node_t *node,
                      void *private_data);
 int sb_vfs_node_acquire(sb_vfs_node_t *node);
 int sb_vfs_node_release(sb_vfs_node_t *node);
+/* Returns one acquired node reference on success. Caller must release it. */
+int sb_vfs_node_lookup(sb_vfs_node_t *directory,
+                       const char *name,
+                       uint64_t name_length,
+                       sb_vfs_node_t **node_out);
 
 int sb_vfs_file_open(sb_vfs_node_t *node,
                      uint32_t access,
