@@ -126,12 +126,30 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
 }
 
 int process_registered_boot_module_exists(const char *module_name) {
-    if (registered_multiboot_info == 0u || module_name == 0) return 0;
+    const void *image = 0;
+    uint64_t image_size = 0u;
+    return process_registered_boot_module_view(module_name, &image, &image_size) == 0;
+}
+
+int process_registered_boot_module_view(const char *module_name,
+                                        const void **image_out,
+                                        uint64_t *image_size_out) {
+    if (registered_multiboot_info == 0u || module_name == 0 ||
+        image_out == 0 || image_size_out == 0) {
+        return -1;
+    }
+
     sb_multiboot_module_t module;
-    return multiboot_find_module(registered_multiboot_info,
-                                 module_name,
-                                 &module) == 0 &&
-           module.end > module.start;
+    if (multiboot_find_module(registered_multiboot_info,
+                              module_name,
+                              &module) != 0 ||
+        module.end <= module.start) {
+        return -1;
+    }
+
+    *image_out = (const void *)(uintptr_t)module.start;
+    *image_size_out = module.end - module.start;
+    return 0;
 }
 
 sb_process_t *process_spawn_registered_boot_module(const char *module_name,
