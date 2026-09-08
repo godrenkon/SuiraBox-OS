@@ -3,10 +3,12 @@
 
 #include <stdint.h>
 #include "vfs.h"
+#include "vfs_object.h"
 
 #define SB_FAT32_ATTR_DIRECTORY 0x10u
 #define SB_FAT32_ATTR_VOLUME_ID 0x08u
 #define SB_FAT32_ATTR_LONG_NAME 0x0Fu
+#define SB_FAT32_VFS_NODE_CACHE 32u
 
 typedef struct {
     sb_vfs_mount_t *mount;
@@ -49,5 +51,29 @@ int sb_fat32_read_root_entry(sb_fat32_t *fs,
 
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
                        uint32_t offset, uint32_t length, void *buffer);
+
+/* Generic VFS adapter. Storage is caller-owned so the adapter does not depend
+ * on the bootstrap heap. Root 8.3 files are readable through normal VFS file
+ * objects; subdirectory traversal remains a later FAT32 milestone. */
+struct sb_fat32_vfs;
+typedef struct sb_fat32_vfs sb_fat32_vfs_t;
+
+typedef struct {
+    sb_vfs_node_t node;
+    sb_fat32_dirent_t entry;
+    sb_fat32_vfs_t *owner;
+    uint8_t in_use;
+} sb_fat32_vfs_node_t;
+
+struct sb_fat32_vfs {
+    sb_fat32_t fs;
+    sb_vfs_node_t root;
+    sb_fat32_vfs_node_t nodes[SB_FAT32_VFS_NODE_CACHE];
+    uint8_t mounted;
+};
+
+int sb_fat32_vfs_init(sb_fat32_vfs_t *adapter, sb_vfs_mount_t *mount);
+int sb_fat32_vfs_destroy(sb_fat32_vfs_t *adapter);
+sb_vfs_node_t *sb_fat32_vfs_root(sb_fat32_vfs_t *adapter);
 
 #endif
