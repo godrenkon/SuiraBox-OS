@@ -200,6 +200,23 @@ static int ns_mounted_lookup(sb_vfs_node_t *directory,
     return SB_VFS_OBJECT_NOT_FOUND;
 }
 
+static int ns_mounted_readdir(sb_vfs_node_t *directory,
+                              uint64_t index,
+                              sb_vfs_dir_entry_t *entry_out) {
+    if (directory != &g_ns_mounted_minecraft || entry_out == 0) {
+        return SB_VFS_OBJECT_INVALID;
+    }
+    if (index != 0u) return SB_VFS_OBJECT_NOT_FOUND;
+
+    *entry_out = (sb_vfs_dir_entry_t){0};
+    entry_out->type = SB_VFS_NODE_REGULAR;
+    entry_out->name_length = 10u;
+    entry_out->size = g_ns_server.size;
+    const char name[] = "server.jar";
+    for (uint32_t i = 0u; i < 10u; ++i) entry_out->name[i] = name[i];
+    return SB_VFS_OBJECT_OK;
+}
+
 static int ns_empty_lookup(sb_vfs_node_t *directory,
                            const char *name,
                            uint64_t name_length,
@@ -214,7 +231,10 @@ static int ns_empty_lookup(sb_vfs_node_t *directory,
 static const sb_vfs_node_ops_t g_ns_root_ops = { .lookup = ns_root_lookup };
 static const sb_vfs_node_ops_t g_ns_games_ops = { .lookup = ns_games_lookup };
 static const sb_vfs_node_ops_t g_ns_underlying_ops = { .lookup = ns_empty_lookup };
-static const sb_vfs_node_ops_t g_ns_mounted_ops = { .lookup = ns_mounted_lookup };
+static const sb_vfs_node_ops_t g_ns_mounted_ops = {
+    .lookup = ns_mounted_lookup,
+    .readdir = ns_mounted_readdir,
+};
 static const sb_vfs_node_ops_t g_ns_file_ops = {0};
 
 static int normalized_path_equals(const char *input,
@@ -239,6 +259,8 @@ static int normalized_path_equals(const char *input,
 static int vfs_namespace_selftest(void) {
     sb_vfs_namespace_t namespace_state;
     sb_vfs_node_t *resolved = 0;
+    sb_vfs_directory_t directory;
+    sb_vfs_dir_entry_t entry;
 
     if (!normalized_path_equals("/games//./minecraft/tmp/../server.jar/",
                                 38u,
@@ -267,7 +289,7 @@ static int vfs_namespace_selftest(void) {
                          0) != SB_VFS_OBJECT_OK ||
         sb_vfs_node_init(&g_ns_mounted_minecraft,
                          SB_VFS_NODE_DIRECTORY,
-                         SB_VFS_CAP_LOOKUP,
+                         SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR,
                          0u,
                          &g_ns_mounted_ops,
                          0) != SB_VFS_OBJECT_OK ||
@@ -302,6 +324,31 @@ static int vfs_namespace_selftest(void) {
     }
     if (sb_vfs_node_release(resolved) != SB_VFS_OBJECT_OK ||
         g_ns_server.ref_count != 1u) {
+        sb_vfs_namespace_destroy(&namespace_state);
+        return 0;
+    }
+
+    if (sb_vfs_namespace_open_directory(&namespace_state,
+                                        "/games/minecraft",
+                                        16u,
+                                        &directory) != SB_VFS_OBJECT_OK ||
+        g_ns_mounted_minecraft.ref_count != 3u) {
+        sb_vfs_namespace_destroy(&namespace_state);
+        return 0;
+    }
+    if (sb_vfs_directory_read(&directory, &entry) != SB_VFS_OBJECT_OK ||
+        entry.type != SB_VFS_NODE_REGULAR || entry.name_length != 10u ||
+        entry.size != g_ns_server.size || entry.name[0] != 's' ||
+        entry.name[9] != 'r' || entry.name[10] != '\0') {
+        (void)sb_vfs_directory_close(&directory);
+        sb_vfs_namespace_destroy(&namespace_state);
+        return 0;
+    }
+    if (sb_vfs_directory_read(&directory, &entry) != SB_VFS_OBJECT_NOT_FOUND ||
+        sb_vfs_directory_rewind(&directory) != SB_VFS_OBJECT_OK ||
+        sb_vfs_directory_read(&directory, &entry) != SB_VFS_OBJECT_OK ||
+        sb_vfs_directory_close(&directory) != SB_VFS_OBJECT_OK ||
+        g_ns_mounted_minecraft.ref_count != 2u) {
         sb_vfs_namespace_destroy(&namespace_state);
         return 0;
     }
