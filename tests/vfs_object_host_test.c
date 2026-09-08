@@ -59,18 +59,54 @@ static void backend_release(sb_vfs_node_t *node) {
     if (backend != 0) ++backend->release_count;
 }
 
+static int directory_readdir(sb_vfs_node_t *directory,
+                             uint64_t index,
+                             sb_vfs_dir_entry_t *entry_out) {
+    if (directory == 0 || entry_out == 0) return SB_VFS_OBJECT_INVALID;
+    if (index > 1u) return SB_VFS_OBJECT_NOT_FOUND;
+
+    *entry_out = (sb_vfs_dir_entry_t){0};
+    if (index == 0u) {
+        entry_out->type = SB_VFS_NODE_REGULAR;
+        entry_out->name_length = 10u;
+        entry_out->size = 4096u;
+        const char name[] = "server.jar";
+        for (uint32_t i = 0u; i < 10u; ++i) entry_out->name[i] = name[i];
+        return SB_VFS_OBJECT_OK;
+    }
+
+    entry_out->type = SB_VFS_NODE_DIRECTORY;
+    entry_out->name_length = 4u;
+    entry_out->size = 0u;
+    const char name[] = "mods";
+    for (uint32_t i = 0u; i < 4u; ++i) entry_out->name[i] = name[i];
+    return SB_VFS_OBJECT_OK;
+}
+
 static const sb_vfs_node_ops_t test_ops = {
     .read = backend_read,
     .write = backend_write,
     .lookup = 0,
+    .readdir = 0,
     .release = backend_release,
+};
+
+static const sb_vfs_node_ops_t directory_ops = {
+    .read = 0,
+    .write = 0,
+    .lookup = 0,
+    .readdir = directory_readdir,
+    .release = 0,
 };
 
 int main(void) {
     test_backend_t backend = {0};
     sb_vfs_node_t node;
+    sb_vfs_node_t directory_node;
     sb_vfs_file_t reader;
     sb_vfs_file_t writer;
+    sb_vfs_directory_t directory;
+    sb_vfs_dir_entry_t entry;
     uint8_t buffer[8] = {0};
     const uint8_t patch[3] = {0xA1u, 0xB2u, 0xC3u};
     uint64_t transferred = 0u;
@@ -135,6 +171,44 @@ int main(void) {
                 "final node release callback")) return 1;
     if (require(sb_vfs_node_acquire(&node) == SB_VFS_OBJECT_INVALID,
                 "dead node cannot be reacquired")) return 1;
+
+    if (require(sb_vfs_node_init(&directory_node,
+                                 SB_VFS_NODE_DIRECTORY,
+                                 SB_VFS_CAP_READDIR,
+                                 0u,
+                                 &directory_ops,
+                                 0) == SB_VFS_OBJECT_OK,
+                "directory node init")) return 1;
+    if (require(sb_vfs_directory_open(&directory_node, &directory) == SB_VFS_OBJECT_OK &&
+                directory_node.ref_count == 2u && directory.index == 0u,
+                "directory open owns reference")) return 1;
+    if (require(sb_vfs_directory_read(&directory, &entry) == SB_VFS_OBJECT_OK &&
+                entry.type == SB_VFS_NODE_REGULAR && entry.name_length == 10u &&
+                entry.size == 4096u && entry.name[0] == 's' && entry.name[9] == 'r' &&
+                entry.name[10] == '\0' && directory.index == 1u,
+                "directory first entry")) return 1;
+    if (require(sb_vfs_directory_read(&directory, &entry) == SB_VFS_OBJECT_OK &&
+                entry.type == SB_VFS_NODE_DIRECTORY && entry.name_length == 4u &&
+                entry.name[0] == 'm' && entry.name[3] == 's' && directory.index == 2u,
+                "directory second entry")) return 1;
+    if (require(sb_vfs_directory_read(&directory, &entry) == SB_VFS_OBJECT_NOT_FOUND &&
+                directory.index == 2u,
+                "directory end does not advance")) return 1;
+    if (require(sb_vfs_directory_rewind(&directory) == SB_VFS_OBJECT_OK && directory.index == 0u,
+                "directory rewind")) return 1;
+    if (require(sb_vfs_directory_read(&directory, &entry) == SB_VFS_OBJECT_OK &&
+                entry.name_length == 10u,
+                "directory reread after rewind")) return 1;
+    if (require(sb_vfs_directory_close(&directory) == SB_VFS_OBJECT_OK &&
+                directory_node.ref_count == 1u,
+                "directory close releases reference")) return 1;
+    if (require(sb_vfs_directory_read(&directory, &entry) == SB_VFS_OBJECT_CLOSED,
+                "closed directory rejected")) return 1;
+    if (require(sb_vfs_directory_close(&directory) == SB_VFS_OBJECT_CLOSED,
+                "directory double close rejected")) return 1;
+    if (require(sb_vfs_node_release(&directory_node) == SB_VFS_OBJECT_OK &&
+                directory_node.ref_count == 0u,
+                "directory owner reference release")) return 1;
 
     puts("vfs object host test OK");
     return 0;

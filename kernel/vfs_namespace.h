@@ -52,4 +52,16 @@ int sb_vfs_namespace_resolve(sb_vfs_namespace_t *namespace_state,
                              uint64_t path_length,
                              sb_vfs_node_t **node_out);
 
+/* Path-based object opens. The returned file/directory owns its node reference
+ * and must be closed with the matching VFS object close function. */
+int sb_vfs_namespace_open_file(sb_vfs_namespace_t *namespace_state,
+                               const char *path,
+                               uint64_t path_length,
+                               uint32_t access,
+                               sb_vfs_file_t *file_out);
+int sb_vfs_namespace_open_directory(sb_vfs_namespace_t *namespace_state,
+                                    const char *path,
+                                    uint64_t path_length,
+                                    sb_vfs_directory_t *directory_out);
+
 #endif /* SB_VFS_NAMESPACE_H */

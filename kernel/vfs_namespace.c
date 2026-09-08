@@ -259,3 +259,42 @@ int sb_vfs_namespace_resolve(sb_vfs_namespace_t *namespace_state,
     *node_out = current;
     return SB_VFS_OBJECT_OK;
 }
+
+int sb_vfs_namespace_open_file(sb_vfs_namespace_t *namespace_state,
+                               const char *path,
+                               uint64_t path_length,
+                               uint32_t access,
+                               sb_vfs_file_t *file_out) {
+    if (file_out != 0) *file_out = (sb_vfs_file_t){0};
+    if (namespace_state == 0 || file_out == 0) return SB_VFS_OBJECT_INVALID;
+
+    sb_vfs_node_t *node = 0;
+    const int resolve_result = sb_vfs_namespace_resolve(namespace_state,
+                                                        path,
+                                                        path_length,
+                                                        &node);
+    if (resolve_result != SB_VFS_OBJECT_OK) return resolve_result;
+
+    const int open_result = sb_vfs_file_open(node, access, file_out);
+    (void)sb_vfs_node_release(node);
+    return open_result;
+}
+
+int sb_vfs_namespace_open_directory(sb_vfs_namespace_t *namespace_state,
+                                    const char *path,
+                                    uint64_t path_length,
+                                    sb_vfs_directory_t *directory_out) {
+    if (directory_out != 0) *directory_out = (sb_vfs_directory_t){0};
+    if (namespace_state == 0 || directory_out == 0) return SB_VFS_OBJECT_INVALID;
+
+    sb_vfs_node_t *node = 0;
+    const int resolve_result = sb_vfs_namespace_resolve(namespace_state,
+                                                        path,
+                                                        path_length,
+                                                        &node);
+    if (resolve_result != SB_VFS_OBJECT_OK) return resolve_result;
+
+    const int open_result = sb_vfs_directory_open(node, directory_out);
+    (void)sb_vfs_node_release(node);
+    return open_result;
+}

@@ -4,7 +4,8 @@
 #define SB_VFS_LOOKUP_NAME_MAX 63u
 
 static int valid_capabilities(uint32_t capabilities) {
-    const uint32_t known = SB_VFS_CAP_READ | SB_VFS_CAP_WRITE | SB_VFS_CAP_LOOKUP;
+    const uint32_t known = SB_VFS_CAP_READ | SB_VFS_CAP_WRITE |
+                           SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR;
     return (capabilities & ~known) == 0u;
 }
 
@@ -31,7 +32,11 @@ int sb_vfs_node_init(sb_vfs_node_t *node,
     if ((capabilities & SB_VFS_CAP_LOOKUP) != 0u && ops->lookup == 0) {
         return SB_VFS_OBJECT_INVALID;
     }
-    if (type != SB_VFS_NODE_DIRECTORY && (capabilities & SB_VFS_CAP_LOOKUP) != 0u) {
+    if ((capabilities & SB_VFS_CAP_READDIR) != 0u && ops->readdir == 0) {
+        return SB_VFS_OBJECT_INVALID;
+    }
+    if (type != SB_VFS_NODE_DIRECTORY &&
+        (capabilities & (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR)) != 0u) {
         return SB_VFS_OBJECT_INVALID;
     }
 
@@ -220,5 +225,76 @@ int sb_vfs_file_close(sb_vfs_file_t *file) {
     file->offset = 0u;
     file->access = 0u;
     file->open = 0u;
+    return sb_vfs_node_release(node);
+}
+
+int sb_vfs_directory_open(sb_vfs_node_t *node, sb_vfs_directory_t *directory) {
+    if (node == 0 || directory == 0 || node->ref_count == 0u ||
+        node->type != SB_VFS_NODE_DIRECTORY ||
+        (node->capabilities & SB_VFS_CAP_READDIR) == 0u ||
+        node->ops == 0 || node->ops->readdir == 0) {
+        return SB_VFS_OBJECT_NOT_SUPPORTED;
+    }
+    if (sb_vfs_node_acquire(node) != SB_VFS_OBJECT_OK) {
+        return SB_VFS_OBJECT_INVALID;
+    }
+
+    *directory = (sb_vfs_directory_t){0};
+    directory->node = node;
+    directory->index = 0u;
+    directory->open = 1u;
+    return SB_VFS_OBJECT_OK;
+}
+
+int sb_vfs_directory_read(sb_vfs_directory_t *directory,
+                          sb_vfs_dir_entry_t *entry_out) {
+    if (entry_out != 0) *entry_out = (sb_vfs_dir_entry_t){0};
+    if (directory == 0 || entry_out == 0) return SB_VFS_OBJECT_INVALID;
+    if (directory->open == 0u || directory->node == 0) {
+        return SB_VFS_OBJECT_CLOSED;
+    }
+    if (directory->node->ops == 0 || directory->node->ops->readdir == 0) {
+        return SB_VFS_OBJECT_NOT_SUPPORTED;
+    }
+
+    sb_vfs_dir_entry_t entry = {0};
+    const int result = directory->node->ops->readdir(directory->node,
+                                                     directory->index,
+                                                     &entry);
+    if (result != SB_VFS_OBJECT_OK) return result;
+    if (entry.type == SB_VFS_NODE_NONE || entry.name_length == 0u ||
+        entry.name_length > SB_VFS_DIRENT_NAME_MAX || entry.reserved != 0u) {
+        return SB_VFS_OBJECT_IO;
+    }
+    for (uint64_t i = 0u; i < entry.name_length; ++i) {
+        if (entry.name[i] == '\0' || entry.name[i] == '/') return SB_VFS_OBJECT_IO;
+    }
+    entry.name[entry.name_length] = '\0';
+    if (directory->index == UINT64_MAX) return SB_VFS_OBJECT_RANGE;
+
+    *entry_out = entry;
+    ++directory->index;
+    return SB_VFS_OBJECT_OK;
+}
+
+int sb_vfs_directory_rewind(sb_vfs_directory_t *directory) {
+    if (directory == 0) return SB_VFS_OBJECT_INVALID;
+    if (directory->open == 0u || directory->node == 0) {
+        return SB_VFS_OBJECT_CLOSED;
+    }
+    directory->index = 0u;
+    return SB_VFS_OBJECT_OK;
+}
+
+int sb_vfs_directory_close(sb_vfs_directory_t *directory) {
+    if (directory == 0) return SB_VFS_OBJECT_INVALID;
+    if (directory->open == 0u || directory->node == 0) {
+        return SB_VFS_OBJECT_CLOSED;
+    }
+
+    sb_vfs_node_t *node = directory->node;
+    directory->node = 0;
+    directory->index = 0u;
+    directory->open = 0u;
     return sb_vfs_node_release(node);
 }
