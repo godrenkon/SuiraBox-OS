@@ -4,6 +4,8 @@
 
 #include "block.h"
 #include "vfs.h"
+#include "vfs_object.h"
+#include "vfs_namespace.h"
 #include "fs/fat32.h"
 
 #define TEST_SECTORS 8u
@@ -111,6 +113,81 @@ static void build_image(void) {
     memcpy(file, contents, sizeof(contents) - 1u);
 }
 
+static int vfs_adapter_test(sb_vfs_mount_t *mount) {
+    sb_fat32_vfs_t adapter;
+    sb_vfs_namespace_t namespace_state;
+    sb_vfs_file_t file;
+    sb_vfs_directory_t directory;
+    sb_vfs_dir_entry_t dir_entry;
+    char buffer[64] = {0};
+    uint64_t bytes_read = 0u;
+
+    if (!expect(sb_fat32_vfs_init(&adapter, mount) == SB_VFS_OBJECT_OK,
+                "FAT32 VFS adapter init failed")) return 0;
+    if (!expect(sb_fat32_vfs_root(&adapter) != 0,
+                "FAT32 VFS root is missing")) return 0;
+
+    sb_vfs_namespace_init(&namespace_state);
+    if (!expect(sb_vfs_namespace_mount(&namespace_state,
+                                       "/fat",
+                                       4u,
+                                       sb_fat32_vfs_root(&adapter)) == SB_VFS_OBJECT_OK,
+                "FAT32 root mount failed")) return 0;
+
+    if (!expect(sb_vfs_namespace_open_file(&namespace_state,
+                                           "/fat/hello.txt",
+                                           14u,
+                                           SB_VFS_ACCESS_READ,
+                                           &file) == SB_VFS_OBJECT_OK,
+                "case-insensitive FAT32 path open failed")) return 0;
+    if (!expect(sb_vfs_file_read(&file,
+                                 buffer,
+                                 sizeof(buffer) - 1u,
+                                 &bytes_read) == SB_VFS_OBJECT_OK &&
+                bytes_read == 27u &&
+                strcmp(buffer, "Hello from SuiraBox FAT32!\n") == 0,
+                "FAT32 generic VFS read failed")) return 0;
+
+    if (!expect(sb_vfs_namespace_open_directory(&namespace_state,
+                                                "/fat",
+                                                4u,
+                                                &directory) == SB_VFS_OBJECT_OK,
+                "FAT32 root directory open failed")) return 0;
+    if (!expect(sb_vfs_directory_read(&directory, &dir_entry) == SB_VFS_OBJECT_OK &&
+                dir_entry.type == SB_VFS_NODE_REGULAR &&
+                dir_entry.name_length == 9u &&
+                strcmp(dir_entry.name, "HELLO.TXT") == 0 &&
+                dir_entry.size == 27u,
+                "FAT32 first readdir entry is wrong")) return 0;
+    if (!expect(sb_vfs_directory_read(&directory, &dir_entry) == SB_VFS_OBJECT_OK &&
+                dir_entry.type == SB_VFS_NODE_REGULAR &&
+                dir_entry.name_length == 9u &&
+                strcmp(dir_entry.name, "EMPTY.TXT") == 0 &&
+                dir_entry.size == 0u,
+                "FAT32 second readdir entry is wrong")) return 0;
+    if (!expect(sb_vfs_directory_read(&directory, &dir_entry) == SB_VFS_OBJECT_NOT_FOUND,
+                "FAT32 directory EOF was not reported")) return 0;
+    if (!expect(sb_vfs_directory_rewind(&directory) == SB_VFS_OBJECT_OK &&
+                sb_vfs_directory_read(&directory, &dir_entry) == SB_VFS_OBJECT_OK &&
+                strcmp(dir_entry.name, "HELLO.TXT") == 0,
+                "FAT32 directory rewind failed")) return 0;
+    if (!expect(sb_vfs_directory_close(&directory) == SB_VFS_OBJECT_OK,
+                "FAT32 directory close failed")) return 0;
+
+    if (!expect(sb_vfs_namespace_unmount(&namespace_state, "/fat", 4u) ==
+                SB_VFS_OBJECT_OK,
+                "FAT32 namespace unmount failed")) return 0;
+    if (!expect(sb_fat32_vfs_destroy(&adapter) == SB_VFS_OBJECT_ACCESS,
+                "adapter destroy ignored an open file reference")) return 0;
+    if (!expect(sb_vfs_file_close(&file) == SB_VFS_OBJECT_OK,
+                "FAT32 generic file close failed")) return 0;
+    if (!expect(sb_fat32_vfs_destroy(&adapter) == SB_VFS_OBJECT_OK,
+                "FAT32 VFS adapter destroy failed")) return 0;
+
+    sb_vfs_namespace_destroy(&namespace_state);
+    return 1;
+}
+
 int main(void) {
     sb_vfs_mount_t mount;
     sb_fat32_t fs;
@@ -149,6 +226,8 @@ int main(void) {
     if (!expect(sb_fat32_read_root_entry(&fs, 0u, &entry) != 0 &&
                 strcmp(entry.name, "HELLO.TXT") == 0,
                 "compatibility root entry wrapper failed")) return 1;
+
+    if (!vfs_adapter_test(&mount)) return 1;
 
     sb_block_device_t oversized_sector_device = device;
     sb_vfs_mount_t oversized_mount;
