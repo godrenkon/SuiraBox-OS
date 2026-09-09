@@ -38,8 +38,13 @@ typedef enum {
 
 int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs);
 
-/* Returns the index-th visible 8.3 root-directory entry. Deleted entries,
- * long-filename slots and volume labels do not consume a visible index. */
+/* Returns the index-th visible 8.3 directory entry from directory_cluster.
+ * Deleted entries, LFN slots, volume labels, and FAT dot entries are skipped. */
+sb_fat32_dir_result_t sb_fat32_directory_entry(sb_fat32_t *fs,
+                                                uint32_t directory_cluster,
+                                                uint32_t index,
+                                                sb_fat32_dirent_t *entry);
+
 sb_fat32_dir_result_t sb_fat32_root_entry(sb_fat32_t *fs,
                                            uint32_t index,
                                            sb_fat32_dirent_t *entry);
@@ -52,9 +57,8 @@ int sb_fat32_read_root_entry(sb_fat32_t *fs,
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
                        uint32_t offset, uint32_t length, void *buffer);
 
-/* Generic VFS adapter. Storage is caller-owned so the adapter does not depend
- * on the bootstrap heap. Root 8.3 files are readable through normal VFS file
- * objects; subdirectory traversal remains a later FAT32 milestone. */
+/* Generic read-only VFS adapter. Storage is caller-owned so the adapter does
+ * not depend on the bootstrap heap. 8.3 subdirectories are traversable. */
 struct sb_fat32_vfs;
 typedef struct sb_fat32_vfs sb_fat32_vfs_t;
 

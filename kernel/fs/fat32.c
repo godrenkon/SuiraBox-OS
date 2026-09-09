@@ -146,12 +146,23 @@ int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs) {
     return 1;
 }
 
-sb_fat32_dir_result_t sb_fat32_root_entry(sb_fat32_t *fs,
-                                           uint32_t index,
-                                           sb_fat32_dirent_t *entry) {
+static int raw_dirent_hidden(const uint8_t *raw) {
+    if (raw[0] == 0xE5u || raw[11] == SB_FAT32_ATTR_LONG_NAME ||
+        (raw[11] & SB_FAT32_ATTR_VOLUME_ID) != 0u) {
+        return 1;
+    }
+    /* Keep lexical . and .. handling in the VFS rather than exposing FAT's
+     * physical dot entries through directory iteration. */
+    return (raw[11] & SB_FAT32_ATTR_DIRECTORY) != 0u && raw[0] == '.';
+}
+
+sb_fat32_dir_result_t sb_fat32_directory_entry(sb_fat32_t *fs,
+                                                uint32_t directory_cluster,
+                                                uint32_t index,
+                                                sb_fat32_dirent_t *entry) {
     if (fs == 0 || entry == 0 || fs->mount == 0 ||
         fs->bytes_per_sector != SB_FAT32_SECTOR_BYTES ||
-        fs->sectors_per_cluster == 0u || fs->root_cluster < 2u ||
+        fs->sectors_per_cluster == 0u || directory_cluster < 2u ||
         fs->first_data_sector >= fs->total_sectors) {
         return SB_FAT32_DIRENT_INVALID;
     }
@@ -159,7 +170,7 @@ sb_fat32_dir_result_t sb_fat32_root_entry(sb_fat32_t *fs,
     const uint32_t entries_per_sector = fs->bytes_per_sector / SB_FAT32_ENTRY_SIZE;
     const uint64_t data_sectors = fs->total_sectors - fs->first_data_sector;
     uint64_t cluster_budget = data_sectors / fs->sectors_per_cluster + 1u;
-    uint32_t cluster = fs->root_cluster;
+    uint32_t cluster = directory_cluster;
     uint32_t visible_index = 0u;
 
     while (cluster_budget-- > 0u) {
@@ -179,10 +190,7 @@ sb_fat32_dir_result_t sb_fat32_root_entry(sb_fat32_t *fs,
                  ++entry_index) {
                 const uint8_t *raw = &sector[entry_index * SB_FAT32_ENTRY_SIZE];
                 if (raw[0] == 0x00u) return SB_FAT32_DIRENT_END;
-                if (raw[0] == 0xE5u || raw[11] == SB_FAT32_ATTR_LONG_NAME ||
-                    (raw[11] & SB_FAT32_ATTR_VOLUME_ID) != 0u) {
-                    continue;
-                }
+                if (raw_dirent_hidden(raw)) continue;
 
                 if (visible_index == index) {
                     *entry = (sb_fat32_dirent_t){0};
@@ -203,6 +211,13 @@ sb_fat32_dir_result_t sb_fat32_root_entry(sb_fat32_t *fs,
     }
 
     return SB_FAT32_DIRENT_IO;
+}
+
+sb_fat32_dir_result_t sb_fat32_root_entry(sb_fat32_t *fs,
+                                           uint32_t index,
+                                           sb_fat32_dirent_t *entry) {
+    if (fs == 0) return SB_FAT32_DIRENT_INVALID;
+    return sb_fat32_directory_entry(fs, fs->root_cluster, index, entry);
 }
 
 int sb_fat32_read_root_entry(sb_fat32_t *fs,
@@ -353,7 +368,18 @@ static const sb_vfs_node_ops_t fat32_file_ops = {
     .read = fat32_vfs_file_read,
 };
 
-static const sb_vfs_node_ops_t fat32_directory_stub_ops = {0};
+static int fat32_subdir_lookup(sb_vfs_node_t *directory,
+                               const char *name,
+                               uint64_t name_length,
+                               sb_vfs_node_t **node_out);
+static int fat32_subdir_readdir(sb_vfs_node_t *directory,
+                                uint64_t index,
+                                sb_vfs_dir_entry_t *entry_out);
+
+static const sb_vfs_node_ops_t fat32_subdir_ops = {
+    .lookup = fat32_subdir_lookup,
+    .readdir = fat32_subdir_readdir,
+};
 
 static sb_fat32_vfs_node_t *find_cached(sb_fat32_vfs_t *adapter,
                                         const sb_fat32_dirent_t *entry) {
@@ -371,6 +397,9 @@ static sb_fat32_vfs_node_t *cache_entry(sb_fat32_vfs_t *adapter,
     sb_fat32_vfs_node_t *slot = find_cached(adapter, entry);
     if (slot != 0) return slot;
 
+    const int is_directory = (entry->attributes & SB_FAT32_ATTR_DIRECTORY) != 0u;
+    if (is_directory && entry->first_cluster < 2u) return 0;
+
     for (uint32_t i = 0u; i < SB_FAT32_VFS_NODE_CACHE; ++i) {
         slot = &adapter->nodes[i];
         if (slot->in_use != 0u) continue;
@@ -378,16 +407,16 @@ static sb_fat32_vfs_node_t *cache_entry(sb_fat32_vfs_t *adapter,
         *slot = (sb_fat32_vfs_node_t){0};
         slot->entry = *entry;
         slot->owner = adapter;
-        const int is_directory =
-            (entry->attributes & SB_FAT32_ATTR_DIRECTORY) != 0u;
         const int result = sb_vfs_node_init(&slot->node,
                                             is_directory
                                                 ? SB_VFS_NODE_DIRECTORY
                                                 : SB_VFS_NODE_REGULAR,
-                                            is_directory ? 0u : SB_VFS_CAP_READ,
+                                            is_directory
+                                                ? (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR)
+                                                : SB_VFS_CAP_READ,
                                             is_directory ? 0u : entry->file_size,
                                             is_directory
-                                                ? &fat32_directory_stub_ops
+                                                ? &fat32_subdir_ops
                                                 : &fat32_file_ops,
                                             slot);
         if (result != SB_VFS_OBJECT_OK) {
@@ -400,26 +429,22 @@ static sb_fat32_vfs_node_t *cache_entry(sb_fat32_vfs_t *adapter,
     return 0;
 }
 
-static int fat32_root_lookup(sb_vfs_node_t *directory,
-                             const char *name,
-                             uint64_t name_length,
-                             sb_vfs_node_t **node_out) {
+static int fat32_lookup_cluster(sb_fat32_vfs_t *adapter,
+                                uint32_t directory_cluster,
+                                const char *name,
+                                uint64_t name_length,
+                                sb_vfs_node_t **node_out) {
     if (node_out != 0) *node_out = 0;
-    if (directory == 0 || name == 0 || node_out == 0 ||
-        directory->private_data == 0 || name_length == 0u ||
-        name_length > SB_VFS_DIRENT_NAME_MAX) {
+    if (adapter == 0 || adapter->mounted == 0u || name == 0 || node_out == 0 ||
+        name_length == 0u || name_length > SB_VFS_DIRENT_NAME_MAX ||
+        directory_cluster < 2u) {
         return SB_VFS_OBJECT_INVALID;
-    }
-
-    sb_fat32_vfs_t *adapter = (sb_fat32_vfs_t *)directory->private_data;
-    if (adapter->mounted == 0u || directory != &adapter->root) {
-        return SB_VFS_OBJECT_IO;
     }
 
     for (uint32_t index = 0u;; ++index) {
         sb_fat32_dirent_t entry;
         const sb_fat32_dir_result_t result =
-            sb_fat32_root_entry(&adapter->fs, index, &entry);
+            sb_fat32_directory_entry(&adapter->fs, directory_cluster, index, &entry);
         if (result == SB_FAT32_DIRENT_END) return SB_VFS_OBJECT_NOT_FOUND;
         if (result != SB_FAT32_DIRENT_OK) return SB_VFS_OBJECT_IO;
         if (!fat_name_equals(name, name_length, entry.name)) {
@@ -434,22 +459,21 @@ static int fat32_root_lookup(sb_vfs_node_t *directory,
     }
 }
 
-static int fat32_root_readdir(sb_vfs_node_t *directory,
-                              uint64_t index,
-                              sb_vfs_dir_entry_t *entry_out) {
-    if (directory == 0 || entry_out == 0 || directory->private_data == 0 ||
-        index > UINT32_MAX) {
+static int fat32_readdir_cluster(sb_fat32_vfs_t *adapter,
+                                 uint32_t directory_cluster,
+                                 uint64_t index,
+                                 sb_vfs_dir_entry_t *entry_out) {
+    if (adapter == 0 || adapter->mounted == 0u || entry_out == 0 ||
+        index > UINT32_MAX || directory_cluster < 2u) {
         return SB_VFS_OBJECT_INVALID;
-    }
-
-    sb_fat32_vfs_t *adapter = (sb_fat32_vfs_t *)directory->private_data;
-    if (adapter->mounted == 0u || directory != &adapter->root) {
-        return SB_VFS_OBJECT_IO;
     }
 
     sb_fat32_dirent_t entry;
     const sb_fat32_dir_result_t result =
-        sb_fat32_root_entry(&adapter->fs, (uint32_t)index, &entry);
+        sb_fat32_directory_entry(&adapter->fs,
+                                 directory_cluster,
+                                 (uint32_t)index,
+                                 &entry);
     if (result == SB_FAT32_DIRENT_END) return SB_VFS_OBJECT_NOT_FOUND;
     if (result != SB_FAT32_DIRENT_OK) return SB_VFS_OBJECT_IO;
 
@@ -467,6 +491,77 @@ static int fat32_root_readdir(sb_vfs_node_t *directory,
     for (uint64_t i = 0u; i < name_length; ++i) entry_out->name[i] = entry.name[i];
     entry_out->name[name_length] = '\0';
     return SB_VFS_OBJECT_OK;
+}
+
+static int fat32_root_lookup(sb_vfs_node_t *directory,
+                             const char *name,
+                             uint64_t name_length,
+                             sb_vfs_node_t **node_out) {
+    if (directory == 0 || directory->private_data == 0) {
+        if (node_out != 0) *node_out = 0;
+        return SB_VFS_OBJECT_INVALID;
+    }
+    sb_fat32_vfs_t *adapter = (sb_fat32_vfs_t *)directory->private_data;
+    if (directory != &adapter->root) return SB_VFS_OBJECT_IO;
+    return fat32_lookup_cluster(adapter,
+                                adapter->fs.root_cluster,
+                                name,
+                                name_length,
+                                node_out);
+}
+
+static int fat32_root_readdir(sb_vfs_node_t *directory,
+                              uint64_t index,
+                              sb_vfs_dir_entry_t *entry_out) {
+    if (directory == 0 || directory->private_data == 0) {
+        return SB_VFS_OBJECT_INVALID;
+    }
+    sb_fat32_vfs_t *adapter = (sb_fat32_vfs_t *)directory->private_data;
+    if (directory != &adapter->root) return SB_VFS_OBJECT_IO;
+    return fat32_readdir_cluster(adapter,
+                                 adapter->fs.root_cluster,
+                                 index,
+                                 entry_out);
+}
+
+static int fat32_subdir_lookup(sb_vfs_node_t *directory,
+                               const char *name,
+                               uint64_t name_length,
+                               sb_vfs_node_t **node_out) {
+    if (directory == 0 || directory->private_data == 0) {
+        if (node_out != 0) *node_out = 0;
+        return SB_VFS_OBJECT_INVALID;
+    }
+    sb_fat32_vfs_node_t *slot = (sb_fat32_vfs_node_t *)directory->private_data;
+    if (slot->in_use == 0u || slot->owner == 0 || slot->owner->mounted == 0u ||
+        directory != &slot->node ||
+        (slot->entry.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u) {
+        if (node_out != 0) *node_out = 0;
+        return SB_VFS_OBJECT_IO;
+    }
+    return fat32_lookup_cluster(slot->owner,
+                                slot->entry.first_cluster,
+                                name,
+                                name_length,
+                                node_out);
+}
+
+static int fat32_subdir_readdir(sb_vfs_node_t *directory,
+                                uint64_t index,
+                                sb_vfs_dir_entry_t *entry_out) {
+    if (directory == 0 || directory->private_data == 0) {
+        return SB_VFS_OBJECT_INVALID;
+    }
+    sb_fat32_vfs_node_t *slot = (sb_fat32_vfs_node_t *)directory->private_data;
+    if (slot->in_use == 0u || slot->owner == 0 || slot->owner->mounted == 0u ||
+        directory != &slot->node ||
+        (slot->entry.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u) {
+        return SB_VFS_OBJECT_IO;
+    }
+    return fat32_readdir_cluster(slot->owner,
+                                 slot->entry.first_cluster,
+                                 index,
+                                 entry_out);
 }
 
 static const sb_vfs_node_ops_t fat32_root_ops = {

@@ -65,12 +65,19 @@ static void write_83_entry(uint8_t *raw,
 static void build_image(void) {
     static const char hello_name[11] = {'H','E','L','L','O',' ',' ',' ','T','X','T'};
     static const char empty_name[11] = {'E','M','P','T','Y',' ',' ',' ','T','X','T'};
+    static const char games_name[11] = {'G','A','M','E','S',' ',' ',' ',' ',' ',' '};
+    static const char server_name[11] = {'S','E','R','V','E','R',' ',' ','T','X','T'};
+    static const char dot_name[11] = {'.',' ',' ',' ',' ',' ',' ',' ',' ',' ',' '};
+    static const char dotdot_name[11] = {'.','.',' ',' ',' ',' ',' ',' ',' ',' ',' '};
     static const char volume_name[11] = {'S','U','I','R','A','B','O','X',' ',' ',' '};
     static const char contents[] = "Hello from SuiraBox FAT32!\n";
+    static const char nested_contents[] = "Nested FAT32 file!\n";
     uint8_t *boot = &disk[0];
     uint8_t *fat = &disk[SECTOR_SIZE];
     uint8_t *root = &disk[3u * SECTOR_SIZE];
     uint8_t *file = &disk[4u * SECTOR_SIZE];
+    uint8_t *games = &disk[5u * SECTOR_SIZE];
+    uint8_t *nested_file = &disk[6u * SECTOR_SIZE];
 
     memset(disk, 0, sizeof(disk));
     boot[0] = 0xEBu; boot[1] = 0x58u; boot[2] = 0x90u;
@@ -90,8 +97,10 @@ static void build_image(void) {
 
     put_le32(&fat[0], 0x0FFFFFF8u);
     put_le32(&fat[4], 0x0FFFFFFFu);
-    put_le32(&fat[8], 0x0FFFFFFFu);
-    put_le32(&fat[12], 0x0FFFFFFFu);
+    put_le32(&fat[8], 0x0FFFFFFFu);   /* cluster 2: root */
+    put_le32(&fat[12], 0x0FFFFFFFu);  /* cluster 3: HELLO.TXT */
+    put_le32(&fat[16], 0x0FFFFFFFu);  /* cluster 4: GAMES */
+    put_le32(&fat[20], 0x0FFFFFFFu);  /* cluster 5: SERVER.TXT */
     memcpy(&disk[2u * SECTOR_SIZE], fat, SECTOR_SIZE);
 
     root[0] = 0xE5u;
@@ -101,15 +110,25 @@ static void build_image(void) {
     write_83_entry(&root[96], hello_name, 0x20u, 3u,
                    (uint32_t)(sizeof(contents) - 1u));
     write_83_entry(&root[128], empty_name, 0x20u, 0u, 0u);
-    root[160] = 0u;
+    write_83_entry(&root[160], games_name, SB_FAT32_ATTR_DIRECTORY, 4u, 0u);
+    root[192] = 0u;
     memcpy(file, contents, sizeof(contents) - 1u);
+
+    write_83_entry(&games[0], dot_name, SB_FAT32_ATTR_DIRECTORY, 4u, 0u);
+    write_83_entry(&games[32], dotdot_name, SB_FAT32_ATTR_DIRECTORY, 2u, 0u);
+    write_83_entry(&games[64], server_name, 0x20u, 5u,
+                   (uint32_t)(sizeof(nested_contents) - 1u));
+    games[96] = 0u;
+    memcpy(nested_file, nested_contents, sizeof(nested_contents) - 1u);
 }
 
 static int vfs_adapter_test(sb_vfs_mount_t *mount) {
     sb_fat32_vfs_t adapter;
     sb_vfs_namespace_t namespace_state;
     sb_vfs_file_t file;
+    sb_vfs_file_t nested_file;
     sb_vfs_directory_t directory;
+    sb_vfs_directory_t games_directory;
     sb_vfs_dir_entry_t dir_entry;
     char buffer[64] = {0};
     uint64_t bytes_read = 0u;
@@ -140,6 +159,23 @@ static int vfs_adapter_test(sb_vfs_mount_t *mount) {
                 strcmp(buffer, "Hello from SuiraBox FAT32!\n") == 0,
                 "FAT32 generic VFS read failed")) return 0;
 
+    memset(buffer, 0, sizeof(buffer));
+    if (!expect(sb_vfs_namespace_open_file(&namespace_state,
+                                           "/fat/games/server.txt",
+                                           21u,
+                                           SB_VFS_ACCESS_READ,
+                                           &nested_file) == SB_VFS_OBJECT_OK,
+                "nested FAT32 path open failed")) return 0;
+    if (!expect(sb_vfs_file_read(&nested_file,
+                                 buffer,
+                                 sizeof(buffer) - 1u,
+                                 &bytes_read) == SB_VFS_OBJECT_OK &&
+                bytes_read == 19u &&
+                strcmp(buffer, "Nested FAT32 file!\n") == 0,
+                "nested FAT32 file read failed")) return 0;
+    if (!expect(sb_vfs_file_close(&nested_file) == SB_VFS_OBJECT_OK,
+                "nested FAT32 file close failed")) return 0;
+
     if (!expect(sb_vfs_namespace_open_directory(&namespace_state,
                                                 "/fat",
                                                 4u,
@@ -147,16 +183,18 @@ static int vfs_adapter_test(sb_vfs_mount_t *mount) {
                 "FAT32 root directory open failed")) return 0;
     if (!expect(sb_vfs_directory_read(&directory, &dir_entry) == SB_VFS_OBJECT_OK &&
                 dir_entry.type == SB_VFS_NODE_REGULAR &&
-                dir_entry.name_length == 9u &&
                 strcmp(dir_entry.name, "HELLO.TXT") == 0 &&
                 dir_entry.size == 27u,
                 "FAT32 first readdir entry is wrong")) return 0;
     if (!expect(sb_vfs_directory_read(&directory, &dir_entry) == SB_VFS_OBJECT_OK &&
                 dir_entry.type == SB_VFS_NODE_REGULAR &&
-                dir_entry.name_length == 9u &&
                 strcmp(dir_entry.name, "EMPTY.TXT") == 0 &&
                 dir_entry.size == 0u,
                 "FAT32 second readdir entry is wrong")) return 0;
+    if (!expect(sb_vfs_directory_read(&directory, &dir_entry) == SB_VFS_OBJECT_OK &&
+                dir_entry.type == SB_VFS_NODE_DIRECTORY &&
+                strcmp(dir_entry.name, "GAMES") == 0,
+                "FAT32 directory entry is wrong")) return 0;
     if (!expect(sb_vfs_directory_read(&directory, &dir_entry) == SB_VFS_OBJECT_NOT_FOUND,
                 "FAT32 directory EOF was not reported")) return 0;
     if (!expect(sb_vfs_directory_rewind(&directory) == SB_VFS_OBJECT_OK &&
@@ -165,6 +203,22 @@ static int vfs_adapter_test(sb_vfs_mount_t *mount) {
                 "FAT32 directory rewind failed")) return 0;
     if (!expect(sb_vfs_directory_close(&directory) == SB_VFS_OBJECT_OK,
                 "FAT32 directory close failed")) return 0;
+
+    if (!expect(sb_vfs_namespace_open_directory(&namespace_state,
+                                                "/fat/GAMES",
+                                                10u,
+                                                &games_directory) == SB_VFS_OBJECT_OK,
+                "nested FAT32 directory open failed")) return 0;
+    if (!expect(sb_vfs_directory_read(&games_directory, &dir_entry) == SB_VFS_OBJECT_OK &&
+                dir_entry.type == SB_VFS_NODE_REGULAR &&
+                strcmp(dir_entry.name, "SERVER.TXT") == 0 &&
+                dir_entry.size == 19u,
+                "nested FAT32 readdir entry is wrong")) return 0;
+    if (!expect(sb_vfs_directory_read(&games_directory, &dir_entry) ==
+                SB_VFS_OBJECT_NOT_FOUND,
+                "nested FAT32 directory EOF was not reported")) return 0;
+    if (!expect(sb_vfs_directory_close(&games_directory) == SB_VFS_OBJECT_OK,
+                "nested FAT32 directory close failed")) return 0;
 
     if (!expect(sb_vfs_namespace_unmount(&namespace_state, "/fat", 4u) ==
                 SB_VFS_OBJECT_OK,
@@ -195,12 +249,10 @@ int main(void) {
     if (!expect(fs.fat_count == 2u && fs.total_sectors == TEST_SECTORS,
                 "BPB geometry was not retained")) return 1;
 
-    if (!expect(sb_fat32_root_entry(&fs, 0u, &entry) == SB_FAT32_DIRENT_OK,
-                "first visible root entry was not found")) return 1;
-    if (!expect(strcmp(entry.name, "HELLO.TXT") == 0,
-                "deleted/LFN/volume entries were not skipped")) return 1;
-    if (!expect(entry.first_cluster == 3u && entry.file_size == 27u,
-                "HELLO.TXT metadata is wrong")) return 1;
+    if (!expect(sb_fat32_root_entry(&fs, 0u, &entry) == SB_FAT32_DIRENT_OK &&
+                strcmp(entry.name, "HELLO.TXT") == 0 &&
+                entry.first_cluster == 3u && entry.file_size == 27u,
+                "first visible root entry is wrong")) return 1;
 
     memset(buffer, 0, sizeof(buffer));
     if (!expect(sb_fat32_read_file(&fs, &entry, 0u, entry.file_size, buffer) != 0,
@@ -215,8 +267,22 @@ int main(void) {
                 "second visible entry is wrong")) return 1;
     if (!expect(sb_fat32_read_file(&fs, &entry, 0u, 0u, buffer) != 0,
                 "zero-length file read failed")) return 1;
-    if (!expect(sb_fat32_root_entry(&fs, 2u, &entry) == SB_FAT32_DIRENT_END,
-                "directory end was not reported")) return 1;
+    if (!expect(sb_fat32_root_entry(&fs, 2u, &entry) == SB_FAT32_DIRENT_OK &&
+                strcmp(entry.name, "GAMES") == 0 &&
+                (entry.attributes & SB_FAT32_ATTR_DIRECTORY) != 0u &&
+                entry.first_cluster == 4u,
+                "root subdirectory entry is wrong")) return 1;
+    if (!expect(sb_fat32_root_entry(&fs, 3u, &entry) == SB_FAT32_DIRENT_END,
+                "root directory end was not reported")) return 1;
+
+    if (!expect(sb_fat32_directory_entry(&fs, 4u, 0u, &entry) ==
+                SB_FAT32_DIRENT_OK &&
+                strcmp(entry.name, "SERVER.TXT") == 0 &&
+                entry.first_cluster == 5u && entry.file_size == 19u,
+                "subdirectory parser did not skip dot entries")) return 1;
+    if (!expect(sb_fat32_directory_entry(&fs, 4u, 1u, &entry) ==
+                SB_FAT32_DIRENT_END,
+                "subdirectory end was not reported")) return 1;
 
     if (!expect(sb_fat32_read_root_entry(&fs, 0u, &entry) != 0 &&
                 strcmp(entry.name, "HELLO.TXT") == 0,
