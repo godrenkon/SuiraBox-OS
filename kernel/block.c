@@ -47,10 +47,14 @@ static sb_block_status_t test_disk_write(sb_block_device_t *device,
 }
 
 sb_block_status_t sb_block_register(sb_block_device_t *device) {
-    if (device == 0 || device->sector_size == 0 || device->sector_count == 0 ||
-        device->read == 0 || device->write == 0 ||
+    if (device == 0 || device->name == 0 || device->sector_size == 0u ||
+        device->sector_count == 0u || device->read == 0 ||
         g_device_count >= SB_MAX_BLOCK_DEVICES) {
         return SB_BLOCK_INVALID_ARGUMENT;
+    }
+
+    for (uint32_t i = 0u; i < g_device_count; ++i) {
+        if (g_devices[i] == device) return SB_BLOCK_INVALID_ARGUMENT;
     }
 
     g_devices[g_device_count++] = device;
@@ -77,6 +81,14 @@ sb_block_status_t sb_block_selftest(void) {
         test_disk_write,
         0,
     };
+    static sb_block_device_t read_only_device = {
+        "memory-test-ro",
+        SB_SELFTEST_SECTORS,
+        SB_BLOCK_SECTOR_SIZE,
+        test_disk_read,
+        0,
+        0,
+    };
     static uint8_t write_buffer[SB_BLOCK_SECTOR_SIZE];
     static uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
 
@@ -90,15 +102,21 @@ sb_block_status_t sb_block_selftest(void) {
     }
 
     sb_block_device_t *device = sb_block_get(sb_block_count() - 1u);
-    if (device == 0 || device->write(device, 2, 1, write_buffer) != SB_BLOCK_OK ||
-        device->read(device, 2, 1, read_buffer) != SB_BLOCK_OK) {
+    if (device == 0 || sb_block_write(device, 2u, 1u, write_buffer) != SB_BLOCK_OK ||
+        sb_block_read(device, 2u, 1u, read_buffer) != SB_BLOCK_OK) {
         return SB_BLOCK_NOT_READY;
     }
 
     for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         if (read_buffer[i] != write_buffer[i]) {
-            return SB_BLOCK_INVALID_ARGUMENT;
+            return SB_BLOCK_IO_ERROR;
         }
+    }
+
+    if (sb_block_register(&read_only_device) != SB_BLOCK_OK ||
+        sb_block_write(&read_only_device, 0u, 1u, write_buffer) != SB_BLOCK_UNSUPPORTED ||
+        sb_block_read(&read_only_device, 2u, 1u, read_buffer) != SB_BLOCK_OK) {
+        return SB_BLOCK_IO_ERROR;
     }
 
     return SB_BLOCK_OK;

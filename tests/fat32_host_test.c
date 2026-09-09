@@ -35,20 +35,12 @@ static sb_block_status_t disk_read(sb_block_device_t *device, uint64_t lba,
     return SB_BLOCK_OK;
 }
 
-static sb_block_status_t disk_write(sb_block_device_t *device, uint64_t lba,
-                                    uint32_t count, const void *buffer) {
-    if (device == 0 || buffer == 0 || count == 0 || lba >= device->sector_count ||
-        (uint64_t)count > device->sector_count - lba) return SB_BLOCK_INVALID_ARGUMENT;
-    memcpy(&disk[lba * SECTOR_SIZE], buffer, (size_t)count * SECTOR_SIZE);
-    return SB_BLOCK_OK;
-}
-
 static sb_block_device_t device = {
-    .name = "fat32-host-test",
+    .name = "fat32-host-test-ro",
     .sector_count = TEST_SECTORS,
     .sector_size = SECTOR_SIZE,
     .read = disk_read,
-    .write = disk_write,
+    .write = 0,
     .driver_data = 0,
 };
 
@@ -195,7 +187,10 @@ int main(void) {
     char buffer[64];
 
     build_image();
-    if (!expect(sb_vfs_mount(&device, &mount) == SB_VFS_OK, "VFS mount failed")) return 1;
+    if (!expect(sb_vfs_mount(&device, &mount) == SB_VFS_OK,
+                "VFS rejected a read-only block device")) return 1;
+    if (!expect(sb_vfs_write_sectors(&mount, 0u, 1u, disk) == SB_VFS_READ_ONLY,
+                "read-only VFS mount accepted a sector write")) return 1;
     if (!expect(sb_fat32_mount(&mount, &fs) != 0, "FAT32 mount failed")) return 1;
     if (!expect(fs.fat_count == 2u && fs.total_sectors == TEST_SECTORS,
                 "BPB geometry was not retained")) return 1;

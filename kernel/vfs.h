@@ -10,6 +10,7 @@ typedef enum {
     SB_VFS_NOT_FOUND = 2,
     SB_VFS_IO_ERROR = 3,
     SB_VFS_NOT_READY = 4,
+    SB_VFS_READ_ONLY = 5,
 } sb_vfs_status_t;
 
 typedef struct {
