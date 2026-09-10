@@ -2,7 +2,9 @@
 #include "pci.h"
 #include "block.h"
 #include "vfs.h"
+#include "vfs_namespace.h"
 #include "ata_pio.h"
+#include "fs/fat32.h"
 #include "mm/pmm.h"
 #include "mm/vmm.h"
 #include "mm/heap.h"
@@ -20,6 +22,10 @@ extern void sb_syscall_int80_stub(void);
 extern int sb_storage_selftest(void);
 extern char __kernel_start;
 extern char __kernel_end;
+
+static sb_vfs_mount_t runtime_storage_mount;
+static sb_fat32_vfs_t runtime_fat32;
+static uint8_t runtime_fat32_ready;
 
 static void serial_init(void) {
     __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x00), "Nd"((uint16_t)0x3F9));
@@ -71,6 +77,24 @@ static void report_multiboot_modules(uint64_t multiboot_info) {
         offset += next;
         ++count;
     }
+}
+
+static int mount_runtime_fat32(void) {
+    sb_block_device_t *device = sb_ata_pio_device();
+    if (device == 0) return 0;
+    if (sb_vfs_mount(device, &runtime_storage_mount) != SB_VFS_OK) return 0;
+    if (sb_fat32_vfs_init(&runtime_fat32, &runtime_storage_mount) != SB_VFS_OBJECT_OK) {
+        return 0;
+    }
+
+    sb_vfs_node_t *root = sb_fat32_vfs_root(&runtime_fat32);
+    if (root == 0 || sb_vfs_system_mount("/disk", 5u, root) != SB_VFS_OBJECT_OK) {
+        (void)sb_fat32_vfs_destroy(&runtime_fat32);
+        return 0;
+    }
+
+    runtime_fat32_ready = 1u;
+    return 1;
 }
 
 static int vmm_selftest(void) {
@@ -200,6 +224,11 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
     serial_write("Storage: probing legacy ATA primary master...\r\n");
     if (sb_ata_pio_init() == SB_BLOCK_OK) {
         serial_write("Storage: ATA primary master registered\r\n");
+        if (mount_runtime_fat32()) {
+            serial_write("Storage: FAT32 system mount /disk ready\r\n");
+        } else {
+            serial_write("Storage: ATA device has no mountable FAT32 filesystem\r\n");
+        }
     } else {
         serial_write("Storage: ATA primary master unavailable; continuing without it\r\n");
     }
@@ -283,5 +312,6 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
         serial_write("Userspace: no runnable init thread; staying in kernel halt loop\r\n");
     }
 
+    (void)runtime_fat32_ready;
     for (;;) __asm__ volatile ("hlt");
 }
