@@ -81,11 +81,15 @@ jobs:
           grep -F "Handle: stale generation rejected" qemu.log
 
           # Generic VFS file object exposed through a process-local FILE handle.
+          # The compatibility boot-module syscall must traverse the system /boot
+          # namespace rather than bypassing VFS path resolution.
+          grep -F "VFS: system /boot module path open OK" qemu.log
           grep -F "File: boot module opened as FILE handle" qemu.log
           grep -F "File: invalid output pointer rejected before read" qemu.log
           grep -F "File: FILE handle read copied to userspace" qemu.log
           grep -F "File: FILE handle seek OK" qemu.log
           grep -F "Userspace: FILE handle read/seek lifecycle OK" qemu.log
+          grep -F "Spawn: executable staged from VFS file" qemu.log
 
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
           grep -F "Userspace: entering ring3" qemu.log
@@ -154,6 +158,7 @@ jobs:
                   "Handle: stale generation rejected",
               ],
               "vfs-file-handle": [
+                  "VFS: system /boot module path open OK",
                   "File: boot module opened as FILE handle",
                   "File: invalid output pointer rejected before read",
                   "File: FILE handle read copied to userspace",
@@ -161,6 +166,7 @@ jobs:
                   "Userspace: FILE handle read/seek lifecycle OK",
               ],
               "legacy-wait/child/reap": [
+                  "Spawn: executable staged from VFS file",
                   "Userspace: spawn syscall created child process",
                   "Scheduler: user task entered BLOCKED",
                   "Userspace: wait syscall blocked for child",
