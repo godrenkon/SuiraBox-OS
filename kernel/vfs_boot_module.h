@@ -3,9 +3,10 @@
 
 #include "vfs_object.h"
 
-/* Transitional read-only VFS provider for Multiboot modules. It gives the
- * generic FILE/handle layer a real sb_vfs_file_t while persistent VFS path and
- * filesystem mounts are still being built. */
+/* Read-only /boot provider backed by the Multiboot module registry. The
+ * directory exposes every registered module as a regular VFS file and mounts
+ * lazily into the kernel-wide namespace. */
+int sb_vfs_boot_module_mount_system(void);
 int sb_vfs_boot_module_open(const char *module_name, sb_vfs_file_t **file_out);
 
 /* Compatible with sb_handle_close_fn. */
