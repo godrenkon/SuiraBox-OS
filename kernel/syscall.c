@@ -7,6 +7,7 @@
 #include "vfs_object.h"
 #include "vfs_namespace.h"
 #include "vfs_boot_module.h"
+#include "mm/heap.h"
 #include <stddef.h>
 
 #define SB_INIT_PID 1u
@@ -26,7 +27,7 @@ _Static_assert(offsetof(sb_irq_frame_t, rdx) == 11u * sizeof(uint64_t),
                "syscall ABI rdx frame offset changed");
 _Static_assert(offsetof(sb_irq_frame_t, rax) == 14u * sizeof(uint64_t),
                "syscall ABI rax frame offset changed");
-_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_FILE_SEEK,
+_Static_assert(SB_SYS_MAX_NUMBER == SB_SYS_FILE_OPEN,
                "syscall ABI max-number table is stale");
 _Static_assert(SB_HANDLE_TYPE_PROCESS == SB_HANDLE_ABI_TYPE_PROCESS,
                "kernel/public process handle type mismatch");
@@ -36,6 +37,8 @@ _Static_assert(SB_HANDLE_RIGHT_QUERY == SB_HANDLE_ABI_RIGHT_QUERY,
                "kernel/public handle rights mismatch");
 _Static_assert(SB_HANDLE_RIGHT_READ == SB_HANDLE_ABI_RIGHT_READ,
                "kernel/public read right mismatch");
+_Static_assert(SB_FILE_ACCESS_READ == SB_VFS_ACCESS_READ,
+               "kernel/public file access mismatch");
 
 static int first_user_syscall_logged;
 static uint64_t first_user_task_id;
@@ -57,6 +60,7 @@ static int handle_query_logged;
 static int handle_close_logged;
 static int stale_handle_logged;
 static int file_open_logged;
+static int generic_file_open_logged;
 static int file_fault_logged;
 static int file_read_logged;
 static int file_seek_logged;
@@ -162,6 +166,7 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
         case SB_SYS_FILE_OPEN_BOOT_MODULE:
         case SB_SYS_FILE_READ:
         case SB_SYS_FILE_SEEK:
+        case SB_SYS_FILE_OPEN:
             return syscall_error(SB_SYS_ERROR_INVALID);
         case SB_SYS_SLEEP:
             return scheduler_sleep_current(arg0) == 0
@@ -339,6 +344,15 @@ static sb_irq_frame_t *syscall_handle_close(sb_irq_frame_t *frame,
     return frame;
 }
 
+static int path_uses_boot_provider(const char *path, uint64_t length) {
+    if (path == 0 || length < 5u ||
+        path[0] != '/' || path[1] != 'b' || path[2] != 'o' ||
+        path[3] != 'o' || path[4] != 't') {
+        return 0;
+    }
+    return length == 5u || path[5] == '/';
+}
+
 static sb_irq_frame_t *syscall_file_open_boot_module(sb_irq_frame_t *frame,
                                                       sb_task_t *task) {
     sb_process_t *process = syscall_current_process(task);
@@ -400,6 +414,92 @@ static sb_irq_frame_t *syscall_file_open_boot_module(sb_irq_frame_t *frame,
     if (!file_open_logged) {
         file_open_logged = 1;
         syscall_debug("File: boot module opened as FILE handle\r\n");
+    }
+    return frame;
+}
+
+static sb_irq_frame_t *syscall_file_open(sb_irq_frame_t *frame,
+                                          sb_task_t *task) {
+    sb_process_t *process = syscall_current_process(task);
+    if (process == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    const uint64_t length = frame->rsi;
+    const uint64_t access = frame->rdx;
+    if (length == 0u || frame->rdi == 0u) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+    if (length > SB_SYS_PATH_MAX) {
+        frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
+        return frame;
+    }
+    if (access != SB_FILE_ACCESS_READ) {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    char path[SB_SYS_PATH_MAX + 1u];
+    if (user_copy_from(process, path, frame->rdi, length) != 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
+        return frame;
+    }
+    for (uint64_t i = 0u; i < length; ++i) {
+        if (path[i] == '\0') {
+            frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+            return frame;
+        }
+    }
+    path[length] = '\0';
+    if (path[0] != '/') {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    if (path_uses_boot_provider(path, length)) {
+        const int mount_result = sb_vfs_boot_module_mount_system();
+        if (mount_result != SB_VFS_OBJECT_OK) {
+            frame->rax = syscall_vfs_error(mount_result);
+            return frame;
+        }
+    }
+
+    sb_vfs_file_t *file = (sb_vfs_file_t *)kheap_alloc(sizeof(*file));
+    if (file == 0) {
+        frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
+        return frame;
+    }
+
+    const int open_result = sb_vfs_system_open_file(path,
+                                                    length,
+                                                    SB_VFS_ACCESS_READ,
+                                                    file);
+    if (open_result != SB_VFS_OBJECT_OK) {
+        kheap_free(file);
+        frame->rax = syscall_vfs_error(open_result);
+        return frame;
+    }
+
+    sb_handle_t handle = SB_HANDLE_INVALID;
+    const int handle_result = sb_handle_allocate(&process->handles,
+                                                 SB_HANDLE_TYPE_FILE,
+                                                 SB_HANDLE_RIGHT_READ |
+                                                     SB_HANDLE_RIGHT_QUERY,
+                                                 file,
+                                                 sb_vfs_file_handle_close,
+                                                 &handle);
+    if (handle_result != SB_HANDLE_OK) {
+        sb_vfs_file_handle_close(file);
+        frame->rax = syscall_handle_error(handle_result);
+        return frame;
+    }
+
+    frame->rax = handle;
+    if (!generic_file_open_logged) {
+        generic_file_open_logged = 1;
+        syscall_debug("File: generic VFS path opened as FILE handle\r\n");
     }
     return frame;
 }
@@ -501,15 +601,6 @@ static sb_irq_frame_t *syscall_file_seek(sb_irq_frame_t *frame,
     return frame;
 }
 
-static int spawn_path_uses_boot_provider(const char *path, uint32_t length) {
-    if (path == 0 || length < 5u ||
-        path[0] != '/' || path[1] != 'b' || path[2] != 'o' ||
-        path[3] != 'o' || path[4] != 't') {
-        return 0;
-    }
-    return length == 5u || path[5] == '/';
-}
-
 static sb_irq_frame_t *syscall_spawn_request(sb_irq_frame_t *frame,
                                               sb_task_t *task) {
     sb_process_t *parent = syscall_current_process(task);
@@ -575,7 +666,7 @@ static sb_irq_frame_t *syscall_spawn_request(sb_irq_frame_t *frame,
     sb_vfs_file_t vfs_file;
     int vfs_file_open = 0;
     if (vfs_source) {
-        if (spawn_path_uses_boot_provider(image_name, request.name_length)) {
+        if (path_uses_boot_provider(image_name, request.name_length)) {
             const int mount_result = sb_vfs_boot_module_mount_system();
             if (mount_result != SB_VFS_OBJECT_OK) {
                 frame->rax = syscall_vfs_error(mount_result);
@@ -712,6 +803,10 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
 
     if (number == SB_SYS_FILE_OPEN_BOOT_MODULE) {
         return syscall_file_open_boot_module(frame, task);
+    }
+
+    if (number == SB_SYS_FILE_OPEN) {
+        return syscall_file_open(frame, task);
     }
 
     if (number == SB_SYS_FILE_READ) {
@@ -919,6 +1014,7 @@ void syscall_init(void) {
     handle_close_logged = 0;
     stale_handle_logged = 0;
     file_open_logged = 0;
+    generic_file_open_logged = 0;
     file_fault_logged = 0;
     file_read_logged = 0;
     file_seek_logged = 0;
