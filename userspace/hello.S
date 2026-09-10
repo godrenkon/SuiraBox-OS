@@ -23,7 +23,9 @@
  * 8. SPAWN_REQUEST source=VFS_PATH resolves /boot/user-child through the system
  *    VFS namespace, stages the ELF through a file object, executes it, and
  *    waits for its exit/reap lifecycle.
- * 9. SLEEP proves timer-deadline sleep/wakeup and saved-frame resume.
+ * 9. Spawn BOOT_MODULE and VFS_PATH children without waiting between spawns,
+ *    prove distinct PIDs, sleep the parent so both are runnable concurrently,
+ *    then collect both exits.
  */
 _start:
     mov $SB_SYS_GET_TICKS, %rax
@@ -238,6 +240,33 @@ preempt_spin:
     xor %rdi, %rdi
     int $SB_SYSCALL_VECTOR
 
+    /* Multi-process runnable proof: create two children before yielding or
+     * waiting, and keep both dynamic PIDs in preserved registers. */
+    lea spawn_request(%rip), %rdi
+    mov $SB_SYS_SPAWN_REQUEST, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r13
+
+    lea vfs_spawn_request(%rip), %rdi
+    mov $SB_SYS_SPAWN_REQUEST, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r14
+    cmp %r13, %r14
+    je lifecycle_failed
+
+    lea concurrent_armed_message(%rip), %rdi
+    mov $concurrent_armed_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $concurrent_armed_message_len, %rax
+    jne lifecycle_failed
+
+    /* Sleeping the parent forces the scheduler to choose from both runnable
+     * child tasks rather than immediately waiting on only one of them. */
     mov $SB_SYS_SLEEP, %rax
     mov $5, %rdi
     int $SB_SYSCALL_VECTOR
@@ -245,6 +274,25 @@ preempt_spin:
     mov $SB_SYS_GET_TICKS, %rax
     xor %rdi, %rdi
     int $SB_SYSCALL_VECTOR
+
+    mov %r13, %rdi
+    mov $SB_SYS_WAIT_PROCESS, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r14, %rdi
+    mov $SB_SYS_WAIT_PROCESS, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    lea concurrent_done_message(%rip), %rdi
+    mov $concurrent_done_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $concurrent_done_message_len, %rax
+    jne lifecycle_failed
 
 poll:
     mov $50000, %rcx
@@ -271,6 +319,14 @@ pointer_message:
 file_message:
     .ascii "Userspace: FILE handle read/seek lifecycle OK\r\n"
 .set file_message_len, . - file_message
+
+concurrent_armed_message:
+    .ascii "Userspace: concurrent child processes armed\r\n"
+.set concurrent_armed_message_len, . - concurrent_armed_message
+
+concurrent_done_message:
+    .ascii "Userspace: concurrent child processes completed\r\n"
+.set concurrent_done_message_len, . - concurrent_done_message
 
 file_module_name:
     .ascii "user-child"
