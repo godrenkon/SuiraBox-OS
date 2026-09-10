@@ -35,8 +35,20 @@ jobs:
       - name: Boot smoke test
         run: |
           set -o pipefail
+
+          # Real FAT32 media for ATA -> block -> filesystem -> system VFS ->
+          # userspace FILE_OPEN/READ verification. This is a partitionless
+          # superfloppy image because the current FAT32 layer mounts a block
+          # device at sector zero rather than parsing partition tables yet.
+          truncate -s 64M build/runtime-fat32.img
+          printf 'SUIRABOX-RUNTIME-FAT32\n' > build/runtime.txt
+          mformat -i build/runtime-fat32.img -F ::
+          mcopy -i build/runtime-fat32.img build/runtime.txt ::RUNTIME.TXT
+
           timeout 20s qemu-system-x86_64 \
             -m 256M \
+            -boot d \
+            -drive file=build/runtime-fat32.img,format=raw,if=ide,index=0,media=disk \
             -cdrom build/suirabox.iso \
             -serial stdio \
             -display none \
@@ -55,6 +67,8 @@ jobs:
             grep -F "Display: framebuffer unavailable; using fallback console" qemu.log
           fi
 
+          grep -F "Storage: ATA primary master registered" qemu.log
+          grep -F "Storage: FAT32 system mount /disk ready" qemu.log
           grep -F "Memory: PMM bootstrap free pages =" qemu.log
           grep -F "Memory: VMM map/translate/unmap OK" qemu.log
           grep -F "Memory: kernel heap alloc/free OK" qemu.log
@@ -67,20 +81,17 @@ jobs:
           grep -F "Timer: IRQ0 enabled" qemu.log
           grep -F "Phase 1 bootstrap complete." qemu.log
 
-          # Versioned syscall ABI + page-table-backed user pointer validation.
           grep -F "Syscall: ABI v1 userspace probe OK" qemu.log
           grep -F "Userspace: validated user pointer copy OK" qemu.log
           grep -F "Syscall: invalid user pointer rejected" qemu.log
           grep -F "Syscall: writable user pointer copy OK" qemu.log
           grep -F "Syscall: read-only user pointer write rejected" qemu.log
 
-          # Process-local handle generation/type/rights lifecycle.
           grep -F "Handle: userspace process handle opened" qemu.log
           grep -F "Handle: type and rights query OK" qemu.log
           grep -F "Handle: close invalidated generation" qemu.log
           grep -F "Handle: stale generation rejected" qemu.log
 
-          # Compatibility boot-module file open and generic system-VFS FILE_OPEN.
           grep -F "VFS: system /boot module path open OK" qemu.log
           grep -F "File: boot module opened as FILE handle" qemu.log
           grep -F "File: invalid output pointer rejected before read" qemu.log
@@ -89,6 +100,7 @@ jobs:
           grep -F "Userspace: FILE handle read/seek lifecycle OK" qemu.log
           grep -F "File: generic VFS path opened as FILE handle" qemu.log
           grep -F "Userspace: generic VFS FILE_OPEN lifecycle OK" qemu.log
+          grep -F "Userspace: runtime FAT32 file read through generic VFS OK" qemu.log
           grep -F "Spawn: executable staged from VFS file" qemu.log
 
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
@@ -98,7 +110,6 @@ jobs:
           grep -F "Scheduler: saved user IRQ frame selected for resume" qemu.log
           grep -F "Userspace: resumed user thread reached syscall" qemu.log
 
-          # Legacy ABI v1 selector + BLOCKED parent/child wait lifecycle.
           grep -F "Userspace: spawn syscall created child process" qemu.log
           grep -F "Scheduler: user task entered BLOCKED" qemu.log
           grep -F "Userspace: wait syscall blocked for child" qemu.log
@@ -111,7 +122,6 @@ jobs:
           grep -F "Scheduler: woke blocked user task selected for resume" qemu.log
           grep -F "Userspace: parent wait resumed after child exit" qemu.log
 
-          # Versioned boot-module spawn request.
           grep -F "Spawn: userspace request copied and validated" qemu.log
           grep -F "Spawn: general child process created" qemu.log
           grep -F "Spawn: parent blocked waiting for general child" qemu.log
@@ -120,7 +130,6 @@ jobs:
           grep -F "Spawn: general child resources reaped" qemu.log
           grep -F "Spawn: general child wait completed" qemu.log
 
-          # Versioned VFS-path spawn request.
           grep -F "Spawn: VFS path request copied and validated" qemu.log
           grep -F "Spawn: VFS path child process created" qemu.log
           grep -F "Spawn: parent blocked waiting for VFS path child" qemu.log
@@ -129,11 +138,9 @@ jobs:
           grep -F "Spawn: VFS path child resources reaped" qemu.log
           grep -F "Spawn: VFS path child wait completed" qemu.log
 
-          # Two dynamic children must be runnable at the same time.
           grep -F "Userspace: concurrent child processes armed" qemu.log
           grep -F "Userspace: concurrent child processes completed" qemu.log
 
-          # SLEEP remains an independent deadline-driven transition.
           grep -F "Scheduler: user task entered SLEEPING" qemu.log
           grep -F "Userspace: sleep syscall requested" qemu.log
           grep -F "Scheduler: sleeping user task descheduled" qemu.log
@@ -177,6 +184,11 @@ jobs:
               "generic-vfs-file-open": [
                   "File: generic VFS path opened as FILE handle",
                   "Userspace: generic VFS FILE_OPEN lifecycle OK",
+              ],
+              "runtime-fat32-vfs": [
+                  "Storage: ATA primary master registered",
+                  "Storage: FAT32 system mount /disk ready",
+                  "Userspace: runtime FAT32 file read through generic VFS OK",
               ],
               "legacy-wait/child/reap": [
                   "Spawn: executable staged from VFS file",
