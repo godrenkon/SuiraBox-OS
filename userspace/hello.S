@@ -14,9 +14,8 @@
  *    aimed at .rodata and must be rejected as non-writable without #PF.
  * 4. Open/query/close a process-local handle and prove the old generation is
  *    rejected as stale after close.
- * 5. Open a boot module through the system VFS as a FILE handle, verify
- *    type/rights, prove failed output validation does not consume bytes, read
- *    the ELF magic, seek, read again, close, and reject the stale handle.
+ * 5. Exercise the compatibility boot-module FILE open and generic absolute-path
+ *    FILE_OPEN through the system VFS, including ELF read and stale close.
  * 6. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
  * 7. SPAWN_REQUEST source=BOOT_MODULE assigns dynamic PID/TID values, executes
  *    the child, and waits for its exit.
@@ -93,8 +92,6 @@ _start:
     test %rax, %rax
     jne lifecycle_failed
 
-    /* The same opaque value must never resolve again after its slot generation
-     * advances on close. */
     mov %rbx, %rdi
     lea handle_info_buffer(%rip), %rsi
     mov $SB_SYS_HANDLE_INFO, %rax
@@ -181,6 +178,77 @@ _start:
     cmp $file_message_len, %rax
     jne lifecycle_failed
 
+    /* Generic system-VFS path open. This path is not translated to a module
+     * name by userspace; the kernel resolves it as a normal absolute VFS path. */
+    lea vfs_spawn_path(%rip), %rdi
+    mov $vfs_spawn_path_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+
+    mov %r12, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_HANDLE_ABI_TYPE_FILE, SB_HANDLE_INFO_TYPE_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $(SB_HANDLE_ABI_RIGHT_READ | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+
+    movl $0, file_header_buffer(%rip)
+    mov %r12, %rdi
+    lea file_header_buffer(%rip), %rsi
+    mov $4, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $4, %rax
+    jne lifecycle_failed
+    cmpl $0x464c457f, file_header_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_STALE, %rax
+    jne lifecycle_failed
+
+    /* Relative paths are invalid and a valid-but-absent absolute path must be
+     * distinguishable as NOT_FOUND. */
+    lea file_module_name(%rip), %rdi
+    mov $file_module_name_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_INVALID, %rax
+    jne lifecycle_failed
+
+    lea missing_vfs_path(%rip), %rdi
+    mov $missing_vfs_path_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+
+    lea generic_file_message(%rip), %rdi
+    mov $generic_file_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $generic_file_message_len, %rax
+    jne lifecycle_failed
+
     mov $50000, %rcx
 preempt_spin:
     pause
@@ -216,8 +284,6 @@ preempt_spin:
     test %rax, %rax
     jne lifecycle_failed
 
-    /* First syscall after wake proves the parent's saved WAIT frame resumed and
-     * gives the kernel a distinct point to report completed reap state. */
     mov $SB_SYS_GET_TICKS, %rax
     xor %rdi, %rdi
     int $SB_SYSCALL_VECTOR
@@ -235,7 +301,6 @@ preempt_spin:
     test %rax, %rax
     jne lifecycle_failed
 
-    /* Prove the blocked VFS-path WAIT frame resumed and reap completed. */
     mov $SB_SYS_GET_TICKS, %rax
     xor %rdi, %rdi
     int $SB_SYSCALL_VECTOR
@@ -320,6 +385,10 @@ file_message:
     .ascii "Userspace: FILE handle read/seek lifecycle OK\r\n"
 .set file_message_len, . - file_message
 
+generic_file_message:
+    .ascii "Userspace: generic VFS FILE_OPEN lifecycle OK\r\n"
+.set generic_file_message_len, . - generic_file_message
+
 concurrent_armed_message:
     .ascii "Userspace: concurrent child processes armed\r\n"
 .set concurrent_armed_message_len, . - concurrent_armed_message
@@ -339,6 +408,10 @@ spawn_module_name:
 vfs_spawn_path:
     .ascii "/boot/user-child"
 .set vfs_spawn_path_len, . - vfs_spawn_path
+
+missing_vfs_path:
+    .ascii "/boot/does-not-exist"
+.set missing_vfs_path_len, . - missing_vfs_path
 
 .section .data
 .align 8
