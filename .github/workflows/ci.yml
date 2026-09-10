@@ -80,15 +80,15 @@ jobs:
           grep -F "Handle: close invalidated generation" qemu.log
           grep -F "Handle: stale generation rejected" qemu.log
 
-          # Generic VFS file object exposed through a process-local FILE handle.
-          # The compatibility boot-module syscall must traverse the system /boot
-          # namespace rather than bypassing VFS path resolution.
+          # Compatibility boot-module file open and generic system-VFS FILE_OPEN.
           grep -F "VFS: system /boot module path open OK" qemu.log
           grep -F "File: boot module opened as FILE handle" qemu.log
           grep -F "File: invalid output pointer rejected before read" qemu.log
           grep -F "File: FILE handle read copied to userspace" qemu.log
           grep -F "File: FILE handle seek OK" qemu.log
           grep -F "Userspace: FILE handle read/seek lifecycle OK" qemu.log
+          grep -F "File: generic VFS path opened as FILE handle" qemu.log
+          grep -F "Userspace: generic VFS FILE_OPEN lifecycle OK" qemu.log
           grep -F "Spawn: executable staged from VFS file" qemu.log
 
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
@@ -111,8 +111,7 @@ jobs:
           grep -F "Scheduler: woke blocked user task selected for resume" qemu.log
           grep -F "Userspace: parent wait resumed after child exit" qemu.log
 
-          # Versioned boot-module spawn request: dynamic identifiers and full
-          # BLOCKED parent -> child exit -> reap -> WAIT completion lifecycle.
+          # Versioned boot-module spawn request.
           grep -F "Spawn: userspace request copied and validated" qemu.log
           grep -F "Spawn: general child process created" qemu.log
           grep -F "Spawn: parent blocked waiting for general child" qemu.log
@@ -121,9 +120,7 @@ jobs:
           grep -F "Spawn: general child resources reaped" qemu.log
           grep -F "Spawn: general child wait completed" qemu.log
 
-          # Versioned VFS-path spawn request. This is a distinct third child so
-          # source=BOOT_MODULE and source=VFS_PATH cannot satisfy each other's
-          # smoke markers accidentally.
+          # Versioned VFS-path spawn request.
           grep -F "Spawn: VFS path request copied and validated" qemu.log
           grep -F "Spawn: VFS path child process created" qemu.log
           grep -F "Spawn: parent blocked waiting for VFS path child" qemu.log
@@ -132,9 +129,7 @@ jobs:
           grep -F "Spawn: VFS path child resources reaped" qemu.log
           grep -F "Spawn: VFS path child wait completed" qemu.log
 
-          # Two dynamic children must be runnable at the same time. The parent
-          # explicitly sleeps between arming and collecting them so the scheduler
-          # has to execute the child set independently of parent WAIT blocking.
+          # Two dynamic children must be runnable at the same time.
           grep -F "Userspace: concurrent child processes armed" qemu.log
           grep -F "Userspace: concurrent child processes completed" qemu.log
 
@@ -146,8 +141,6 @@ jobs:
           grep -F "Scheduler: woke user task selected for resume" qemu.log
           grep -F "Userspace: woke sleeping user thread reached syscall" qemu.log
 
-          # Any exception is a hard regression, even if later marker checks
-          # would otherwise happen to pass.
           if grep -Fq "Exception:" qemu.log; then
             echo "unexpected kernel/user exception detected"
             grep -F "Exception:" qemu.log
@@ -180,6 +173,10 @@ jobs:
                   "File: FILE handle read copied to userspace",
                   "File: FILE handle seek OK",
                   "Userspace: FILE handle read/seek lifecycle OK",
+              ],
+              "generic-vfs-file-open": [
+                  "File: generic VFS path opened as FILE handle",
+                  "Userspace: generic VFS FILE_OPEN lifecycle OK",
               ],
               "legacy-wait/child/reap": [
                   "Spawn: executable staged from VFS file",
