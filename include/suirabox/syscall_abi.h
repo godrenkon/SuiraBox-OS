@@ -60,11 +60,12 @@
 #define SB_ABI_INFO_MAX_SYSCALL_OFFSET 8
 #define SB_ABI_INFO_SIZE               16
 
-/* Versioned spawn request. Version 1 intentionally names a source separately
- * from its image identifier so VFS/file-handle backed sources can be appended
- * without changing the legacy syscall or reinterpreting existing fields. */
+/* Versioned spawn request. Version 1 names the image source separately from its
+ * identifier. Source 1 preserves the bootstrap module ABI; source 2 resolves an
+ * absolute path through the kernel-wide VFS namespace. */
 #define SB_SPAWN_REQUEST_VERSION              1
 #define SB_SPAWN_SOURCE_BOOT_MODULE           1
+#define SB_SPAWN_SOURCE_VFS_PATH              2
 #define SB_SPAWN_FLAG_NONE                    0
 #define SB_SPAWN_NAME_MAX                     63
 #define SB_SPAWN_REQUEST_SIZE_OFFSET          0
