@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 #include "process.h"
+#include "vfs_object.h"
+
+#define SB_PROCESS_EXEC_MAX_IMAGE_SIZE (16u * 1024u * 1024u)
 
 typedef struct {
     uint64_t entry_point;
@@ -30,6 +33,16 @@ sb_process_t *process_spawn_elf_image(const void *image,
                                       uint64_t tid,
                                       uint32_t priority,
                                       sb_process_image_t *image_info);
+
+/* Generic VFS-file spawn boundary. The file's current offset is preserved.
+ * The implementation stages at most SB_PROCESS_EXEC_MAX_IMAGE_SIZE bytes in
+ * kernel heap memory, then routes through process_spawn_elf_image(). */
+sb_process_t *process_spawn_vfs_file(sb_vfs_file_t *file,
+                                     uint64_t pid,
+                                     uint64_t parent_pid,
+                                     uint64_t tid,
+                                     uint32_t priority,
+                                     sb_process_image_t *image_info);
 
 /* Create, load, create the initial thread, and register it with the scheduler.
  * Failure is transactional: no process object or address-space pages remain. */
