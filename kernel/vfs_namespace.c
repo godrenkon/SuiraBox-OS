@@ -1,6 +1,9 @@
 #include "vfs_namespace.h"
 #include <stdint.h>
 
+static sb_vfs_namespace_t system_namespace;
+static uint8_t system_namespace_ready;
+
 static void zero_mount(sb_vfs_mount_point_t *mount) {
     if (mount == 0) return;
     for (uint32_t i = 0u; i <= SB_VFS_PATH_MAX; ++i) mount->path[i] = '\0';
@@ -297,4 +300,64 @@ int sb_vfs_namespace_open_directory(sb_vfs_namespace_t *namespace_state,
     const int open_result = sb_vfs_directory_open(node, directory_out);
     (void)sb_vfs_node_release(node);
     return open_result;
+}
+
+static void ensure_system_namespace(void) {
+    if (system_namespace_ready != 0u) return;
+    sb_vfs_namespace_init(&system_namespace);
+    system_namespace_ready = 1u;
+}
+
+void sb_vfs_system_reset(void) {
+    if (system_namespace_ready != 0u) {
+        sb_vfs_namespace_destroy(&system_namespace);
+    }
+    sb_vfs_namespace_init(&system_namespace);
+    system_namespace_ready = 1u;
+}
+
+int sb_vfs_system_mount(const char *path,
+                        uint64_t path_length,
+                        sb_vfs_node_t *root) {
+    ensure_system_namespace();
+    return sb_vfs_namespace_mount(&system_namespace, path, path_length, root);
+}
+
+int sb_vfs_system_unmount(const char *path, uint64_t path_length) {
+    ensure_system_namespace();
+    return sb_vfs_namespace_unmount(&system_namespace, path, path_length);
+}
+
+int sb_vfs_system_resolve(const char *path,
+                          uint64_t path_length,
+                          sb_vfs_node_t **node_out) {
+    ensure_system_namespace();
+    return sb_vfs_namespace_resolve(&system_namespace, path, path_length, node_out);
+}
+
+int sb_vfs_system_open_file(const char *path,
+                            uint64_t path_length,
+                            uint32_t access,
+                            sb_vfs_file_t *file_out) {
+    ensure_system_namespace();
+    return sb_vfs_namespace_open_file(&system_namespace,
+                                      path,
+                                      path_length,
+                                      access,
+                                      file_out);
+}
+
+int sb_vfs_system_open_directory(const char *path,
+                                 uint64_t path_length,
+                                 sb_vfs_directory_t *directory_out) {
+    ensure_system_namespace();
+    return sb_vfs_namespace_open_directory(&system_namespace,
+                                           path,
+                                           path_length,
+                                           directory_out);
+}
+
+uint32_t sb_vfs_system_mount_count(void) {
+    ensure_system_namespace();
+    return system_namespace.mount_count;
 }
