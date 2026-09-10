@@ -82,14 +82,14 @@ int process_prepare_boot_module(sb_process_t *process,
     return result;
 }
 
-sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
-                                        const char *module_name,
-                                        uint64_t pid,
-                                        uint64_t parent_pid,
-                                        uint64_t tid,
-                                        uint32_t priority,
-                                        sb_process_image_t *image_info) {
-    if (multiboot_info == 0u || module_name == 0 || pid == 0u || tid == 0u) return 0;
+sb_process_t *process_spawn_elf_image(const void *image,
+                                      uint64_t image_size,
+                                      uint64_t pid,
+                                      uint64_t parent_pid,
+                                      uint64_t tid,
+                                      uint32_t priority,
+                                      sb_process_image_t *image_info) {
+    if (image == 0 || image_size == 0u || pid == 0u || tid == 0u) return 0;
     if (parent_pid != 0u && process_get(parent_pid) == 0) return 0;
 
     sb_process_image_t local_image;
@@ -98,7 +98,7 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
     if (process == 0) return 0;
     process->parent_pid = parent_pid;
 
-    if (process_prepare_boot_module(process, multiboot_info, module_name, prepared) != 0) {
+    if (process_prepare_elf(process, image, image_size, prepared) != 0) {
         process_destroy(process);
         return 0;
     }
@@ -122,6 +122,35 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
 
     process->state = SB_PROCESS_RUNNING;
     thread->state = SB_PROCESS_RUNNING;
+    return process;
+}
+
+sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
+                                        const char *module_name,
+                                        uint64_t pid,
+                                        uint64_t parent_pid,
+                                        uint64_t tid,
+                                        uint32_t priority,
+                                        sb_process_image_t *image_info) {
+    if (multiboot_info == 0u || module_name == 0) return 0;
+
+    sb_multiboot_module_t module;
+    if (multiboot_find_module(multiboot_info, module_name, &module) != 0 ||
+        module.end <= module.start) {
+        return 0;
+    }
+
+    sb_process_t *process = process_spawn_elf_image(
+        (const void *)(uintptr_t)module.start,
+        module.end - module.start,
+        pid,
+        parent_pid,
+        tid,
+        priority,
+        image_info);
+    if (process != 0 && registered_multiboot_info == 0u) {
+        registered_multiboot_info = multiboot_info;
+    }
     return process;
 }
 
@@ -158,12 +187,17 @@ sb_process_t *process_spawn_registered_boot_module(const char *module_name,
                                                    uint64_t tid,
                                                    uint32_t priority,
                                                    sb_process_image_t *image_info) {
-    if (registered_multiboot_info == 0u) return 0;
-    return process_spawn_boot_module(registered_multiboot_info,
-                                     module_name,
-                                     pid,
-                                     parent_pid,
-                                     tid,
-                                     priority,
-                                     image_info);
+    const void *image = 0;
+    uint64_t image_size = 0u;
+    if (process_registered_boot_module_view(module_name, &image, &image_size) != 0) {
+        return 0;
+    }
+
+    return process_spawn_elf_image(image,
+                                   image_size,
+                                   pid,
+                                   parent_pid,
+                                   tid,
+                                   priority,
+                                   image_info);
 }
