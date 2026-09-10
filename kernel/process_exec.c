@@ -299,6 +299,23 @@ int process_registered_boot_module_view(const char *module_name,
     return 0;
 }
 
+int process_registered_boot_module_at(uint32_t index,
+                                      sb_registered_boot_module_t *module_out) {
+    if (registered_multiboot_info == 0u || module_out == 0) return -1;
+
+    sb_multiboot_module_t module;
+    if (multiboot_module_at(registered_multiboot_info, index, &module) != 0 ||
+        module.end <= module.start || module.name == 0 || module.name_length == 0u) {
+        return -1;
+    }
+
+    module_out->name = module.name;
+    module_out->name_length = module.name_length;
+    module_out->image = (const void *)(uintptr_t)module.start;
+    module_out->image_size = module.end - module.start;
+    return 0;
+}
+
 sb_process_t *process_spawn_registered_boot_module(const char *module_name,
                                                    uint64_t pid,
                                                    uint64_t parent_pid,
