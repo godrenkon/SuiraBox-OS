@@ -1,8 +1,7 @@
 #include "pmm.h"
 
 /* Kernel PMM: bitmap-backed physical page allocator bounded to the first
- * 256 MiB, which is safely identity-mapped by the early boot page tables.
- * The allocation/reservation semantics match the host PMM test suite. */
+ * 256 MiB, which is safely identity-mapped by the early boot page tables. */
 #define PMM_MAX_PAGES (256u * 1024u * 1024u / SB_PAGE_SIZE)
 #define PMM_BITMAP_WORDS ((PMM_MAX_PAGES + 63u) / 64u)
 
@@ -24,10 +23,37 @@ static uint32_t count_bits64(uint64_t value) {
     return count;
 }
 
-static uint32_t first_set_bit64(uint64_t value) {
-    uint32_t bit = 0u;
-    while ((value & 1u) == 0u) { value >>= 1; ++bit; }
-    return bit;
+static int page_is_free(uint64_t index) {
+    if (index >= PMM_MAX_PAGES) return 0;
+    const uint32_t word = (uint32_t)(index / 64u);
+    const uint32_t bit = (uint32_t)(index % 64u);
+    return (bitmap[word] & (1ull << bit)) == 0u;
+}
+
+static int page_is_allocated(uint64_t index) {
+    if (index >= PMM_MAX_PAGES) return 0;
+    const uint32_t word = (uint32_t)(index / 64u);
+    const uint32_t bit = (uint32_t)(index % 64u);
+    return (allocated_bitmap[word] & (1ull << bit)) != 0u;
+}
+
+static void mark_allocated(uint64_t index) {
+    const uint32_t word = (uint32_t)(index / 64u);
+    const uint32_t bit = (uint32_t)(index % 64u);
+    const uint64_t mask = 1ull << bit;
+    bitmap[word] |= mask;
+    allocated_bitmap[word] |= mask;
+}
+
+static void release_allocated(uint64_t index) {
+    const uint32_t word = (uint32_t)(index / 64u);
+    const uint32_t bit = (uint32_t)(index % 64u);
+    const uint64_t mask = 1ull << bit;
+    allocated_bitmap[word] &= ~mask;
+    if ((reserved_bitmap[word] & mask) == 0u) {
+        bitmap[word] &= ~mask;
+        ++free_count;
+    }
 }
 
 static void recompute_free_count(void) {
@@ -132,35 +158,52 @@ void pmm_init(uint64_t usable_start, uint64_t usable_end) {
     recompute_free_count();
 }
 
-void *pmm_alloc_page(void) {
-    for (uint32_t word = 0u; word < PMM_BITMAP_WORDS; ++word) {
-        uint64_t available = ~bitmap[word];
-        if (word == PMM_BITMAP_WORDS - 1u && (PMM_MAX_PAGES & 63u) != 0u)
-            available &= low_bits_mask(PMM_MAX_PAGES & 63u);
-        if (available == 0u) continue;
-        const uint32_t bit = first_set_bit64(available);
-        const uint64_t index = (uint64_t)word * 64u + bit;
-        bitmap[word] |= 1ull << bit;
-        allocated_bitmap[word] |= 1ull << bit;
-        if (free_count != 0u) --free_count;
-        return (void *)(uintptr_t)(index * SB_PAGE_SIZE);
+void *pmm_alloc_contiguous(uint64_t requested_pages) {
+    if (requested_pages == 0u || requested_pages > free_count ||
+        requested_pages > PMM_MAX_PAGES - 1u) {
+        return 0;
+    }
+
+    uint64_t run_start = 0u;
+    uint64_t run_length = 0u;
+    for (uint64_t index = 1u; index < PMM_MAX_PAGES; ++index) {
+        if (page_is_free(index)) {
+            if (run_length == 0u) run_start = index;
+            ++run_length;
+            if (run_length == requested_pages) {
+                for (uint64_t page = 0u; page < requested_pages; ++page) {
+                    mark_allocated(run_start + page);
+                }
+                free_count -= requested_pages;
+                return (void *)(uintptr_t)(run_start * SB_PAGE_SIZE);
+            }
+        } else {
+            run_length = 0u;
+        }
     }
     return 0;
 }
 
+void *pmm_alloc_page(void) {
+    return pmm_alloc_contiguous(1u);
+}
+
+void pmm_free_contiguous(void *base, uint64_t count) {
+    const uint64_t address = (uint64_t)(uintptr_t)base;
+    if (base == 0 || count == 0u || (address & (SB_PAGE_SIZE - 1u)) != 0u) return;
+    const uint64_t first = address / SB_PAGE_SIZE;
+    if (first == 0u || first >= PMM_MAX_PAGES || count > PMM_MAX_PAGES - first) return;
+
+    for (uint64_t i = 0u; i < count; ++i) {
+        if (!page_is_allocated(first + i)) return;
+    }
+    for (uint64_t i = 0u; i < count; ++i) {
+        release_allocated(first + i);
+    }
+}
+
 void pmm_free_page(void *page) {
-    const uint64_t address = (uint64_t)(uintptr_t)page;
-    if ((address & (SB_PAGE_SIZE - 1u)) != 0u) return;
-    const uint64_t index = address / SB_PAGE_SIZE;
-    if (index >= PMM_MAX_PAGES) return;
-    const uint32_t word = (uint32_t)(index / 64u);
-    const uint32_t bit = (uint32_t)(index % 64u);
-    const uint64_t mask = 1ull << bit;
-    if ((allocated_bitmap[word] & mask) == 0u) return;
-    allocated_bitmap[word] &= ~mask;
-    if ((reserved_bitmap[word] & mask) != 0u) return;
-    bitmap[word] &= ~mask;
-    ++free_count;
+    pmm_free_contiguous(page, 1u);
 }
 
 uint64_t pmm_total_pages(void) { return page_count; }
