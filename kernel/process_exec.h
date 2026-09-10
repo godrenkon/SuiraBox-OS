@@ -20,6 +20,17 @@ int process_prepare_boot_module(sb_process_t *process,
                                 const char *module_name,
                                 sb_process_image_t *image_info);
 
+/* Generic memory-image spawn boundary. The caller owns image memory and only
+ * needs to keep it alive until this function returns; ELF segments are copied
+ * into the new process address space. Failure is transactional. */
+sb_process_t *process_spawn_elf_image(const void *image,
+                                      uint64_t image_size,
+                                      uint64_t pid,
+                                      uint64_t parent_pid,
+                                      uint64_t tid,
+                                      uint32_t priority,
+                                      sb_process_image_t *image_info);
+
 /* Create, load, create the initial thread, and register it with the scheduler.
  * Failure is transactional: no process object or address-space pages remain. */
 sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
