@@ -14,4 +14,9 @@ uint64_t syscall_dispatch(uint64_t number, uint64_t arg0, uint64_t arg1,
  * complete frame this function selects before iretq. */
 sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame);
 
+/* Entry-level extension router. Directory syscalls are kept in their own
+ * translation unit; all other calls fall through to the established frame
+ * dispatcher above so blocking/wait/exit behavior remains unchanged. */
+sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame);
+
 #endif /* SB_KERNEL_SYSCALL_H */
