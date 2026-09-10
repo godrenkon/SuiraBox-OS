@@ -111,9 +111,8 @@ jobs:
           grep -F "Scheduler: woke blocked user task selected for resume" qemu.log
           grep -F "Userspace: parent wait resumed after child exit" qemu.log
 
-          # Versioned general spawn request: request/name validation, dynamic
-          # identifiers, actual parent blocking, child execution/exit, process
-          # slot removal after reap, and parent WAIT completion.
+          # Versioned boot-module spawn request: dynamic identifiers and full
+          # BLOCKED parent -> child exit -> reap -> WAIT completion lifecycle.
           grep -F "Spawn: userspace request copied and validated" qemu.log
           grep -F "Spawn: general child process created" qemu.log
           grep -F "Spawn: parent blocked waiting for general child" qemu.log
@@ -121,6 +120,17 @@ jobs:
           grep -F "Spawn: general child requested process exit" qemu.log
           grep -F "Spawn: general child resources reaped" qemu.log
           grep -F "Spawn: general child wait completed" qemu.log
+
+          # Versioned VFS-path spawn request. This is a distinct third child so
+          # source=BOOT_MODULE and source=VFS_PATH cannot satisfy each other's
+          # smoke markers accidentally.
+          grep -F "Spawn: VFS path request copied and validated" qemu.log
+          grep -F "Spawn: VFS path child process created" qemu.log
+          grep -F "Spawn: parent blocked waiting for VFS path child" qemu.log
+          grep -F "Spawn: VFS path child PID syscall OK" qemu.log
+          grep -F "Spawn: VFS path child requested process exit" qemu.log
+          grep -F "Spawn: VFS path child resources reaped" qemu.log
+          grep -F "Spawn: VFS path child wait completed" qemu.log
 
           # SLEEP remains an independent deadline-driven transition.
           grep -F "Scheduler: user task entered SLEEPING" qemu.log
@@ -188,6 +198,16 @@ jobs:
                   "Spawn: general child requested process exit",
                   "Spawn: general child resources reaped",
                   "Spawn: general child wait completed",
+              ],
+              "vfs-path-spawn/wait/reap": [
+                  "Spawn: VFS path request copied and validated",
+                  "Spawn: VFS path child process created",
+                  "Spawn: parent blocked waiting for VFS path child",
+                  "Userspace: wait syscall blocked for child",
+                  "Spawn: VFS path child PID syscall OK",
+                  "Spawn: VFS path child requested process exit",
+                  "Spawn: VFS path child resources reaped",
+                  "Spawn: VFS path child wait completed",
               ],
               "sleep/wake": [
                   "Scheduler: user task entered SLEEPING",
