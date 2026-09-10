@@ -14,17 +14,12 @@
  *    aimed at .rodata and must be rejected as non-writable without #PF.
  * 4. Open/query/close a process-local handle and prove the old generation is
  *    rejected as stale after close.
- * 5. Exercise the compatibility boot-module FILE open and generic absolute-path
+ * 5. Exercise compatibility boot-module FILE open and generic absolute-path
  *    FILE_OPEN through the system VFS, including ELF read and stale close.
- * 6. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
- * 7. SPAWN_REQUEST source=BOOT_MODULE assigns dynamic PID/TID values, executes
- *    the child, and waits for its exit.
- * 8. SPAWN_REQUEST source=VFS_PATH resolves /boot/user-child through the system
- *    VFS namespace, stages the ELF through a file object, executes it, and
- *    waits for its exit/reap lifecycle.
- * 9. Spawn BOOT_MODULE and VFS_PATH children without waiting between spawns,
- *    prove distinct PIDs, sleep the parent so both are runnable concurrently,
- *    then collect both exits.
+ * 6. If /disk is mounted, read RUNTIME.TXT through the same generic FILE API.
+ * 7. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
+ * 8. SPAWN_REQUEST source=BOOT_MODULE and source=VFS_PATH execute/reap children.
+ * 9. Spawn two dynamic children before waiting and prove concurrent execution.
  */
 _start:
     mov $SB_SYS_GET_TICKS, %rax
@@ -59,16 +54,12 @@ _start:
     cmpq $SB_SYS_MAX_NUMBER, SB_ABI_INFO_MAX_SYSCALL_OFFSET+abi_info_buffer(%rip)
     jne lifecycle_failed
 
-    /* .rodata is readable to userspace but must not pass kernel-to-user write
-     * validation. The kernel must return FAULT rather than taking a page fault. */
     lea pointer_message(%rip), %rdi
     mov $SB_SYS_ABI_INFO, %rax
     int $SB_SYSCALL_VECTOR
     cmp $SB_SYS_ERROR_FAULT, %rax
     jne lifecycle_failed
 
-    /* Handles are opaque. Userspace only stores and returns the value; type,
-     * rights, slot selection and generation validation remain kernel-owned. */
     mov $SB_SYS_PROCESS_OPEN_SELF, %rax
     int $SB_SYSCALL_VECTOR
     test %rax, %rax
@@ -99,8 +90,7 @@ _start:
     cmp $SB_SYS_ERROR_STALE, %rax
     jne lifecycle_failed
 
-    /* Compatibility syscall name, but the kernel now opens /boot/user-child
-     * through the kernel-wide VFS namespace and returns a generic FILE handle. */
+    /* Compatibility boot-module FILE path. */
     lea file_module_name(%rip), %rdi
     mov $file_module_name_len, %rsi
     mov $SB_SYS_FILE_OPEN_BOOT_MODULE, %rax
@@ -120,8 +110,6 @@ _start:
     cmpq $(SB_HANDLE_ABI_RIGHT_READ | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
     jne lifecycle_failed
 
-    /* This destination is read-only. The kernel must reject it before touching
-     * the file object, so the next valid read still starts at offset zero. */
     mov %r12, %rdi
     lea pointer_message(%rip), %rsi
     mov $4, %rdx
@@ -178,8 +166,7 @@ _start:
     cmp $file_message_len, %rax
     jne lifecycle_failed
 
-    /* Generic system-VFS path open. This path is not translated to a module
-     * name by userspace; the kernel resolves it as a normal absolute VFS path. */
+    /* Generic system-VFS path open against the boot-module provider. */
     lea vfs_spawn_path(%rip), %rdi
     mov $vfs_spawn_path_len, %rsi
     mov $SB_FILE_ACCESS_READ, %rdx
@@ -224,8 +211,6 @@ _start:
     cmp $SB_SYS_ERROR_STALE, %rax
     jne lifecycle_failed
 
-    /* Relative paths are invalid and a valid-but-absent absolute path must be
-     * distinguishable as NOT_FOUND. */
     lea file_module_name(%rip), %rdi
     mov $file_module_name_len, %rsi
     mov $SB_FILE_ACCESS_READ, %rdx
@@ -249,6 +234,46 @@ _start:
     cmp $generic_file_message_len, %rax
     jne lifecycle_failed
 
+    /* Optional real-storage proof. Normal boots without a mounted disk skip it;
+     * CI attaches a FAT32 primary IDE disk and therefore must take this path. */
+    lea runtime_disk_path(%rip), %rdi
+    mov $runtime_disk_path_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    je runtime_disk_skipped
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+
+    movq $0, file_header_buffer(%rip)
+    mov %r12, %rdi
+    lea file_header_buffer(%rip), %rsi
+    mov $8, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $8, %rax
+    jne lifecycle_failed
+    cmpl $0x52495553, file_header_buffer(%rip)
+    jne lifecycle_failed
+    cmpl $0x584f4241, file_header_buffer+4(%rip)
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    lea runtime_disk_message(%rip), %rdi
+    mov $runtime_disk_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_disk_message_len, %rax
+    jne lifecycle_failed
+runtime_disk_skipped:
+
     mov $50000, %rcx
 preempt_spin:
     pause
@@ -258,7 +283,6 @@ preempt_spin:
     mov $SB_SYS_GET_TICKS, %rax
     int $SB_SYSCALL_VECTOR
 
-    /* Legacy selector path remains operational for ABI v1 compatibility. */
     mov $SB_SYS_SPAWN, %rax
     mov $SB_SPAWN_IMAGE_CHILD, %rdi
     int $SB_SYSCALL_VECTOR
@@ -271,7 +295,6 @@ preempt_spin:
     test %rax, %rax
     jne lifecycle_failed
 
-    /* Versioned boot-module source. The returned PID is opaque/dynamic. */
     lea spawn_request(%rip), %rdi
     mov $SB_SYS_SPAWN_REQUEST, %rax
     int $SB_SYSCALL_VECTOR
@@ -288,7 +311,6 @@ preempt_spin:
     xor %rdi, %rdi
     int $SB_SYSCALL_VECTOR
 
-    /* Same executable, now sourced exclusively by an absolute VFS path. */
     lea vfs_spawn_request(%rip), %rdi
     mov $SB_SYS_SPAWN_REQUEST, %rax
     int $SB_SYSCALL_VECTOR
@@ -305,8 +327,6 @@ preempt_spin:
     xor %rdi, %rdi
     int $SB_SYSCALL_VECTOR
 
-    /* Multi-process runnable proof: create two children before yielding or
-     * waiting, and keep both dynamic PIDs in preserved registers. */
     lea spawn_request(%rip), %rdi
     mov $SB_SYS_SPAWN_REQUEST, %rax
     int $SB_SYSCALL_VECTOR
@@ -330,8 +350,6 @@ preempt_spin:
     cmp $concurrent_armed_message_len, %rax
     jne lifecycle_failed
 
-    /* Sleeping the parent forces the scheduler to choose from both runnable
-     * child tasks rather than immediately waiting on only one of them. */
     mov $SB_SYS_SLEEP, %rax
     mov $5, %rdi
     int $SB_SYSCALL_VECTOR
@@ -389,6 +407,10 @@ generic_file_message:
     .ascii "Userspace: generic VFS FILE_OPEN lifecycle OK\r\n"
 .set generic_file_message_len, . - generic_file_message
 
+runtime_disk_message:
+    .ascii "Userspace: runtime FAT32 file read through generic VFS OK\r\n"
+.set runtime_disk_message_len, . - runtime_disk_message
+
 concurrent_armed_message:
     .ascii "Userspace: concurrent child processes armed\r\n"
 .set concurrent_armed_message_len, . - concurrent_armed_message
@@ -412,6 +434,10 @@ vfs_spawn_path:
 missing_vfs_path:
     .ascii "/boot/does-not-exist"
 .set missing_vfs_path_len, . - missing_vfs_path
+
+runtime_disk_path:
+    .ascii "/disk/RUNTIME.TXT"
+.set runtime_disk_path_len, . - runtime_disk_path
 
 .section .data
 .align 8
