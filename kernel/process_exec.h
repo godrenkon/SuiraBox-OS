@@ -13,6 +13,13 @@ typedef struct {
     uint64_t user_stack_bottom;
 } sb_process_image_t;
 
+typedef struct {
+    const char *name;
+    uint32_t name_length;
+    const void *image;
+    uint64_t image_size;
+} sb_registered_boot_module_t;
+
 int process_prepare_elf(sb_process_t *process,
                         const void *image,
                         uint64_t image_size,
@@ -55,12 +62,14 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
                                         sb_process_image_t *image_info);
 
 /* Bootstrap registry used until a persistent filesystem-backed executable
- * namespace is mounted. These helpers return kernel-owned immutable module
- * bytes; callers must not free or modify the returned image. */
+ * namespace is mounted. Returned image/name pointers are Multiboot-owned and
+ * immutable; callers must not free or modify them. */
 int process_registered_boot_module_exists(const char *module_name);
 int process_registered_boot_module_view(const char *module_name,
                                         const void **image_out,
                                         uint64_t *image_size_out);
+int process_registered_boot_module_at(uint32_t index,
+                                      sb_registered_boot_module_t *module_out);
 
 sb_process_t *process_spawn_registered_boot_module(const char *module_name,
                                                    uint64_t pid,
