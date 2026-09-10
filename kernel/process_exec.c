@@ -2,13 +2,68 @@
 #include "elf_loader.h"
 #include "scheduler.h"
 #include "mm/address_space.h"
+#include "mm/heap.h"
 #include "mm/multiboot_modules.h"
 #include "mm/pmm.h"
 #include "mm/vmm.h"
 
 #define SB_USER_STACK_PAGES 4u
 
+typedef struct {
+    const uint8_t *data;
+    uint64_t size;
+} sb_exec_memory_source_t;
+
 static uint64_t registered_multiboot_info;
+static int vfs_spawn_staged_logged;
+
+static void process_exec_debug_char(char c) {
+    while (1) {
+        uint8_t status;
+        __asm__ volatile ("inb %1, %0" : "=a"(status) : "Nd"((uint16_t)0x3FD));
+        if ((status & 0x20u) != 0u) break;
+    }
+    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)c), "Nd"((uint16_t)0x3F8));
+}
+
+static void process_exec_debug(const char *text) {
+    if (text == 0) return;
+    while (*text != '\0') process_exec_debug_char(*text++);
+}
+
+static int exec_memory_read(sb_vfs_node_t *node,
+                            uint64_t offset,
+                            void *buffer,
+                            uint64_t length,
+                            uint64_t *bytes_read) {
+    if (node == 0 || buffer == 0 || bytes_read == 0 || node->private_data == 0) {
+        return SB_VFS_OBJECT_INVALID;
+    }
+    sb_exec_memory_source_t *source =
+        (sb_exec_memory_source_t *)node->private_data;
+    if (source->data == 0 || source->size != node->size) return SB_VFS_OBJECT_IO;
+
+    if (offset >= source->size) {
+        *bytes_read = 0u;
+        return SB_VFS_OBJECT_OK;
+    }
+
+    uint64_t available = source->size - offset;
+    if (length > available) length = available;
+    for (uint64_t i = 0u; i < length; ++i) {
+        ((uint8_t *)buffer)[i] = source->data[offset + i];
+    }
+    *bytes_read = length;
+    return SB_VFS_OBJECT_OK;
+}
+
+static const sb_vfs_node_ops_t exec_memory_ops = {
+    .read = exec_memory_read,
+    .write = 0,
+    .lookup = 0,
+    .readdir = 0,
+    .release = 0,
+};
 
 static int map_user_stack(sb_address_space_t *space,
                           uint64_t bottom,
@@ -125,6 +180,69 @@ sb_process_t *process_spawn_elf_image(const void *image,
     return process;
 }
 
+sb_process_t *process_spawn_vfs_file(sb_vfs_file_t *file,
+                                     uint64_t pid,
+                                     uint64_t parent_pid,
+                                     uint64_t tid,
+                                     uint32_t priority,
+                                     sb_process_image_t *image_info) {
+    if (file == 0 || file->open == 0u || file->node == 0 ||
+        file->node->type != SB_VFS_NODE_REGULAR ||
+        (file->access & SB_VFS_ACCESS_READ) == 0u ||
+        file->node->size == 0u ||
+        file->node->size > SB_PROCESS_EXEC_MAX_IMAGE_SIZE) {
+        return 0;
+    }
+
+    const uint64_t image_size = file->node->size;
+    const uint64_t saved_offset = file->offset;
+    if (sb_vfs_file_seek(file, 0u) != SB_VFS_OBJECT_OK) return 0;
+
+    uint8_t *image = (uint8_t *)kheap_alloc(image_size);
+    if (image == 0) {
+        (void)sb_vfs_file_seek(file, saved_offset);
+        return 0;
+    }
+
+    uint64_t total = 0u;
+    int read_ok = 1;
+    while (total < image_size) {
+        uint64_t transferred = 0u;
+        const int result = sb_vfs_file_read(file,
+                                            image + total,
+                                            image_size - total,
+                                            &transferred);
+        if (result != SB_VFS_OBJECT_OK || transferred == 0u ||
+            transferred > image_size - total) {
+            read_ok = 0;
+            break;
+        }
+        total += transferred;
+    }
+
+    const int restore_ok =
+        sb_vfs_file_seek(file, saved_offset) == SB_VFS_OBJECT_OK;
+    if (!read_ok || !restore_ok || total != image_size) {
+        kheap_free(image);
+        return 0;
+    }
+
+    if (!vfs_spawn_staged_logged) {
+        vfs_spawn_staged_logged = 1;
+        process_exec_debug("Spawn: executable staged from VFS file\r\n");
+    }
+
+    sb_process_t *process = process_spawn_elf_image(image,
+                                                    image_size,
+                                                    pid,
+                                                    parent_pid,
+                                                    tid,
+                                                    priority,
+                                                    image_info);
+    kheap_free(image);
+    return process;
+}
+
 sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
                                         const char *module_name,
                                         uint64_t pid,
@@ -193,11 +311,32 @@ sb_process_t *process_spawn_registered_boot_module(const char *module_name,
         return 0;
     }
 
-    return process_spawn_elf_image(image,
-                                   image_size,
-                                   pid,
-                                   parent_pid,
-                                   tid,
-                                   priority,
-                                   image_info);
+    sb_exec_memory_source_t source = {
+        .data = (const uint8_t *)image,
+        .size = image_size,
+    };
+    sb_vfs_node_t node;
+    sb_vfs_file_t file;
+    if (sb_vfs_node_init(&node,
+                         SB_VFS_NODE_REGULAR,
+                         SB_VFS_CAP_READ,
+                         image_size,
+                         &exec_memory_ops,
+                         &source) != SB_VFS_OBJECT_OK) {
+        return 0;
+    }
+    if (sb_vfs_file_open(&node, SB_VFS_ACCESS_READ, &file) != SB_VFS_OBJECT_OK) {
+        (void)sb_vfs_node_release(&node);
+        return 0;
+    }
+
+    sb_process_t *process = process_spawn_vfs_file(&file,
+                                                   pid,
+                                                   parent_pid,
+                                                   tid,
+                                                   priority,
+                                                   image_info);
+    (void)sb_vfs_file_close(&file);
+    (void)sb_vfs_node_release(&node);
+    return process;
 }
