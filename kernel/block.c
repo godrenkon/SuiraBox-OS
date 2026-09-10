@@ -72,6 +72,15 @@ uint32_t sb_block_count(void) {
     return g_device_count;
 }
 
+static sb_block_status_t selftest_finish(uint32_t initial_count,
+                                         sb_block_status_t status) {
+    while (g_device_count > initial_count) {
+        --g_device_count;
+        g_devices[g_device_count] = 0;
+    }
+    return status;
+}
+
 sb_block_status_t sb_block_selftest(void) {
     static sb_block_device_t test_device = {
         "memory-test",
@@ -91,6 +100,7 @@ sb_block_status_t sb_block_selftest(void) {
     };
     static uint8_t write_buffer[SB_BLOCK_SECTOR_SIZE];
     static uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
+    const uint32_t initial_count = g_device_count;
 
     for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         write_buffer[i] = (uint8_t)(i ^ 0xA5u);
@@ -98,26 +108,26 @@ sb_block_status_t sb_block_selftest(void) {
     }
 
     if (sb_block_register(&test_device) != SB_BLOCK_OK) {
-        return SB_BLOCK_INVALID_ARGUMENT;
+        return selftest_finish(initial_count, SB_BLOCK_INVALID_ARGUMENT);
     }
 
     sb_block_device_t *device = sb_block_get(sb_block_count() - 1u);
     if (device == 0 || sb_block_write(device, 2u, 1u, write_buffer) != SB_BLOCK_OK ||
         sb_block_read(device, 2u, 1u, read_buffer) != SB_BLOCK_OK) {
-        return SB_BLOCK_NOT_READY;
+        return selftest_finish(initial_count, SB_BLOCK_NOT_READY);
     }
 
     for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         if (read_buffer[i] != write_buffer[i]) {
-            return SB_BLOCK_IO_ERROR;
+            return selftest_finish(initial_count, SB_BLOCK_IO_ERROR);
         }
     }
 
     if (sb_block_register(&read_only_device) != SB_BLOCK_OK ||
         sb_block_write(&read_only_device, 0u, 1u, write_buffer) != SB_BLOCK_UNSUPPORTED ||
         sb_block_read(&read_only_device, 2u, 1u, read_buffer) != SB_BLOCK_OK) {
-        return SB_BLOCK_IO_ERROR;
+        return selftest_finish(initial_count, SB_BLOCK_IO_ERROR);
     }
 
-    return SB_BLOCK_OK;
+    return selftest_finish(initial_count, SB_BLOCK_OK);
 }
