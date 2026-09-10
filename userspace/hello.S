@@ -14,13 +14,16 @@
  *    aimed at .rodata and must be rejected as non-writable without #PF.
  * 4. Open/query/close a process-local handle and prove the old generation is
  *    rejected as stale after close.
- * 5. Open a boot module through the VFS object layer as a FILE handle, verify
+ * 5. Open a boot module through the system VFS as a FILE handle, verify
  *    type/rights, prove failed output validation does not consume bytes, read
  *    the ELF magic, seek, read again, close, and reject the stale handle.
  * 6. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
- * 7. SPAWN_REQUEST copies a versioned userspace request + module name, assigns
- *    dynamic PID/TID values, executes the child, and waits for its exit.
- * 8. SLEEP proves timer-deadline sleep/wakeup and saved-frame resume.
+ * 7. SPAWN_REQUEST source=BOOT_MODULE assigns dynamic PID/TID values, executes
+ *    the child, and waits for its exit.
+ * 8. SPAWN_REQUEST source=VFS_PATH resolves /boot/user-child through the system
+ *    VFS namespace, stages the ELF through a file object, executes it, and
+ *    waits for its exit/reap lifecycle.
+ * 9. SLEEP proves timer-deadline sleep/wakeup and saved-frame resume.
  */
 _start:
     mov $SB_SYS_GET_TICKS, %rax
@@ -97,8 +100,8 @@ _start:
     cmp $SB_SYS_ERROR_STALE, %rax
     jne lifecycle_failed
 
-    /* Transitional boot-module provider, but a real generic VFS file object and
-     * process-local FILE handle. */
+    /* Compatibility syscall name, but the kernel now opens /boot/user-child
+     * through the kernel-wide VFS namespace and returns a generic FILE handle. */
     lea file_module_name(%rip), %rdi
     mov $file_module_name_len, %rsi
     mov $SB_SYS_FILE_OPEN_BOOT_MODULE, %rax
@@ -198,8 +201,7 @@ preempt_spin:
     test %rax, %rax
     jne lifecycle_failed
 
-    /* New path: userspace supplies only a versioned request and a validated
-     * image name. The returned PID is deliberately treated as opaque/dynamic. */
+    /* Versioned boot-module source. The returned PID is opaque/dynamic. */
     lea spawn_request(%rip), %rdi
     mov $SB_SYS_SPAWN_REQUEST, %rax
     int $SB_SYSCALL_VECTOR
@@ -212,8 +214,26 @@ preempt_spin:
     test %rax, %rax
     jne lifecycle_failed
 
-    /* First syscall after wake also proves that the blocked parent's saved
-     * syscall frame resumed with the general child's exit result in rax. */
+    /* First syscall after wake proves the parent's saved WAIT frame resumed and
+     * gives the kernel a distinct point to report completed reap state. */
+    mov $SB_SYS_GET_TICKS, %rax
+    xor %rdi, %rdi
+    int $SB_SYSCALL_VECTOR
+
+    /* Same executable, now sourced exclusively by an absolute VFS path. */
+    lea vfs_spawn_request(%rip), %rdi
+    mov $SB_SYS_SPAWN_REQUEST, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %rdi
+
+    mov $SB_SYS_WAIT_PROCESS, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    /* Prove the blocked VFS-path WAIT frame resumed and reap completed. */
     mov $SB_SYS_GET_TICKS, %rax
     xor %rdi, %rdi
     int $SB_SYSCALL_VECTOR
@@ -260,6 +280,10 @@ spawn_module_name:
     .ascii "user-child"
 .set spawn_module_name_len, . - spawn_module_name
 
+vfs_spawn_path:
+    .ascii "/boot/user-child"
+.set vfs_spawn_path_len, . - vfs_spawn_path
+
 .section .data
 .align 8
 abi_info_buffer:
@@ -280,4 +304,14 @@ spawn_request:
     .quad SB_SPAWN_FLAG_NONE
     .quad spawn_module_name
     .long spawn_module_name_len
+    .long 0
+
+.align 8
+vfs_spawn_request:
+    .long SB_SPAWN_REQUEST_SIZE
+    .short SB_SPAWN_REQUEST_VERSION
+    .short SB_SPAWN_SOURCE_VFS_PATH
+    .quad SB_SPAWN_FLAG_NONE
+    .quad vfs_spawn_path
+    .long vfs_spawn_path_len
     .long 0
