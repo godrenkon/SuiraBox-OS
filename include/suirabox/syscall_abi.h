@@ -37,7 +37,8 @@
 #define SB_SYS_FILE_OPEN_BOOT_MODULE 13
 #define SB_SYS_FILE_READ             14
 #define SB_SYS_FILE_SEEK             15
-#define SB_SYS_MAX_NUMBER            15
+#define SB_SYS_FILE_OPEN             16
+#define SB_SYS_MAX_NUMBER            16
 
 /* Legacy bootstrap selector retained for ABI v1 compatibility. New code should
  * use SB_SYS_SPAWN_REQUEST and an explicit source/name request. */
@@ -54,6 +55,11 @@
 #define SB_SYS_LOG_MAX          256
 #define SB_SYS_FILE_IO_MAX      256
 #define SB_SYS_FILE_NAME_MAX    63
+#define SB_SYS_PATH_MAX         255
+
+/* Stable userspace FILE_OPEN access bits. Unsupported bits are rejected rather
+ * than silently ignored so future write/create flags remain append-only. */
+#define SB_FILE_ACCESS_READ     0x1
 
 /* Fixed ABI_INFO output layout, also usable by assembler tests. */
 #define SB_ABI_INFO_VERSION_OFFSET     0
