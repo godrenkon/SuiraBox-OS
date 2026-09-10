@@ -5,6 +5,7 @@
 #include "process_exec.h"
 #include "user_access.h"
 #include "vfs_object.h"
+#include "vfs_namespace.h"
 #include "vfs_boot_module.h"
 #include <stddef.h>
 
@@ -69,6 +70,16 @@ static int general_resources_reaped_logged;
 static int general_wait_armed;
 static uint64_t general_wait_task_id;
 static int general_wait_completed_logged;
+static int vfs_spawn_request_logged;
+static int vfs_spawn_created_logged;
+static uint64_t vfs_spawn_pid;
+static int vfs_child_pid_logged;
+static int vfs_child_exit_logged;
+static int vfs_parent_block_logged;
+static int vfs_resources_reaped_logged;
+static int vfs_wait_armed;
+static uint64_t vfs_wait_task_id;
+static int vfs_wait_completed_logged;
 
 static void syscall_debug_char(char c) {
     while (1) {
@@ -108,10 +119,13 @@ static uint64_t syscall_vfs_error(int result) {
             return syscall_error(SB_SYS_ERROR_RIGHTS);
         case SB_VFS_OBJECT_IO:
             return syscall_error(SB_SYS_ERROR_IO);
+        case SB_VFS_OBJECT_NOT_FOUND:
+            return syscall_error(SB_SYS_ERROR_NOT_FOUND);
+        case SB_VFS_OBJECT_RANGE:
+            return syscall_error(SB_SYS_ERROR_LIMIT);
         case SB_VFS_OBJECT_INVALID:
         case SB_VFS_OBJECT_NOT_SUPPORTED:
         case SB_VFS_OBJECT_CLOSED:
-        case SB_VFS_OBJECT_RANGE:
         default:
             return syscall_error(SB_SYS_ERROR_INVALID);
     }
@@ -169,6 +183,15 @@ static void report_general_child_collected(void) {
     }
     general_resources_reaped_logged = 1;
     syscall_debug("Spawn: general child resources reaped\r\n");
+}
+
+static void report_vfs_child_collected(void) {
+    if (vfs_spawn_pid == 0u || vfs_resources_reaped_logged ||
+        process_get(vfs_spawn_pid) != 0) {
+        return;
+    }
+    vfs_resources_reaped_logged = 1;
+    syscall_debug("Spawn: VFS path child resources reaped\r\n");
 }
 
 static sb_irq_frame_t *syscall_log_write(sb_irq_frame_t *frame, sb_task_t *task) {
@@ -478,6 +501,15 @@ static sb_irq_frame_t *syscall_file_seek(sb_irq_frame_t *frame,
     return frame;
 }
 
+static int spawn_path_uses_boot_provider(const char *path, uint32_t length) {
+    if (path == 0 || length < 5u ||
+        path[0] != '/' || path[1] != 'b' || path[2] != 'o' ||
+        path[3] != 'o' || path[4] != 't') {
+        return 0;
+    }
+    return length == 5u || path[5] == '/';
+}
+
 static sb_irq_frame_t *syscall_spawn_request(sb_irq_frame_t *frame,
                                               sb_task_t *task) {
     sb_process_t *parent = syscall_current_process(task);
@@ -492,9 +524,11 @@ static sb_irq_frame_t *syscall_spawn_request(sb_irq_frame_t *frame,
         return frame;
     }
 
+    const int boot_source = request.source == SB_SPAWN_SOURCE_BOOT_MODULE;
+    const int vfs_source = request.source == SB_SPAWN_SOURCE_VFS_PATH;
     if (request.size != SB_SPAWN_REQUEST_SIZE ||
         request.version != SB_SPAWN_REQUEST_VERSION ||
-        request.source != SB_SPAWN_SOURCE_BOOT_MODULE ||
+        (!boot_source && !vfs_source) ||
         request.flags != SB_SPAWN_FLAG_NONE ||
         request.reserved != 0u || request.name == 0u ||
         request.name_length == 0u || request.name_length > SB_SPAWN_NAME_MAX) {
@@ -502,9 +536,9 @@ static sb_irq_frame_t *syscall_spawn_request(sb_irq_frame_t *frame,
         return frame;
     }
 
-    char module_name[SB_SPAWN_NAME_MAX + 1u];
+    char image_name[SB_SPAWN_NAME_MAX + 1u];
     if (user_copy_from(parent,
-                       module_name,
+                       image_name,
                        request.name,
                        request.name_length) != 0) {
         frame->rax = syscall_error(SB_SYS_ERROR_FAULT);
@@ -512,47 +546,99 @@ static sb_irq_frame_t *syscall_spawn_request(sb_irq_frame_t *frame,
     }
 
     for (uint32_t i = 0u; i < request.name_length; ++i) {
-        if (module_name[i] == '\0' || module_name[i] == ' ' || module_name[i] == '\t') {
+        if (image_name[i] == '\0' ||
+            (boot_source && (image_name[i] == ' ' || image_name[i] == '\t'))) {
             frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
             return frame;
         }
     }
-    module_name[request.name_length] = '\0';
-
-    if (!general_spawn_request_logged) {
-        general_spawn_request_logged = 1;
-        syscall_debug("Spawn: userspace request copied and validated\r\n");
+    image_name[request.name_length] = '\0';
+    if (vfs_source && image_name[0] != '/') {
+        frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
+        return frame;
     }
 
-    if (!process_registered_boot_module_exists(module_name)) {
-        frame->rax = syscall_error(SB_SYS_ERROR_NOT_FOUND);
-        return frame;
+    if (boot_source) {
+        if (!general_spawn_request_logged) {
+            general_spawn_request_logged = 1;
+            syscall_debug("Spawn: userspace request copied and validated\r\n");
+        }
+        if (!process_registered_boot_module_exists(image_name)) {
+            frame->rax = syscall_error(SB_SYS_ERROR_NOT_FOUND);
+            return frame;
+        }
+    } else if (!vfs_spawn_request_logged) {
+        vfs_spawn_request_logged = 1;
+        syscall_debug("Spawn: VFS path request copied and validated\r\n");
+    }
+
+    sb_vfs_file_t vfs_file;
+    int vfs_file_open = 0;
+    if (vfs_source) {
+        if (spawn_path_uses_boot_provider(image_name, request.name_length)) {
+            const int mount_result = sb_vfs_boot_module_mount_system();
+            if (mount_result != SB_VFS_OBJECT_OK) {
+                frame->rax = syscall_vfs_error(mount_result);
+                return frame;
+            }
+        }
+
+        const int open_result = sb_vfs_system_open_file(image_name,
+                                                        request.name_length,
+                                                        SB_VFS_ACCESS_READ,
+                                                        &vfs_file);
+        if (open_result != SB_VFS_OBJECT_OK) {
+            frame->rax = syscall_vfs_error(open_result);
+            return frame;
+        }
+        vfs_file_open = 1;
     }
 
     const uint64_t pid = process_allocate_pid();
     const uint64_t tid = process_allocate_tid();
     if (pid == 0u || tid == 0u) {
+        if (vfs_file_open) (void)sb_vfs_file_close(&vfs_file);
         frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
         return frame;
     }
 
     sb_process_image_t child_image;
-    sb_process_t *child = process_spawn_registered_boot_module(module_name,
-                                                               pid,
-                                                               parent->pid,
-                                                               tid,
-                                                               SB_DEFAULT_USER_PRIORITY,
-                                                               &child_image);
+    sb_process_t *child;
+    if (boot_source) {
+        child = process_spawn_registered_boot_module(image_name,
+                                                     pid,
+                                                     parent->pid,
+                                                     tid,
+                                                     SB_DEFAULT_USER_PRIORITY,
+                                                     &child_image);
+    } else {
+        child = process_spawn_vfs_file(&vfs_file,
+                                       pid,
+                                       parent->pid,
+                                       tid,
+                                       SB_DEFAULT_USER_PRIORITY,
+                                       &child_image);
+        (void)sb_vfs_file_close(&vfs_file);
+    }
+
     if (child == 0) {
         frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
         return frame;
     }
 
-    general_spawn_pid = child->pid;
     frame->rax = child->pid;
-    if (!general_spawn_created_logged) {
-        general_spawn_created_logged = 1;
-        syscall_debug("Spawn: general child process created\r\n");
+    if (boot_source) {
+        general_spawn_pid = child->pid;
+        if (!general_spawn_created_logged) {
+            general_spawn_created_logged = 1;
+            syscall_debug("Spawn: general child process created\r\n");
+        }
+    } else {
+        vfs_spawn_pid = child->pid;
+        if (!vfs_spawn_created_logged) {
+            vfs_spawn_created_logged = 1;
+            syscall_debug("Spawn: VFS path child process created\r\n");
+        }
     }
     return frame;
 }
@@ -592,6 +678,16 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         report_general_child_collected();
         general_wait_completed_logged = 1;
         syscall_debug("Spawn: general child wait completed\r\n");
+    }
+
+    if (vfs_wait_armed && !vfs_wait_completed_logged &&
+        number != SB_SYS_WAIT_PROCESS && task != 0 &&
+        task->id == vfs_wait_task_id && task->user_task != 0u) {
+        vfs_wait_armed = 0;
+        vfs_wait_task_id = 0u;
+        report_vfs_child_collected();
+        vfs_wait_completed_logged = 1;
+        syscall_debug("Spawn: VFS path child wait completed\r\n");
     }
 
     if (number == SB_SYS_LOG_WRITE) {
@@ -688,6 +784,11 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
                 general_wait_completed_logged = 1;
                 syscall_debug("Spawn: general child wait completed\r\n");
             }
+            if (child_pid == vfs_spawn_pid && !vfs_wait_completed_logged) {
+                report_vfs_child_collected();
+                vfs_wait_completed_logged = 1;
+                syscall_debug("Spawn: VFS path child wait completed\r\n");
+            }
             return frame;
         }
         if (wait_result < 0 || scheduler_block_current() != 0) {
@@ -705,6 +806,14 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
             if (!general_parent_block_logged) {
                 general_parent_block_logged = 1;
                 syscall_debug("Spawn: parent blocked waiting for general child\r\n");
+            }
+        }
+        if (child_pid == vfs_spawn_pid) {
+            vfs_wait_armed = 1;
+            vfs_wait_task_id = task->id;
+            if (!vfs_parent_block_logged) {
+                vfs_parent_block_logged = 1;
+                syscall_debug("Spawn: parent blocked waiting for VFS path child\r\n");
             }
         }
         syscall_debug("Userspace: wait syscall blocked for child\r\n");
@@ -736,6 +845,10 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
             general_child_exit_logged = 1;
             syscall_debug("Spawn: general child requested process exit\r\n");
         }
+        if (pid == vfs_spawn_pid && !vfs_child_exit_logged) {
+            vfs_child_exit_logged = 1;
+            syscall_debug("Spawn: VFS path child requested process exit\r\n");
+        }
         return scheduler_reschedule(frame);
     }
 
@@ -764,6 +877,13 @@ sb_irq_frame_t *sb_syscall_dispatch_frame(sb_irq_frame_t *frame) {
         frame->rax == general_spawn_pid && !general_child_pid_logged) {
         general_child_pid_logged = 1;
         syscall_debug("Spawn: general child PID syscall OK\r\n");
+    }
+
+    if (number == SB_SYS_PROCESS_ID && task != 0 &&
+        task->process_id == vfs_spawn_pid &&
+        frame->rax == vfs_spawn_pid && !vfs_child_pid_logged) {
+        vfs_child_pid_logged = 1;
+        syscall_debug("Spawn: VFS path child PID syscall OK\r\n");
     }
 
     if (sleep_cycle_armed && !woke_user_syscall_logged &&
@@ -812,4 +932,14 @@ void syscall_init(void) {
     general_wait_armed = 0;
     general_wait_task_id = 0u;
     general_wait_completed_logged = 0;
+    vfs_spawn_request_logged = 0;
+    vfs_spawn_created_logged = 0;
+    vfs_spawn_pid = 0u;
+    vfs_child_pid_logged = 0;
+    vfs_child_exit_logged = 0;
+    vfs_parent_block_logged = 0;
+    vfs_resources_reaped_logged = 0;
+    vfs_wait_armed = 0;
+    vfs_wait_task_id = 0u;
+    vfs_wait_completed_logged = 0;
 }
