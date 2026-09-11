@@ -76,7 +76,7 @@ int sb_handle_allocate(sb_handle_table_t *table,
                        void *object,
                        sb_handle_close_fn close,
                        sb_handle_t *handle_out) {
-    if (table == 0 || type <= SB_HANDLE_TYPE_NONE || type > SB_HANDLE_TYPE_SERVICE ||
+    if (table == 0 || type <= SB_HANDLE_TYPE_NONE || type > SB_HANDLE_TYPE_MAX ||
         object == 0 || handle_out == 0 ||
         (rights & ~SB_HANDLE_RIGHT_ALL) != 0u) {
         return SB_HANDLE_ERROR_INVALID;
