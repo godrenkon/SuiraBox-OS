@@ -16,7 +16,8 @@
  *    rejected as stale after close.
  * 5. Exercise compatibility boot-module FILE open and generic absolute-path
  *    FILE_OPEN through the system VFS, including ELF read and stale close.
- * 6. If /disk is mounted, read RUNTIME.TXT through the same generic FILE API.
+ * 6. If /disk is mounted, read RUNTIME.TXT and enumerate it through a generic
+ *    DIRECTORY handle, including pointer fault, EOF and stale-close semantics.
  * 7. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
  * 8. SPAWN_REQUEST source=BOOT_MODULE and source=VFS_PATH execute/reap children.
  * 9. Spawn two dynamic children before waiting and prove concurrent execution.
@@ -272,6 +273,94 @@ _start:
     int $SB_SYSCALL_VECTOR
     cmp $runtime_disk_message_len, %rax
     jne lifecycle_failed
+
+    /* DIRECTORY_OPEN/READ uses the same system namespace and opaque handle
+     * table. A rejected output pointer must not consume the first entry. */
+    lea runtime_disk_directory_path(%rip), %rdi
+    mov $runtime_disk_directory_path_len, %rsi
+    mov $SB_SYS_DIRECTORY_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+
+    mov %r12, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_HANDLE_ABI_TYPE_DIRECTORY, SB_HANDLE_INFO_TYPE_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $(SB_HANDLE_ABI_RIGHT_READ | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    lea pointer_message(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_REGULAR, SB_DIRECTORY_ENTRY_TYPE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpw $11, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x52, SB_DIRECTORY_ENTRY_NAME_OFFSET+0+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x55, SB_DIRECTORY_ENTRY_NAME_OFFSET+1+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x4e, SB_DIRECTORY_ENTRY_NAME_OFFSET+2+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x54, SB_DIRECTORY_ENTRY_NAME_OFFSET+3+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x49, SB_DIRECTORY_ENTRY_NAME_OFFSET+4+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x4d, SB_DIRECTORY_ENTRY_NAME_OFFSET+5+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x45, SB_DIRECTORY_ENTRY_NAME_OFFSET+6+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x2e, SB_DIRECTORY_ENTRY_NAME_OFFSET+7+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x54, SB_DIRECTORY_ENTRY_NAME_OFFSET+8+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x58, SB_DIRECTORY_ENTRY_NAME_OFFSET+9+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x54, SB_DIRECTORY_ENTRY_NAME_OFFSET+10+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r12, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_STALE, %rax
+    jne lifecycle_failed
+
+    lea runtime_directory_message(%rip), %rdi
+    mov $runtime_directory_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_directory_message_len, %rax
+    jne lifecycle_failed
 runtime_disk_skipped:
 
     mov $50000, %rcx
@@ -411,6 +500,10 @@ runtime_disk_message:
     .ascii "Userspace: runtime FAT32 file read through generic VFS OK\r\n"
 .set runtime_disk_message_len, . - runtime_disk_message
 
+runtime_directory_message:
+    .ascii "Userspace: runtime FAT32 directory enumeration OK\r\n"
+.set runtime_directory_message_len, . - runtime_directory_message
+
 concurrent_armed_message:
     .ascii "Userspace: concurrent child processes armed\r\n"
 .set concurrent_armed_message_len, . - concurrent_armed_message
@@ -439,6 +532,10 @@ runtime_disk_path:
     .ascii "/disk/RUNTIME.TXT"
 .set runtime_disk_path_len, . - runtime_disk_path
 
+runtime_disk_directory_path:
+    .ascii "/disk"
+.set runtime_disk_directory_path_len, . - runtime_disk_directory_path
+
 .section .data
 .align 8
 abi_info_buffer:
@@ -450,6 +547,8 @@ handle_info_buffer:
     .quad 0
 file_header_buffer:
     .quad 0
+directory_entry_buffer:
+    .zero SB_DIRECTORY_ENTRY_SIZE
 
 .align 8
 spawn_request:
