@@ -87,6 +87,29 @@ sb_block_status_t sb_block_register(sb_block_device_t *device) {
     return SB_BLOCK_OK;
 }
 
+sb_block_status_t sb_block_unregister(sb_block_device_t *device) {
+    if (device == 0) return SB_BLOCK_INVALID_ARGUMENT;
+
+    uint32_t index = g_device_count;
+    for (uint32_t i = 0u; i < g_device_count; ++i) {
+        if (g_devices[i] == device) {
+            index = i;
+            break;
+        }
+    }
+    if (index == g_device_count) return SB_BLOCK_INVALID_ARGUMENT;
+
+    /* A cache entry must never outlive the device identity used as its key. */
+    sb_block_cache_invalidate_device(device);
+
+    for (uint32_t i = index + 1u; i < g_device_count; ++i) {
+        g_devices[i - 1u] = g_devices[i];
+    }
+    --g_device_count;
+    g_devices[g_device_count] = 0;
+    return SB_BLOCK_OK;
+}
+
 sb_block_device_t *sb_block_get(uint32_t index) {
     if (index >= g_device_count) {
         return 0;
@@ -101,11 +124,11 @@ uint32_t sb_block_count(void) {
 static sb_block_status_t selftest_finish(uint32_t initial_count,
                                          sb_block_status_t status) {
     while (g_device_count > initial_count) {
-        --g_device_count;
-        g_devices[g_device_count] = 0;
+        sb_block_device_t *device = g_devices[g_device_count - 1u];
+        if (sb_block_unregister(device) != SB_BLOCK_OK) {
+            return SB_BLOCK_IO_ERROR;
+        }
     }
-    /* Never retain cache keys that point at temporary self-test devices. */
-    sb_block_cache_reset();
     return status;
 }
 
@@ -130,7 +153,6 @@ sb_block_status_t sb_block_selftest(void) {
     static uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
     const uint32_t initial_count = g_device_count;
 
-    sb_block_cache_reset();
     for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         write_buffer[i] = (uint8_t)(i ^ 0xA5u);
         read_buffer[i] = 0;
