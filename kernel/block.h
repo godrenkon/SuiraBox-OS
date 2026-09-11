@@ -38,9 +38,10 @@ static inline int sb_block_range_valid(const sb_block_device_t *device,
            (uint64_t)count <= device->sector_count - lba;
 }
 
-/* Canonical block I/O boundary. Reads may be satisfied by the shared block
- * cache; successful writes invalidate overlapping cached sectors. Filesystems
- * and other callers must not invoke driver callbacks directly. */
+/* Canonical block I/O boundary. 512-byte reads/writes may be satisfied by the
+ * shared sector cache; sb_block_flush() establishes persistence to the backing
+ * driver for all dirty entries belonging to the device. Filesystems and other
+ * callers must not invoke driver callbacks directly. */
 sb_block_status_t sb_block_read(sb_block_device_t *device,
                                 uint64_t lba,
                                 uint32_t count,
@@ -49,6 +50,7 @@ sb_block_status_t sb_block_write(sb_block_device_t *device,
                                  uint64_t lba,
                                  uint32_t count,
                                  const void *buffer);
+sb_block_status_t sb_block_flush(sb_block_device_t *device);
 
 sb_block_status_t sb_block_register(sb_block_device_t *device);
 sb_block_status_t sb_block_unregister(sb_block_device_t *device);
