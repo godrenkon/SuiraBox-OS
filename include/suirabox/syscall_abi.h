@@ -40,7 +40,14 @@
 #define SB_SYS_FILE_OPEN             16
 #define SB_SYS_DIRECTORY_OPEN        17
 #define SB_SYS_DIRECTORY_READ        18
-#define SB_SYS_MAX_NUMBER            18
+
+/* The original frame dispatcher owns 0..16. The entry router extends the same
+ * ABI append-only with directory calls 17..18. Keep the legacy name at 16 so
+ * the old core translation unit can retain its compile-time table guard; new
+ * userspace and ABI_INFO must use SB_SYS_PUBLIC_MAX_NUMBER. */
+#define SB_SYS_CORE_MAX_NUMBER   SB_SYS_FILE_OPEN
+#define SB_SYS_MAX_NUMBER        SB_SYS_CORE_MAX_NUMBER
+#define SB_SYS_PUBLIC_MAX_NUMBER SB_SYS_DIRECTORY_READ
 
 /* Legacy bootstrap selector retained for ABI v1 compatibility. New code should
  * use SB_SYS_SPAWN_REQUEST and an explicit source/name request. */
