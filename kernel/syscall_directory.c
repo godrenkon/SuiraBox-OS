@@ -1,4 +1,5 @@
 #include "syscall.h"
+#include "syscall_pipe.h"
 #include "scheduler.h"
 #include "process.h"
 #include "user_access.h"
@@ -18,7 +19,7 @@ _Static_assert(SB_DIRECTORY_ENTRY_TYPE_DEVICE == SB_VFS_NODE_DEVICE,
                "directory device type mismatch");
 _Static_assert(sizeof(sb_directory_entry_t) == SB_DIRECTORY_ENTRY_SIZE,
                "directory entry ABI size mismatch");
-_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER == SB_SYS_DIRECTORY_READ,
+_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER == SB_SYS_PIPE_WRITE,
                "public syscall max-number table is stale");
 
 static int directory_open_logged;
@@ -276,5 +277,8 @@ sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame) {
     if (frame->rax == SB_SYS_ABI_INFO) return entry_abi_info(frame);
     if (frame->rax == SB_SYS_DIRECTORY_OPEN) return directory_open(frame);
     if (frame->rax == SB_SYS_DIRECTORY_READ) return directory_read(frame);
+    if (frame->rax >= SB_SYS_PIPE_CREATE && frame->rax <= SB_SYS_PIPE_WRITE) {
+        return sb_syscall_dispatch_pipe(frame);
+    }
     return sb_syscall_dispatch_frame(frame);
 }
