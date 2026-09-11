@@ -120,7 +120,7 @@ static sb_block_status_t cached_sector_read(sb_block_device_t *device,
 
     ++g_stats.misses;
     uint8_t sector[SB_BLOCK_CACHE_SECTOR_BYTES];
-    const sb_block_status_t status = device->read(device, lba, 1u, sector);
+    sb_block_status_t status = device->read(device, lba, 1u, sector);
     if (status != SB_BLOCK_OK) return status;
 
     status = acquire_entry(device, lba, &entry);
