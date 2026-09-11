@@ -140,6 +140,47 @@ int main(void) {
                 stats.fills == 0u && stats.invalidations == 0u,
                 "reset clears entries and stats")) return 1;
 
+    /* Device lifetime owns cache-key lifetime. Unregistering must evict every
+     * sector keyed by that device before the registry can reuse its slot. */
+    if (require(sb_block_register(&a) == SB_BLOCK_OK &&
+                sb_block_register(&b) == SB_BLOCK_OK,
+                "devices register")) return 1;
+    if (require(sb_block_count() == 2u && sb_block_get(0u) == &a &&
+                sb_block_get(1u) == &b,
+                "registry order is visible")) return 1;
+    if (require(sb_block_register(&a) == SB_BLOCK_INVALID_ARGUMENT,
+                "duplicate registration rejected")) return 1;
+
+    const uint32_t before_lifecycle = reads_a;
+    if (require(sb_block_read(&a, 0u, 1u, buffer) == SB_BLOCK_OK &&
+                sb_block_read(&a, 0u, 1u, buffer) == SB_BLOCK_OK,
+                "registered device cache fills and hits")) return 1;
+    if (require(reads_a == before_lifecycle + 1u,
+                "second registered-device read is cached")) return 1;
+
+    if (require(sb_block_unregister(&a) == SB_BLOCK_OK,
+                "registered device unregisters")) return 1;
+    if (require(sb_block_count() == 1u && sb_block_get(0u) == &b &&
+                sb_block_get(1u) == 0,
+                "registry compacts after unregister")) return 1;
+    stats = sb_block_cache_stats();
+    if (require(stats.invalidations == 1u,
+                "unregister invalidates device cache")) return 1;
+
+    if (require(sb_block_register(&a) == SB_BLOCK_OK,
+                "unregistered device can be registered again")) return 1;
+    if (require(sb_block_read(&a, 0u, 1u, buffer) == SB_BLOCK_OK &&
+                reads_a == before_lifecycle + 2u,
+                "re-registered device cannot see stale cache entry")) return 1;
+
+    if (require(sb_block_unregister(&b) == SB_BLOCK_OK &&
+                sb_block_count() == 1u && sb_block_get(0u) == &a,
+                "middle registry removal keeps remaining device")) return 1;
+    if (require(sb_block_unregister(&a) == SB_BLOCK_OK && sb_block_count() == 0u,
+                "registry can be emptied")) return 1;
+    if (require(sb_block_unregister(&a) == SB_BLOCK_INVALID_ARGUMENT,
+                "double unregister rejected")) return 1;
+
     puts("block cache host test OK");
     return 0;
 }
