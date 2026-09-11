@@ -152,7 +152,7 @@ $(USER_ACCESS_OBJ): kernel/user_access.c kernel/user_access.h kernel/process.h k
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
 $(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
-	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
+	$(CC) $(CFLAGS) -DSB_SYSCALL_CORE_DISPATCH_BUILD -Ikernel -Ikernel/mm -c $< -o $@
 
 $(SYSCALL_DIR_OBJ): kernel/syscall_directory.c kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
