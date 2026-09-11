@@ -69,6 +69,11 @@ sb_block_status_t sb_block_write(sb_block_device_t *device,
     return sb_block_cache_write(device, lba, count, buffer);
 }
 
+sb_block_status_t sb_block_flush(sb_block_device_t *device) {
+    if (device == 0) return SB_BLOCK_INVALID_ARGUMENT;
+    return sb_block_cache_flush_device(device);
+}
+
 sb_block_status_t sb_block_register(sb_block_device_t *device) {
     if (device == 0 || device->name == 0 || device->sector_size == 0u ||
         device->sector_count == 0u || device->read == 0 ||
@@ -98,7 +103,7 @@ sb_block_status_t sb_block_unregister(sb_block_device_t *device) {
 
     /* Never detach a device while dirty cache state still depends on it. A
      * writeback failure keeps both the registry entry and dirty data intact. */
-    const sb_block_status_t flush_status = sb_block_cache_flush_device(device);
+    const sb_block_status_t flush_status = sb_block_flush(device);
     if (flush_status != SB_BLOCK_OK) return flush_status;
     sb_block_cache_invalidate_device(device);
 
@@ -164,7 +169,8 @@ sb_block_status_t sb_block_selftest(void) {
 
     sb_block_device_t *device = sb_block_get(sb_block_count() - 1u);
     if (device == 0 || sb_block_write(device, 2u, 1u, write_buffer) != SB_BLOCK_OK ||
-        sb_block_read(device, 2u, 1u, read_buffer) != SB_BLOCK_OK) {
+        sb_block_read(device, 2u, 1u, read_buffer) != SB_BLOCK_OK ||
+        sb_block_flush(device) != SB_BLOCK_OK) {
         return selftest_finish(initial_count, SB_BLOCK_NOT_READY);
     }
 
@@ -176,7 +182,8 @@ sb_block_status_t sb_block_selftest(void) {
 
     if (sb_block_register(&read_only_device) != SB_BLOCK_OK ||
         sb_block_write(&read_only_device, 0u, 1u, write_buffer) != SB_BLOCK_UNSUPPORTED ||
-        sb_block_read(&read_only_device, 2u, 1u, read_buffer) != SB_BLOCK_OK) {
+        sb_block_read(&read_only_device, 2u, 1u, read_buffer) != SB_BLOCK_OK ||
+        sb_block_flush(&read_only_device) != SB_BLOCK_OK) {
         return selftest_finish(initial_count, SB_BLOCK_IO_ERROR);
     }
 
