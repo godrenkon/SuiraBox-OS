@@ -19,6 +19,14 @@ static void bytes_copy(void *destination, const void *source, uint32_t length) {
     for (uint32_t i = 0u; i < length; ++i) dst[i] = src[i];
 }
 
+static void invalidate_entry(sb_block_cache_entry_t *entry) {
+    if (entry == 0 || entry->valid == 0u) return;
+    entry->valid = 0u;
+    entry->device = 0;
+    entry->lba = 0u;
+    ++g_stats.invalidations;
+}
+
 void sb_block_cache_reset(void) {
     for (uint32_t i = 0u; i < SB_BLOCK_CACHE_ENTRIES; ++i) {
         g_entries[i].device = 0;
@@ -99,11 +107,15 @@ void sb_block_cache_invalidate(sb_block_device_t *device,
     for (uint32_t i = 0u; i < SB_BLOCK_CACHE_ENTRIES; ++i) {
         sb_block_cache_entry_t *entry = &g_entries[i];
         if (entry->valid == 0u || entry->device != device) continue;
-        if (entry->lba >= lba && entry->lba < end) {
-            entry->valid = 0u;
-            entry->device = 0;
-            ++g_stats.invalidations;
-        }
+        if (entry->lba >= lba && entry->lba < end) invalidate_entry(entry);
+    }
+}
+
+void sb_block_cache_invalidate_device(sb_block_device_t *device) {
+    if (device == 0) return;
+    for (uint32_t i = 0u; i < SB_BLOCK_CACHE_ENTRIES; ++i) {
+        sb_block_cache_entry_t *entry = &g_entries[i];
+        if (entry->valid != 0u && entry->device == device) invalidate_entry(entry);
     }
 }
 
