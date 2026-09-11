@@ -28,5 +28,6 @@ sb_vfs_status_t sb_vfs_write_sectors(const sb_vfs_mount_t *mount,
                                       uint64_t lba,
                                       uint32_t count,
                                       const void *buffer);
+sb_vfs_status_t sb_vfs_sync(const sb_vfs_mount_t *mount);
 
 #endif
