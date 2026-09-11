@@ -37,7 +37,7 @@ jobs:
           set -o pipefail
 
           # Real FAT32 media for ATA -> block -> filesystem -> system VFS ->
-          # userspace FILE_OPEN/READ verification. This is a partitionless
+          # userspace FILE/DIRECTORY verification. This is a partitionless
           # superfloppy image because the current FAT32 layer mounts a block
           # device at sector zero rather than parsing partition tables yet.
           truncate -s 64M build/runtime-fat32.img
@@ -101,6 +101,10 @@ jobs:
           grep -F "File: generic VFS path opened as FILE handle" qemu.log
           grep -F "Userspace: generic VFS FILE_OPEN lifecycle OK" qemu.log
           grep -F "Userspace: runtime FAT32 file read through generic VFS OK" qemu.log
+          grep -F "Directory: generic VFS path opened as DIRECTORY handle" qemu.log
+          grep -F "Directory: entry copied to userspace" qemu.log
+          grep -F "Directory: end of directory reported" qemu.log
+          grep -F "Userspace: runtime FAT32 directory enumeration OK" qemu.log
           grep -F "Spawn: executable staged from VFS file" qemu.log
 
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
@@ -189,6 +193,10 @@ jobs:
                   "Storage: ATA primary master registered",
                   "Storage: FAT32 system mount /disk ready",
                   "Userspace: runtime FAT32 file read through generic VFS OK",
+                  "Directory: generic VFS path opened as DIRECTORY handle",
+                  "Directory: entry copied to userspace",
+                  "Directory: end of directory reported",
+                  "Userspace: runtime FAT32 directory enumeration OK",
               ],
               "legacy-wait/child/reap": [
                   "Spawn: executable staged from VFS file",
