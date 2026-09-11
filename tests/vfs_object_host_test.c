@@ -6,6 +6,7 @@
 
 typedef struct {
     uint8_t data[TEST_DATA_SIZE];
+    uint32_t sync_count;
     uint32_t release_count;
 } test_backend_t;
 
@@ -54,6 +55,13 @@ static int backend_write(sb_vfs_node_t *node,
     return SB_VFS_OBJECT_OK;
 }
 
+static int backend_sync(sb_vfs_node_t *node) {
+    test_backend_t *backend = node != 0 ? (test_backend_t *)node->private_data : 0;
+    if (backend == 0) return SB_VFS_OBJECT_INVALID;
+    ++backend->sync_count;
+    return SB_VFS_OBJECT_OK;
+}
+
 static void backend_release(sb_vfs_node_t *node) {
     test_backend_t *backend = (test_backend_t *)node->private_data;
     if (backend != 0) ++backend->release_count;
@@ -86,6 +94,7 @@ static int directory_readdir(sb_vfs_node_t *directory,
 static const sb_vfs_node_ops_t test_ops = {
     .read = backend_read,
     .write = backend_write,
+    .sync = backend_sync,
     .lookup = 0,
     .readdir = 0,
     .release = backend_release,
@@ -94,6 +103,7 @@ static const sb_vfs_node_ops_t test_ops = {
 static const sb_vfs_node_ops_t directory_ops = {
     .read = 0,
     .write = 0,
+    .sync = 0,
     .lookup = 0,
     .readdir = directory_readdir,
     .release = 0,
@@ -115,7 +125,7 @@ int main(void) {
 
     if (require(sb_vfs_node_init(&node,
                                  SB_VFS_NODE_REGULAR,
-                                 SB_VFS_CAP_READ | SB_VFS_CAP_WRITE,
+                                 SB_VFS_CAP_READ | SB_VFS_CAP_WRITE | SB_VFS_CAP_SYNC,
                                  TEST_DATA_SIZE,
                                  &test_ops,
                                  &backend) == SB_VFS_OBJECT_OK,
@@ -132,6 +142,8 @@ int main(void) {
                 "read advances file offset")) return 1;
     if (require(buffer[0] == 0u && buffer[1] == 1u && buffer[2] == 2u && buffer[3] == 3u,
                 "read contents")) return 1;
+    if (require(sb_vfs_file_sync(&reader) == SB_VFS_OBJECT_OK && backend.sync_count == 1u,
+                "reader sync dispatch")) return 1;
 
     if (require(sb_vfs_file_seek(&reader, 30u) == SB_VFS_OBJECT_OK,
                 "seek inside file")) return 1;
@@ -153,6 +165,8 @@ int main(void) {
                 "writer update")) return 1;
     if (require(backend.data[5] == 0xA1u && backend.data[6] == 0xB2u && backend.data[7] == 0xC3u,
                 "write contents")) return 1;
+    if (require(sb_vfs_file_sync(&writer) == SB_VFS_OBJECT_OK && backend.sync_count == 2u,
+                "writer sync dispatch")) return 1;
     if (require(sb_vfs_file_read(&writer, buffer, 1u, &transferred) == SB_VFS_OBJECT_ACCESS,
                 "writer read denied")) return 1;
 
@@ -160,6 +174,8 @@ int main(void) {
                 "reader close releases reference")) return 1;
     if (require(sb_vfs_file_read(&reader, buffer, 1u, &transferred) == SB_VFS_OBJECT_CLOSED,
                 "closed reader rejected")) return 1;
+    if (require(sb_vfs_file_sync(&reader) == SB_VFS_OBJECT_CLOSED,
+                "closed reader sync rejected")) return 1;
     if (require(sb_vfs_file_close(&reader) == SB_VFS_OBJECT_CLOSED,
                 "double close rejected")) return 1;
 
