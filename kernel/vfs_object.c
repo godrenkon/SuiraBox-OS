@@ -5,7 +5,8 @@
 
 static int valid_capabilities(uint32_t capabilities) {
     const uint32_t known = SB_VFS_CAP_READ | SB_VFS_CAP_WRITE |
-                           SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR;
+                           SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR |
+                           SB_VFS_CAP_SYNC;
     return (capabilities & ~known) == 0u;
 }
 
@@ -27,6 +28,9 @@ int sb_vfs_node_init(sb_vfs_node_t *node,
         return SB_VFS_OBJECT_INVALID;
     }
     if ((capabilities & SB_VFS_CAP_WRITE) != 0u && ops->write == 0) {
+        return SB_VFS_OBJECT_INVALID;
+    }
+    if ((capabilities & SB_VFS_CAP_SYNC) != 0u && ops->sync == 0) {
         return SB_VFS_OBJECT_INVALID;
     }
     if ((capabilities & SB_VFS_CAP_LOOKUP) != 0u && ops->lookup == 0) {
@@ -214,6 +218,16 @@ int sb_vfs_file_seek(sb_vfs_file_t *file, uint64_t offset) {
     if (offset > file->node->size) return SB_VFS_OBJECT_RANGE;
     file->offset = offset;
     return SB_VFS_OBJECT_OK;
+}
+
+int sb_vfs_file_sync(sb_vfs_file_t *file) {
+    if (file == 0) return SB_VFS_OBJECT_INVALID;
+    if (file->open == 0u || file->node == 0) return SB_VFS_OBJECT_CLOSED;
+    if ((file->node->capabilities & SB_VFS_CAP_SYNC) == 0u ||
+        file->node->ops == 0 || file->node->ops->sync == 0) {
+        return SB_VFS_OBJECT_NOT_SUPPORTED;
+    }
+    return file->node->ops->sync(file->node);
 }
 
 int sb_vfs_file_close(sb_vfs_file_t *file) {
