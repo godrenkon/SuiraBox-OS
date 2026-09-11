@@ -14,6 +14,7 @@ typedef enum {
 #define SB_VFS_CAP_WRITE   (1u << 1)
 #define SB_VFS_CAP_LOOKUP  (1u << 2)
 #define SB_VFS_CAP_READDIR (1u << 3)
+#define SB_VFS_CAP_SYNC    (1u << 4)
 
 #define SB_VFS_ACCESS_READ  (1u << 0)
 #define SB_VFS_ACCESS_WRITE (1u << 1)
@@ -53,6 +54,7 @@ typedef int (*sb_vfs_node_write_fn)(sb_vfs_node_t *node,
                                     const void *buffer,
                                     uint64_t length,
                                     uint64_t *bytes_written);
+typedef int (*sb_vfs_node_sync_fn)(sb_vfs_node_t *node);
 /* Backend lookup returns a borrowed live node pointer. Callers use
  * sb_vfs_node_lookup(), which validates and acquires the returned node. */
 typedef int (*sb_vfs_node_lookup_fn)(sb_vfs_node_t *directory,
@@ -68,6 +70,7 @@ typedef void (*sb_vfs_node_release_fn)(sb_vfs_node_t *node);
 typedef struct {
     sb_vfs_node_read_fn read;
     sb_vfs_node_write_fn write;
+    sb_vfs_node_sync_fn sync;
     sb_vfs_node_lookup_fn lookup;
     sb_vfs_node_readdir_fn readdir;
     sb_vfs_node_release_fn release;
@@ -121,6 +124,7 @@ int sb_vfs_file_write(sb_vfs_file_t *file,
                       uint64_t length,
                       uint64_t *bytes_written);
 int sb_vfs_file_seek(sb_vfs_file_t *file, uint64_t offset);
+int sb_vfs_file_sync(sb_vfs_file_t *file);
 int sb_vfs_file_close(sb_vfs_file_t *file);
 
 int sb_vfs_directory_open(sb_vfs_node_t *node, sb_vfs_directory_t *directory);
