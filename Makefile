@@ -7,6 +7,7 @@ PMM_HOST_TEST := $(BUILD)/pmm-host-test
 BLOCK_CACHE_HOST_TEST := $(BUILD)/block-cache-host-test
 FAT32_HOST_TEST := $(BUILD)/fat32-host-test
 HANDLE_HOST_TEST := $(BUILD)/handle-host-test
+PIPE_HOST_TEST := $(BUILD)/pipe-host-test
 VFS_OBJECT_HOST_TEST := $(BUILD)/vfs-object-host-test
 VFS_NAMESPACE_HOST_TEST := $(BUILD)/vfs-namespace-host-test
 
@@ -47,6 +48,7 @@ TIMER_OBJ := $(BUILD)/timer.o
 SCHED_OBJ := $(BUILD)/scheduler.o
 CONTEXT_OBJ := $(BUILD)/context.o
 HANDLE_OBJ := $(BUILD)/handle.o
+PIPE_OBJ := $(BUILD)/pipe.o
 PROCESS_OBJ := $(BUILD)/process.o
 PROCESS_EXEC_OBJ := $(BUILD)/process_exec.o
 USER_ACCESS_OBJ := $(BUILD)/user_access.o
@@ -62,7 +64,7 @@ MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
 CHILD_OBJ := $(BUILD)/user-child.o
 
-.PHONY: all clean iso userspace check host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-vfs-object-test host-vfs-namespace-test
+.PHONY: all clean iso userspace check host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-vfs-object-test host-vfs-namespace-test
 
 all: iso
 
@@ -147,6 +149,9 @@ $(CONTEXT_OBJ): kernel/arch/x86_64/context.S kernel/arch/x86_64/context.h | $(BU
 $(HANDLE_OBJ): kernel/handle.c kernel/handle.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
+$(PIPE_OBJ): kernel/pipe.c kernel/pipe.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
 $(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/handle.h include/suirabox/handle_abi.h kernel/scheduler.h kernel/mm/address_space.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
@@ -197,8 +202,8 @@ $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 
 userspace: $(USER_ELF) $(CHILD_ELF)
 
-$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(BLOCK_CACHE_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_NAMESPACE_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_DIR_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
-	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(BLOCK_CACHE_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_NAMESPACE_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_DIR_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
+$(KERNEL): $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(BLOCK_CACHE_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_NAMESPACE_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PIPE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_DIR_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ) linker.ld
+	$(LD) $(LDFLAGS) -o $@ $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(BLOCK_CACHE_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_NAMESPACE_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PIPE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_DIR_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
 iso: $(KERNEL) $(USER_ELF) $(CHILD_ELF) boot/grub.cfg
 	mkdir -p $(BUILD)/iso/boot/grub
@@ -232,6 +237,12 @@ $(HANDLE_HOST_TEST): tests/handle_host_test.c kernel/handle.c kernel/handle.h in
 host-handle-test: $(HANDLE_HOST_TEST)
 	$(HANDLE_HOST_TEST)
 
+$(PIPE_HOST_TEST): tests/pipe_host_test.c kernel/pipe.c kernel/pipe.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/pipe_host_test.c kernel/pipe.c -o $@
+
+host-pipe-test: $(PIPE_HOST_TEST)
+	$(PIPE_HOST_TEST)
+
 $(VFS_OBJECT_HOST_TEST): tests/vfs_object_host_test.c kernel/vfs_object.c kernel/vfs_object.h | $(BUILD)
 	$(CC) -Wall -Wextra -Werror -Ikernel tests/vfs_object_host_test.c kernel/vfs_object.c -o $@
 
@@ -244,7 +255,7 @@ $(VFS_NAMESPACE_HOST_TEST): tests/vfs_namespace_host_test.c kernel/vfs_namespace
 host-vfs-namespace-test: $(VFS_NAMESPACE_HOST_TEST)
 	$(VFS_NAMESPACE_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-vfs-object-test host-vfs-namespace-test
+check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-vfs-object-test host-vfs-namespace-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
