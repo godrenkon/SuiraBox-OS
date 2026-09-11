@@ -1,4 +1,5 @@
 #include "block.h"
+#include "block_cache.h"
 #include <stdint.h>
 
 #define SB_MAX_BLOCK_DEVICES 16u
@@ -46,6 +47,31 @@ static sb_block_status_t test_disk_write(sb_block_device_t *device,
     return SB_BLOCK_OK;
 }
 
+sb_block_status_t sb_block_read(sb_block_device_t *device,
+                                uint64_t lba,
+                                uint32_t count,
+                                void *buffer) {
+    if (buffer == 0 || !sb_block_range_valid(device, lba, count)) {
+        return SB_BLOCK_INVALID_ARGUMENT;
+    }
+    if (device->read == 0) return SB_BLOCK_UNSUPPORTED;
+    return sb_block_cache_read(device, lba, count, buffer);
+}
+
+sb_block_status_t sb_block_write(sb_block_device_t *device,
+                                 uint64_t lba,
+                                 uint32_t count,
+                                 const void *buffer) {
+    if (buffer == 0 || !sb_block_range_valid(device, lba, count)) {
+        return SB_BLOCK_INVALID_ARGUMENT;
+    }
+    if (device->write == 0) return SB_BLOCK_UNSUPPORTED;
+
+    const sb_block_status_t status = device->write(device, lba, count, buffer);
+    if (status == SB_BLOCK_OK) sb_block_cache_invalidate(device, lba, count);
+    return status;
+}
+
 sb_block_status_t sb_block_register(sb_block_device_t *device) {
     if (device == 0 || device->name == 0 || device->sector_size == 0u ||
         device->sector_count == 0u || device->read == 0 ||
@@ -78,6 +104,8 @@ static sb_block_status_t selftest_finish(uint32_t initial_count,
         --g_device_count;
         g_devices[g_device_count] = 0;
     }
+    /* Never retain cache keys that point at temporary self-test devices. */
+    sb_block_cache_reset();
     return status;
 }
 
@@ -102,6 +130,7 @@ sb_block_status_t sb_block_selftest(void) {
     static uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
     const uint32_t initial_count = g_device_count;
 
+    sb_block_cache_reset();
     for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         write_buffer[i] = (uint8_t)(i ^ 0xA5u);
         read_buffer[i] = 0;
