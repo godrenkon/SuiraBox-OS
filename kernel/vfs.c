@@ -65,3 +65,10 @@ sb_vfs_status_t sb_vfs_write_sectors(const sb_vfs_mount_t *mount,
                                               buffer),
                                1);
 }
+
+sb_vfs_status_t sb_vfs_sync(const sb_vfs_mount_t *mount) {
+    if (mount == 0 || mount->block_device == 0) {
+        return SB_VFS_INVALID_ARGUMENT;
+    }
+    return block_status_to_vfs(sb_block_flush(mount->block_device), 1);
+}
