@@ -19,6 +19,7 @@ int main(void) {
     uint64_t object_a = 0xA11CEu;
     uint64_t object_b = 0xBEEFu;
     sb_handle_t first = SB_HANDLE_INVALID;
+    sb_handle_t directory = SB_HANDLE_INVALID;
     sb_handle_t second = SB_HANDLE_INVALID;
     void *resolved = 0;
     sb_handle_info_t info = {0};
@@ -88,6 +89,23 @@ int main(void) {
                 "stale query rejection")) return 1;
     if (require(sb_handle_close(&table, first) == SB_HANDLE_ERROR_STALE,
                 "stale close rejection")) return 1;
+
+    if (require(sb_handle_allocate(&table,
+                                   SB_HANDLE_TYPE_DIRECTORY,
+                                   SB_HANDLE_RIGHT_READ | SB_HANDLE_RIGHT_QUERY,
+                                   &object_a,
+                                   0,
+                                   &directory) == SB_HANDLE_OK,
+                "directory allocation")) return 1;
+    if (require(sb_handle_query(&table,
+                                directory,
+                                SB_HANDLE_RIGHT_QUERY,
+                                &info) == SB_HANDLE_OK &&
+                info.type == SB_HANDLE_ABI_TYPE_DIRECTORY &&
+                info.rights == (SB_HANDLE_RIGHT_READ | SB_HANDLE_RIGHT_QUERY),
+                "directory metadata query")) return 1;
+    if (require(sb_handle_close(&table, directory) == SB_HANDLE_OK,
+                "close directory handle")) return 1;
 
     if (require(sb_handle_allocate(&table,
                                    SB_HANDLE_TYPE_EVENT,
