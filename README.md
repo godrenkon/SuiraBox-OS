@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **7-4 handle / descriptor基盤 → 6-4 general spawn**。BLOCKED/SLEEPING、timer wake、cross-process CR3、exit/reap、wait、versioned syscall ABI、read/write user pointer validationまでQEMUで実動作確認済みです。次はuserspace resourceを安全に参照するhandle層を作り、trusted boot-image selectorに限定されたspawnを一般化します。
+> **Current focus:** **8-7 cache / writeback**。generation付きhandle、一般VFS pathによるFILE/DIRECTORY API、VFS path spawn、ATA block device、FAT32 mount/read/enumerationまでQEMUで実動作確認済みです。現在はcanonical block I/O境界のread cacheを固め、次にdirty/writeback semanticsへ進みます。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -129,7 +129,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **6-1** thread object / lifecycleの基本
 - [x] **6-2** process object / address space紐付け
 - [x] **6-3** first user thread起動経路
-- [-] **6-4** user threadのfork / spawn相当
+- [x] **6-4** user threadのfork / spawn相当
 - [x] **6-5** process exit / cleanup
 - [x] **6-6** wait / parent-child lifecycle
 - [-] **6-7** 複数thread / 複数process実行
@@ -141,7 +141,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **7-1** syscall entry/exit ABI
 - [x] **7-2** syscall番号・ABI versioning
 - [x] **7-3** user pointer validation
-- [*] **7-4** handle / descriptor基盤
+- [x] **7-4** handle / descriptor基盤
 - [ ] **7-5** pipe
 - [ ] **7-6** message queue
 - [ ] **7-7** event / wait object
@@ -150,13 +150,13 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 ## 8. VFS / Storage
 
-- [ ] **8-1** VFS object model
-- [ ] **8-2** path / mount semantics
-- [ ] **8-3** file / directory API
-- [ ] **8-4** block device layer
-- [ ] **8-5** filesystem abstraction
-- [ ] **8-6** 初期filesystem実装
-- [ ] **8-7** cache / writeback
+- [x] **8-1** VFS object model
+- [x] **8-2** path / mount semantics
+- [x] **8-3** file / directory API
+- [x] **8-4** block device layer
+- [x] **8-5** filesystem abstraction
+- [x] **8-6** 初期filesystem実装
+- [*] **8-7** cache / writeback
 - [ ] **8-8** fsync / atomic update semantics
 - [ ] **8-9** storage recovery
 
@@ -284,37 +284,39 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 ### Verified scheduler / process lifecycle
 
-**3-6 + 4-6 + 5-3〜5-6 + 6-2〜6-3 + 6-5〜6-6**
+**3-6 + 4-6 + 5-3〜5-6 + 6-2〜6-6**
 
-GitHub Actions上のx86_64 QEMU smoke testで、timer IRQによるring3 taskへのpreemption、保存済みIRQ frameからのresume、PID 1 / PID 2間のCR3切替、BLOCKED / SLEEPING遷移、timer deadline wake、child EXIT、address-space / kernel-stack cleanup、parent WAITのwake/resumeまで実CPU経路で確認済みです。
+GitHub Actions上のx86_64 QEMU smoke testで、timer IRQによるring3 taskへのpreemption、保存済みIRQ frameからのresume、process間CR3切替、BLOCKED / SLEEPING遷移、timer deadline wake、VFS path spawn、child EXIT、address-space / kernel-stack cleanup、parent WAITのwake/resumeまで実CPU経路で確認済みです。
 
-### Verified syscall boundary
+### Verified syscall / handle boundary
 
-**7-1〜7-3: versioned ABI + user pointer validation**
+**7-1〜7-4: versioned ABI + user pointer validation + generation handles**
 
 `int 0x80` entryでは全GPRを保存し、共通ABI headerでsyscall番号・register ABI・error表現・ABI versionを固定しています。user pointerは対象processのpage tableを走査してPRESENT / USER / WRITABLEを検査し、kernelはuser virtual addressを直接dereferenceせず、検証済みphysical mappingをページ単位でcopyします。
 
-QEMU smokeでは、read-only `.rodata`からのcopy-in、NULL pointer拒否、writable `.data`へのcopy-out、read-only `.rodata`へのcopy-out拒否を確認済みです。またNX PTEを使用する前に`IA32_EFER.NXE`を有効化し、非実行user pageがreserved-bit page faultにならないことも実行経路で検証しています。
+process-local handle tableはtype・rights・generation・close callbackを保持し、PROCESS / FILE / DIRECTORY objectをuserspaceへraw pointerなしで公開します。close後のstale generation拒否、rights/type検査、process teardown時のclose-allまでhost testとQEMUで確認済みです。
+
+### Verified VFS / storage foundation
+
+**8-1〜8-6: block → FAT32 → VFS namespace → FILE/DIRECTORY**
+
+canonical block I/O、ATA PIO device、VFS node/open-file/open-directory object、mount/path resolver、FAT32 adapterを接続しています。CIは64 MiBの実FAT32 imageを作成し、QEMU上で`/disk/RUNTIME.TXT`をFILE handleから読み、`/disk`をDIRECTORY handleで列挙してEOFまで到達することを必須化しています。
 
 ### Primary work
 
-**7-4: handle / descriptor foundation**
+**8-7: cache / writeback**
 
-次はraw kernel pointerや内部object IDをuserspace ABIへ露出させず、processごとのresource参照をgeneration付きhandle / descriptorとして管理する基盤を作ります。type・rights・lifetime・close semanticsを最初に固定し、その上へpipe、event、shared memory、VFS objectを載せます。
+canonical block read境界へ固定16-entryのsector cacheを追加済みです。cache keyはdevice identity + LBAで、hit/miss/fill/invalidation統計、write後invalidate、failed-read非fill、device unregister時の全entry invalidationをhost testで固定しています。
 
-### Parallel integration
-
-**6-4: general spawn**
-
-現行spawnはtrusted boot moduleをselectorで選ぶ最小実装です。user pointer validationが完成したため、今後はpath / image specificationを安全にuserspaceから受け取り、一般的なprocess launchへ拡張します。
+現在のcacheは**read cacheのみ**です。dirty page/sector、writeback queue、flush ordering、fsyncとの接続は未実装のため8-7全体は継続中です。
 
 ### Deliberately still partial
 
 - **3-7**: sleep/wakeは動作するが、一般timeout semantics全体は未完成
 - **4-7**: user/kernel stackは動作するが、guard page・overflow policy・可変stack policyは未完成
 - **5-2**: IRQ preemption contextとcooperative kernel contextは分離済みだが、context ABI全体の整理は継続中
-- **6-4**: spawnはtrusted boot-image selector限定
-- **6-7**: 複数processの実行は確認済みだが、一般的なmulti-thread/multi-process runtimeは未完成
+- **6-7**: 複数processの並行実行は確認済みだが、一般的なmulti-thread runtimeは未完成
+- **8-7**: read cacheは実装済みだが、dirty tracking / writeback / flush semanticsは未完成
 
 ---
 
