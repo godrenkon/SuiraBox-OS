@@ -66,10 +66,7 @@ sb_block_status_t sb_block_write(sb_block_device_t *device,
         return SB_BLOCK_INVALID_ARGUMENT;
     }
     if (device->write == 0) return SB_BLOCK_UNSUPPORTED;
-
-    const sb_block_status_t status = device->write(device, lba, count, buffer);
-    if (status == SB_BLOCK_OK) sb_block_cache_invalidate(device, lba, count);
-    return status;
+    return sb_block_cache_write(device, lba, count, buffer);
 }
 
 sb_block_status_t sb_block_register(sb_block_device_t *device) {
@@ -99,7 +96,10 @@ sb_block_status_t sb_block_unregister(sb_block_device_t *device) {
     }
     if (index == g_device_count) return SB_BLOCK_INVALID_ARGUMENT;
 
-    /* A cache entry must never outlive the device identity used as its key. */
+    /* Never detach a device while dirty cache state still depends on it. A
+     * writeback failure keeps both the registry entry and dirty data intact. */
+    const sb_block_status_t flush_status = sb_block_cache_flush_device(device);
+    if (flush_status != SB_BLOCK_OK) return flush_status;
     sb_block_cache_invalidate_device(device);
 
     for (uint32_t i = index + 1u; i < g_device_count; ++i) {
