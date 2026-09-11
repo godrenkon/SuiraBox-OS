@@ -23,6 +23,7 @@ sb_block_status_t sb_block_cache_read(sb_block_device_t *device,
 void sb_block_cache_invalidate(sb_block_device_t *device,
                                uint64_t lba,
                                uint32_t count);
+void sb_block_cache_invalidate_device(sb_block_device_t *device);
 sb_block_cache_stats_t sb_block_cache_stats(void);
 
 #endif /* SB_BLOCK_CACHE_H */
