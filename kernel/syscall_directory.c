@@ -18,10 +18,14 @@ _Static_assert(SB_DIRECTORY_ENTRY_TYPE_DEVICE == SB_VFS_NODE_DEVICE,
                "directory device type mismatch");
 _Static_assert(sizeof(sb_directory_entry_t) == SB_DIRECTORY_ENTRY_SIZE,
                "directory entry ABI size mismatch");
+_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER == SB_SYS_DIRECTORY_READ,
+               "public syscall max-number table is stale");
 
 static int directory_open_logged;
 static int directory_read_logged;
 static int directory_end_logged;
+static int writable_pointer_logged;
+static int readonly_pointer_logged;
 
 static uint64_t directory_error(int64_t code) {
     return (uint64_t)code;
@@ -93,6 +97,34 @@ static void directory_handle_close(void *object) {
     if (directory == 0) return;
     if (directory->open != 0u) (void)sb_vfs_directory_close(directory);
     kheap_free(directory);
+}
+
+static sb_irq_frame_t *entry_abi_info(sb_irq_frame_t *frame) {
+    sb_process_t *process = directory_current_process();
+    if (process == 0) {
+        frame->rax = directory_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+
+    const sb_syscall_abi_info_t info = {
+        .abi_version = SB_SYSCALL_ABI_VERSION,
+        .max_syscall_number = SB_SYS_PUBLIC_MAX_NUMBER,
+    };
+    if (user_copy_to(process, frame->rdi, &info, sizeof(info)) != 0) {
+        frame->rax = directory_error(SB_SYS_ERROR_FAULT);
+        if (!readonly_pointer_logged) {
+            readonly_pointer_logged = 1;
+            directory_debug("Syscall: read-only user pointer write rejected\r\n");
+        }
+        return frame;
+    }
+
+    frame->rax = 0u;
+    if (!writable_pointer_logged) {
+        writable_pointer_logged = 1;
+        directory_debug("Syscall: writable user pointer copy OK\r\n");
+    }
+    return frame;
 }
 
 static sb_irq_frame_t *directory_open(sb_irq_frame_t *frame) {
@@ -241,6 +273,7 @@ static sb_irq_frame_t *directory_read(sb_irq_frame_t *frame) {
 
 sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame) {
     if (frame == 0) return 0;
+    if (frame->rax == SB_SYS_ABI_INFO) return entry_abi_info(frame);
     if (frame->rax == SB_SYS_DIRECTORY_OPEN) return directory_open(frame);
     if (frame->rax == SB_SYS_DIRECTORY_READ) return directory_read(frame);
     return sb_syscall_dispatch_frame(frame);
