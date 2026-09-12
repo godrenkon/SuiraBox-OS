@@ -31,6 +31,7 @@ typedef struct {
     uint64_t runtime_ticks;
     uint64_t dispatch_count;
     uint64_t wake_tick;
+    uint64_t block_timeout_result;
     int64_t exit_code;
     uint32_t priority;
     sb_task_state_t state;
@@ -40,6 +41,7 @@ typedef struct {
     uint64_t kernel_stack_base;
     uint64_t kernel_stack_top;
     uint8_t user_task;
+    uint8_t block_timeout_armed;
 } sb_task_t;
 
 void scheduler_init(void);
@@ -62,11 +64,17 @@ uint32_t scheduler_task_count(void);
 /* State transitions for the current single-CPU scheduler. Blocking/sleeping
  * callers must reschedule before returning to code that belongs to the task. */
 int scheduler_block_current(void);
+/* Block the current user task until another object wakes it or delay_ticks
+ * expires. On timeout the scheduler writes timeout_result into the task's saved
+ * syscall-frame RAX before making the task runnable again. */
+int scheduler_block_current_until(uint64_t delay_ticks, uint64_t timeout_result);
 int scheduler_sleep_current(uint64_t delay_ticks);
 int scheduler_wake_task(uint64_t id);
 /* Complete a blocked syscall by writing its eventual RAX result into the saved
  * frame before making the task runnable again. */
 int scheduler_wake_task_with_result(uint64_t id, uint64_t result);
+/* Returns 1 only while the identified live task is BLOCKED, 0 otherwise. */
+int scheduler_task_is_blocked(uint64_t id);
 
 /* Process exit is two-phase. This marks all tasks in the current user process
  * EXITED. Their stacks are freed later from a different scheduler context. */
