@@ -19,9 +19,10 @@
  * 6. If /disk is mounted, read RUNTIME.TXT and enumerate it through a generic
  *    DIRECTORY handle, including pointer fault, EOF and stale-close semantics.
  * 7. Exercise PIPE handles: backpressure, rights, payload, EOF and stale close.
- * 8. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
- * 9. SPAWN_REQUEST source=BOOT_MODULE and source=VFS_PATH execute/reap children.
- * 10. Spawn two dynamic children before waiting and prove concurrent execution.
+ * 8. Exercise manual-reset EVENT poll, timed BLOCKED wake, signal and reset.
+ * 9. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
+ * 10. SPAWN_REQUEST source=BOOT_MODULE and source=VFS_PATH execute/reap children.
+ * 11. Spawn two dynamic children before waiting and prove concurrent execution.
  */
 _start:
     mov $SB_SYS_GET_TICKS, %rax
@@ -471,6 +472,85 @@ runtime_disk_skipped:
     cmp $pipe_message_len, %rax
     jne lifecycle_failed
 
+    /* Manual-reset EVENT: poll, timed block/resume, signal, reset and stale close. */
+    mov $SB_EVENT_INITIAL_UNSIGNALED, %rdi
+    mov $SB_SYS_EVENT_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r15
+
+    mov %r15, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_HANDLE_ABI_TYPE_EVENT, SB_HANDLE_INFO_TYPE_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $(SB_HANDLE_ABI_RIGHT_WAIT | SB_HANDLE_ABI_RIGHT_SIGNAL | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %r15, %rdi
+    xor %rsi, %rsi
+    mov $SB_SYS_EVENT_WAIT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_WOULD_BLOCK, %rax
+    jne lifecycle_failed
+
+    mov %r15, %rdi
+    mov $3, %rsi
+    mov $SB_SYS_EVENT_WAIT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_TIMEOUT, %rax
+    jne lifecycle_failed
+
+    mov %r15, %rdi
+    mov $SB_SYS_EVENT_SIGNAL, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r15, %rdi
+    xor %rsi, %rsi
+    mov $SB_SYS_EVENT_WAIT, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r15, %rdi
+    mov $SB_SYS_EVENT_RESET, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r15, %rdi
+    xor %rsi, %rsi
+    mov $SB_SYS_EVENT_WAIT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_WOULD_BLOCK, %rax
+    jne lifecycle_failed
+
+    mov %r15, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r15, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_STALE, %rax
+    jne lifecycle_failed
+
+    lea event_message(%rip), %rdi
+    mov $event_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $event_message_len, %rax
+    jne lifecycle_failed
+
     mov $50000, %rcx
 preempt_spin:
     pause
@@ -619,6 +699,10 @@ pipe_message:
 pipe_payload:
     .ascii "PIPEPING"
 .set pipe_payload_len, . - pipe_payload
+
+event_message:
+    .ascii "Userspace: EVENT wait/timeout lifecycle OK\r\n"
+.set event_message_len, . - event_message
 
 concurrent_armed_message:
     .ascii "Userspace: concurrent child processes armed\r\n"
