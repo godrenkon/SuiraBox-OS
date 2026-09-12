@@ -18,9 +18,10 @@
  *    FILE_OPEN through the system VFS, including ELF read and stale close.
  * 6. If /disk is mounted, read RUNTIME.TXT and enumerate it through a generic
  *    DIRECTORY handle, including pointer fault, EOF and stale-close semantics.
- * 7. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
- * 8. SPAWN_REQUEST source=BOOT_MODULE and source=VFS_PATH execute/reap children.
- * 9. Spawn two dynamic children before waiting and prove concurrent execution.
+ * 7. Exercise PIPE handles: backpressure, rights, payload, EOF and stale close.
+ * 8. Legacy SPAWN + WAIT preserves ABI v1 selector compatibility.
+ * 9. SPAWN_REQUEST source=BOOT_MODULE and source=VFS_PATH execute/reap children.
+ * 10. Spawn two dynamic children before waiting and prove concurrent execution.
  */
 _start:
     mov $SB_SYS_GET_TICKS, %rax
@@ -363,6 +364,113 @@ _start:
     jne lifecycle_failed
 runtime_disk_skipped:
 
+    /* PIPE_CREATE returns two opaque endpoint handles with role-specific rights. */
+    lea pipe_handles_buffer(%rip), %rdi
+    mov $SB_SYS_PIPE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    movq SB_PIPE_HANDLES_READ_OFFSET+pipe_handles_buffer(%rip), %r13
+    movq SB_PIPE_HANDLES_WRITE_OFFSET+pipe_handles_buffer(%rip), %r14
+    test %r13, %r13
+    jle lifecycle_failed
+    test %r14, %r14
+    jle lifecycle_failed
+    cmp %r13, %r14
+    je lifecycle_failed
+
+    mov %r13, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_HANDLE_ABI_TYPE_PIPE, SB_HANDLE_INFO_TYPE_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $(SB_HANDLE_ABI_RIGHT_READ | SB_HANDLE_ABI_RIGHT_WAIT | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %r14, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_HANDLE_ABI_TYPE_PIPE, SB_HANDLE_INFO_TYPE_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $(SB_HANDLE_ABI_RIGHT_WRITE | SB_HANDLE_ABI_RIGHT_WAIT | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %r13, %rdi
+    lea pipe_read_buffer(%rip), %rsi
+    mov $8, %rdx
+    mov $SB_SYS_PIPE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_WOULD_BLOCK, %rax
+    jne lifecycle_failed
+
+    mov %r13, %rdi
+    lea pipe_payload(%rip), %rsi
+    mov $pipe_payload_len, %rdx
+    mov $SB_SYS_PIPE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+
+    mov %r14, %rdi
+    lea pipe_payload(%rip), %rsi
+    mov $pipe_payload_len, %rdx
+    mov $SB_SYS_PIPE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $pipe_payload_len, %rax
+    jne lifecycle_failed
+
+    movq $0, pipe_read_buffer(%rip)
+    mov %r13, %rdi
+    lea pipe_read_buffer(%rip), %rsi
+    mov $pipe_payload_len, %rdx
+    mov $SB_SYS_PIPE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $pipe_payload_len, %rax
+    jne lifecycle_failed
+    movabs $0x474e495045504950, %rcx
+    cmpq %rcx, pipe_read_buffer(%rip)
+    jne lifecycle_failed
+
+    mov %r14, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r13, %rdi
+    lea pipe_read_buffer(%rip), %rsi
+    mov $8, %rdx
+    mov $SB_SYS_PIPE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r13, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+
+    mov %r13, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_STALE, %rax
+    jne lifecycle_failed
+
+    lea pipe_message(%rip), %rdi
+    mov $pipe_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $pipe_message_len, %rax
+    jne lifecycle_failed
+
     mov $50000, %rcx
 preempt_spin:
     pause
@@ -504,6 +612,14 @@ runtime_directory_message:
     .ascii "Userspace: runtime FAT32 directory enumeration OK\r\n"
 .set runtime_directory_message_len, . - runtime_directory_message
 
+pipe_message:
+    .ascii "Userspace: PIPE handle lifecycle OK\r\n"
+.set pipe_message_len, . - pipe_message
+
+pipe_payload:
+    .ascii "PIPEPING"
+.set pipe_payload_len, . - pipe_payload
+
 concurrent_armed_message:
     .ascii "Userspace: concurrent child processes armed\r\n"
 .set concurrent_armed_message_len, . - concurrent_armed_message
@@ -549,6 +665,10 @@ file_header_buffer:
     .quad 0
 directory_entry_buffer:
     .zero SB_DIRECTORY_ENTRY_SIZE
+pipe_handles_buffer:
+    .zero SB_PIPE_HANDLES_SIZE
+pipe_read_buffer:
+    .quad 0
 
 .align 8
 spawn_request:
