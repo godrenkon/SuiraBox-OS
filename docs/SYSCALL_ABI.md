@@ -41,10 +41,12 @@ Current errors:
 | `-5` | `SB_SYS_ERROR_RIGHTS` | handle lacks required rights |
 | `-6` | `SB_SYS_ERROR_NOT_FOUND` | named object/path or directory entry does not exist |
 | `-7` | `SB_SYS_ERROR_IO` | underlying object/provider I/O failed |
+| `-8` | `SB_SYS_ERROR_WOULD_BLOCK` | nonblocking operation cannot make progress yet |
+| `-9` | `SB_SYS_ERROR_CLOSED` | peer/end of an IPC object is closed |
 
 ## Version 1 syscall table
 
-The current public maximum syscall number is **18**.
+The current public maximum syscall number is **21**.
 
 | Number | Name | Arguments | Result |
 | ---: | --- | --- | --- |
@@ -67,12 +69,15 @@ The current public maximum syscall number is **18**.
 | 16 | `SB_SYS_FILE_OPEN` | `rdi=absolute path`, `rsi=path_length`, `rdx=access` | FILE handle |
 | 17 | `SB_SYS_DIRECTORY_OPEN` | `rdi=absolute path`, `rsi=path_length` | DIRECTORY handle |
 | 18 | `SB_SYS_DIRECTORY_READ` | `rdi=directory`, `rsi=writable sb_directory_entry_t*` | 0 or `NOT_FOUND` at EOF |
+| 19 | `SB_SYS_PIPE_CREATE` | `rdi=writable sb_pipe_handles_t*` | 0 and fills read/write PIPE handles |
+| 20 | `SB_SYS_PIPE_READ` | `rdi=read_pipe`, `rsi=writable buffer`, `rdx=length` | bytes read, 0 at EOF, or `WOULD_BLOCK` |
+| 21 | `SB_SYS_PIPE_WRITE` | `rdi=write_pipe`, `rsi=readable buffer`, `rdx=length` | bytes written, `WOULD_BLOCK`, or `CLOSED` |
 
 Syscall 4 and syscall 13 are retained for ABI-v1 compatibility. New code should prefer the versioned spawn request and generic VFS path interfaces.
 
 ## ABI info routing
 
-The original frame dispatcher owns the historic 0..16 implementation table. Directory calls 17..18 are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 18.
+The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 21.
 
 ## Userspace pointer rules
 
@@ -87,7 +92,7 @@ A ring3 pointer is never trusted from its numeric range alone. For every copy th
 
 The QEMU smoke proves copy-in from `.rodata`, null rejection, copy-out to writable `.data`, and rejection of copy-out to read-only `.rodata`. NX mappings are enabled only after `IA32_EFER.NXE` is active.
 
-`FILE_READ` validates the complete output range before consuming file bytes. `DIRECTORY_READ` does the same before advancing the directory cursor. Thus a rejected userspace pointer cannot silently change file or directory position.
+`FILE_READ` validates the complete output range before consuming file bytes. `DIRECTORY_READ` does the same before advancing the directory cursor. `PIPE_READ` likewise validates the complete output range before removing bytes from the ring buffer; `PIPE_WRITE` copies user input into a bounded kernel buffer before modifying pipe state. Thus a rejected userspace pointer cannot silently consume file, directory, or pipe state.
 
 ## Spawn request
 
@@ -148,6 +153,8 @@ The runtime disk test uses the full path:
 
 FILE close releases the VFS object and heap-owned open state through the handle close callback.
 
+The VFS object layer also exposes `sb_vfs_file_sync()`. Writable backends may provide a node-level sync callback; the block/VFS layer already provides explicit device/mount flush operations. The current FAT32 runtime mount remains read-only, so userspace fsync and atomic update semantics are not yet complete.
+
 ## DIRECTORY handles
 
 `SB_SYS_DIRECTORY_OPEN` resolves an absolute directory path through the same system VFS namespace and returns a DIRECTORY handle with READ|QUERY rights.
@@ -168,6 +175,28 @@ Entry type values are regular file, directory, or device. `name` is one componen
 
 The kernel validates the destination for the full 80 bytes before calling the VFS directory iterator. QEMU deliberately supplies a read-only output pointer first, requires `SB_SYS_ERROR_FAULT`, then verifies the first real FAT32 entry is still `RUNTIME.TXT`. It subsequently verifies EOF, close, and stale-generation behavior.
 
+## PIPE handles
+
+`SB_SYS_PIPE_CREATE` creates one kernel ring buffer and returns a fixed 16-byte pair of opaque process-local handles:
+
+```c
+typedef struct {
+    sb_handle_t read_handle;
+    sb_handle_t write_handle;
+} sb_pipe_handles_t;
+```
+
+Both handles have type PIPE but expose role-specific rights:
+
+- read endpoint: `READ|WAIT|QUERY`;
+- write endpoint: `WRITE|WAIT|QUERY`.
+
+The current ABI is deliberately nonblocking. Reading an empty pipe while a writer remains returns `SB_SYS_ERROR_WOULD_BLOCK`; writing a full pipe returns the same error. When the final writer closes, buffered data remains readable and a subsequent empty read returns 0 as EOF. Writing after the final reader closes returns `SB_SYS_ERROR_CLOSED`.
+
+The phase-1 pipe uses a fixed 4096-byte kernel ring buffer and supports partial transfers. Endpoint close callbacks update reader/writer counts and release the shared pipe object after the last endpoint closes. QEMU verifies endpoint rights, empty-read backpressure, exact `PIPEPING` payload transfer, writer-close EOF, handle close, and stale-generation rejection.
+
+Blocking pipe semantics are intentionally deferred until the generic event/wait-object layer can wake scheduler-blocked syscall frames without embedding scheduler policy inside the ring-buffer core.
+
 ## Current filesystem/VFS proof
 
 The current system namespace exposes:
@@ -176,6 +205,8 @@ The current system namespace exposes:
 - `/disk`: read-only FAT32 mounted from the QEMU primary IDE disk when available.
 
 FAT32 currently supports 8.3 lookup, directory iteration, nested subdirectories, and read-only regular-file access. LFN/write support is not implied by the current ABI.
+
+The canonical block layer now includes a fixed write-back sector cache. Full-sector writes become dirty cache entries, reads observe dirty data immediately, explicit flush/device unregister/replacement performs writeback, and a failed writeback preserves dirty state for retry. `sb_block_flush()` and `sb_vfs_sync()` provide the current synchronization boundary.
 
 ## Compatibility policy
 
