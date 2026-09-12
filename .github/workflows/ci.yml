@@ -105,6 +105,13 @@ jobs:
           grep -F "Directory: entry copied to userspace" qemu.log
           grep -F "Directory: end of directory reported" qemu.log
           grep -F "Userspace: runtime FAT32 directory enumeration OK" qemu.log
+
+          grep -F "Pipe: userspace pipe handles created" qemu.log
+          grep -F "Pipe: data written from userspace" qemu.log
+          grep -F "Pipe: data read to userspace" qemu.log
+          grep -F "Pipe: EOF observed after writer close" qemu.log
+          grep -F "Userspace: PIPE handle lifecycle OK" qemu.log
+
           grep -F "Spawn: executable staged from VFS file" qemu.log
 
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
@@ -197,6 +204,13 @@ jobs:
                   "Directory: entry copied to userspace",
                   "Directory: end of directory reported",
                   "Userspace: runtime FAT32 directory enumeration OK",
+              ],
+              "pipe-handle-lifecycle": [
+                  "Pipe: userspace pipe handles created",
+                  "Pipe: data written from userspace",
+                  "Pipe: data read to userspace",
+                  "Pipe: EOF observed after writer close",
+                  "Userspace: PIPE handle lifecycle OK",
               ],
               "legacy-wait/child/reap": [
                   "Spawn: executable staged from VFS file",
