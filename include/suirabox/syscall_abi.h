@@ -43,11 +43,15 @@
 #define SB_SYS_PIPE_CREATE           19
 #define SB_SYS_PIPE_READ             20
 #define SB_SYS_PIPE_WRITE            21
+#define SB_SYS_EVENT_CREATE          22
+#define SB_SYS_EVENT_WAIT            23
+#define SB_SYS_EVENT_SIGNAL          24
+#define SB_SYS_EVENT_RESET           25
 
 /* The original frame dispatcher owns 0..16. The entry router extends the same
  * ABI append-only with object-specific calls 17 and above. */
 #define SB_SYS_CORE_MAX_NUMBER   SB_SYS_FILE_OPEN
-#define SB_SYS_PUBLIC_MAX_NUMBER SB_SYS_PIPE_WRITE
+#define SB_SYS_PUBLIC_MAX_NUMBER SB_SYS_EVENT_RESET
 #ifdef SB_SYSCALL_CORE_DISPATCH_BUILD
 #define SB_SYS_MAX_NUMBER SB_SYS_CORE_MAX_NUMBER
 #else
@@ -67,6 +71,7 @@
 #define SB_SYS_ERROR_IO           -7
 #define SB_SYS_ERROR_WOULD_BLOCK  -8
 #define SB_SYS_ERROR_CLOSED       -9
+#define SB_SYS_ERROR_TIMEOUT      -10
 
 #define SB_SYS_LOG_MAX          256
 #define SB_SYS_FILE_IO_MAX      256
@@ -83,6 +88,12 @@
 #define SB_PIPE_HANDLES_READ_OFFSET  0
 #define SB_PIPE_HANDLES_WRITE_OFFSET 8
 #define SB_PIPE_HANDLES_SIZE         16
+
+/* EVENT_CREATE takes rdi=0/1 for the initial manual-reset signal state.
+ * EVENT_WAIT takes rsi=timeout ticks. A zero timeout is a nonblocking poll and
+ * returns WOULD_BLOCK for an unsignaled event. */
+#define SB_EVENT_INITIAL_UNSIGNALED 0
+#define SB_EVENT_INITIAL_SIGNALED   1
 
 /* Fixed directory-entry ABI. Names are a non-empty component, never a path. */
 #define SB_DIRECTORY_ENTRY_TYPE_NONE      0
