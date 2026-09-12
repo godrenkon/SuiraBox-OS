@@ -23,6 +23,7 @@ static uint64_t sleep_validation_task_id;
 static uint32_t block_validation_stage;
 static uint64_t block_validation_task_id;
 static int cross_process_switch_logged;
+static int timed_block_enter_logged;
 static int timed_block_wake_logged;
 
 extern char stack_top;
@@ -168,6 +169,7 @@ void scheduler_init(void) {
     block_validation_stage = 0u;
     block_validation_task_id = 0u;
     cross_process_switch_logged = 0;
+    timed_block_enter_logged = 0;
     timed_block_wake_logged = 0;
     sched_debug("[SCHED] scalar state ready\r\n");
 }
@@ -312,15 +314,20 @@ int scheduler_block_current(void) {
 }
 
 int scheduler_block_current_until(uint64_t delay_ticks, uint64_t timeout_result) {
-    if (delay_ticks == 0u || delay_ticks > SB_MAX_SLEEP_TICKS) return -4;
-    const int result = scheduler_block_current();
-    if (result != 0) return result;
-
     sb_task_t *current = scheduler_current();
-    if (current == 0 || current->state != SB_TASK_BLOCKED) return -5;
+    if (current == 0) return -1;
+    if (current->user_task == 0u) return -2;
+    if (current->state != SB_TASK_RUNNING) return -3;
+    if (delay_ticks == 0u || delay_ticks > SB_MAX_SLEEP_TICKS) return -4;
+
+    current->state = SB_TASK_BLOCKED;
     current->wake_tick = scheduler_tick_count + delay_ticks;
     current->block_timeout_result = timeout_result;
     current->block_timeout_armed = 1u;
+    if (!timed_block_enter_logged) {
+        timed_block_enter_logged = 1;
+        sched_debug("Scheduler: timed user task entered BLOCKED\r\n");
+    }
     return 0;
 }
 
