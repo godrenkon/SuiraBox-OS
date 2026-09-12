@@ -23,6 +23,7 @@ static uint64_t sleep_validation_task_id;
 static uint32_t block_validation_stage;
 static uint64_t block_validation_task_id;
 static int cross_process_switch_logged;
+static int timed_block_wake_logged;
 
 extern char stack_top;
 extern void sb_context_switch(sb_task_context_t *old_context,
@@ -61,6 +62,7 @@ static void clear_task(volatile sb_task_t *task) {
     task->runtime_ticks = 0u;
     task->dispatch_count = 0u;
     task->wake_tick = 0u;
+    task->block_timeout_result = 0u;
     task->exit_code = 0;
     task->priority = 0u;
     task->state = SB_TASK_UNUSED;
@@ -70,6 +72,7 @@ static void clear_task(volatile sb_task_t *task) {
     task->kernel_stack_base = 0u;
     task->kernel_stack_top = 0u;
     task->user_task = 0u;
+    task->block_timeout_armed = 0u;
 }
 
 static int task_index_of(const sb_task_t *task, uint32_t *index) {
@@ -123,6 +126,8 @@ static void mark_task_ready(sb_task_t *task) {
     if (task == 0) return;
     task->state = SB_TASK_READY;
     task->wake_tick = 0u;
+    task->block_timeout_result = 0u;
+    task->block_timeout_armed = 0u;
     if (sleep_validation_stage == 2u && task->id == sleep_validation_task_id) {
         sleep_validation_stage = 3u;
         sched_debug("Scheduler: sleeping user task woke\r\n");
@@ -146,6 +151,8 @@ void scheduler_init(void) {
     tasks[0].runtime_ticks = 0u;
     tasks[0].dispatch_count = 1u;
     tasks[0].wake_tick = 0u;
+    tasks[0].block_timeout_result = 0u;
+    tasks[0].block_timeout_armed = 0u;
     tasks[0].priority = SB_BOOTSTRAP_PRIORITY;
     tasks[0].state = SB_TASK_RUNNING;
     tasks[0].address_space_cr3 = read_cr3();
@@ -161,6 +168,7 @@ void scheduler_init(void) {
     block_validation_stage = 0u;
     block_validation_task_id = 0u;
     cross_process_switch_logged = 0;
+    timed_block_wake_logged = 0;
     sched_debug("[SCHED] scalar state ready\r\n");
 }
 
@@ -171,6 +179,23 @@ void scheduler_tick(void) {
         if (tasks[i].state == SB_TASK_SLEEPING &&
             tick_reached(scheduler_tick_count, tasks[i].wake_tick)) {
             mark_task_ready((sb_task_t *)(uintptr_t)&tasks[i]);
+            continue;
+        }
+
+        if (tasks[i].state == SB_TASK_BLOCKED &&
+            tasks[i].block_timeout_armed != 0u &&
+            tick_reached(scheduler_tick_count, tasks[i].wake_tick) &&
+            tasks[i].irq_frame_rsp != 0u) {
+            sb_task_t *task = (sb_task_t *)(uintptr_t)&tasks[i];
+            sb_irq_frame_t *frame =
+                (sb_irq_frame_t *)(uintptr_t)task->irq_frame_rsp;
+            frame->rax = task->block_timeout_result;
+            mark_task_ready(task);
+            report_block_wake(task);
+            if (!timed_block_wake_logged) {
+                timed_block_wake_logged = 1;
+                sched_debug("Scheduler: timed blocked task woke\r\n");
+            }
         }
     }
 
@@ -276,11 +301,26 @@ int scheduler_block_current(void) {
     if (current->state != SB_TASK_RUNNING) return -3;
     current->state = SB_TASK_BLOCKED;
     current->wake_tick = 0u;
+    current->block_timeout_result = 0u;
+    current->block_timeout_armed = 0u;
     if (block_validation_stage == 0u) {
         block_validation_stage = 1u;
         block_validation_task_id = current->id;
         sched_debug("Scheduler: user task entered BLOCKED\r\n");
     }
+    return 0;
+}
+
+int scheduler_block_current_until(uint64_t delay_ticks, uint64_t timeout_result) {
+    if (delay_ticks == 0u || delay_ticks > SB_MAX_SLEEP_TICKS) return -4;
+    const int result = scheduler_block_current();
+    if (result != 0) return result;
+
+    sb_task_t *current = scheduler_current();
+    if (current == 0 || current->state != SB_TASK_BLOCKED) return -5;
+    current->wake_tick = scheduler_tick_count + delay_ticks;
+    current->block_timeout_result = timeout_result;
+    current->block_timeout_armed = 1u;
     return 0;
 }
 
@@ -293,6 +333,8 @@ int scheduler_sleep_current(uint64_t delay_ticks) {
     if (delay_ticks == 0u) delay_ticks = 1u;
 
     current->wake_tick = scheduler_tick_count + delay_ticks;
+    current->block_timeout_result = 0u;
+    current->block_timeout_armed = 0u;
     current->state = SB_TASK_SLEEPING;
     if (sleep_validation_stage == 0u) {
         sleep_validation_stage = 1u;
@@ -324,6 +366,11 @@ int scheduler_wake_task_with_result(uint64_t id, uint64_t result) {
     return 0;
 }
 
+int scheduler_task_is_blocked(uint64_t id) {
+    sb_task_t *task = task_by_id(id);
+    return task != 0 && task->state == SB_TASK_BLOCKED;
+}
+
 int scheduler_exit_current_process(int64_t exit_code) {
     sb_task_t *current = scheduler_current();
     if (current == 0 || current->user_task == 0u || current->process_id == 0u) return -1;
@@ -335,6 +382,8 @@ int scheduler_exit_current_process(int64_t exit_code) {
         if (tasks[i].state == SB_TASK_UNUSED || tasks[i].process_id != pid) continue;
         tasks[i].state = SB_TASK_EXITED;
         tasks[i].wake_tick = 0u;
+        tasks[i].block_timeout_result = 0u;
+        tasks[i].block_timeout_armed = 0u;
         tasks[i].exit_code = exit_code;
         marked = 1;
     }
