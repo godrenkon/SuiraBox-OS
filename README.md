@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **8-7 cache / writeback**。generation付きhandle、一般VFS pathによるFILE/DIRECTORY API、VFS path spawn、ATA block device、FAT32 mount/read/enumerationまでQEMUで実動作確認済みです。現在はcanonical block I/O境界のread cacheを固め、次にdirty/writeback semanticsへ進みます。
+> **Current focus:** **7-7 event / wait object**。process-local generation handle、nonblocking PIPE、一般VFS FILE/DIRECTORY、VFS path spawn、ATA/FAT32、block write-back cacheまでQEMU/host testで確認済みです。次はevent/wait objectを作り、PIPEなどのIPCをscheduler BLOCKED/wakeへ安全に接続できる共通待機基盤へ進みます。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -142,9 +142,9 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **7-2** syscall番号・ABI versioning
 - [x] **7-3** user pointer validation
 - [x] **7-4** handle / descriptor基盤
-- [ ] **7-5** pipe
+- [x] **7-5** pipe
 - [ ] **7-6** message queue
-- [ ] **7-7** event / wait object
+- [*] **7-7** event / wait object
 - [ ] **7-8** shared memory + permission
 - [ ] **7-9** local service transport
 
@@ -156,8 +156,8 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **8-4** block device layer
 - [x] **8-5** filesystem abstraction
 - [x] **8-6** 初期filesystem実装
-- [*] **8-7** cache / writeback
-- [ ] **8-8** fsync / atomic update semantics
+- [x] **8-7** cache / writeback
+- [-] **8-8** fsync / atomic update semantics
 - [ ] **8-9** storage recovery
 
 ## 9. Network Stack
@@ -288,27 +288,27 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 GitHub Actions上のx86_64 QEMU smoke testで、timer IRQによるring3 taskへのpreemption、保存済みIRQ frameからのresume、process間CR3切替、BLOCKED / SLEEPING遷移、timer deadline wake、VFS path spawn、child EXIT、address-space / kernel-stack cleanup、parent WAITのwake/resumeまで実CPU経路で確認済みです。
 
-### Verified syscall / handle boundary
+### Verified syscall / handle / IPC boundary
 
-**7-1〜7-4: versioned ABI + user pointer validation + generation handles**
+**7-1〜7-5: versioned ABI + user pointer validation + generation handles + PIPE**
 
 `int 0x80` entryでは全GPRを保存し、共通ABI headerでsyscall番号・register ABI・error表現・ABI versionを固定しています。user pointerは対象processのpage tableを走査してPRESENT / USER / WRITABLEを検査し、kernelはuser virtual addressを直接dereferenceせず、検証済みphysical mappingをページ単位でcopyします。
 
-process-local handle tableはtype・rights・generation・close callbackを保持し、PROCESS / FILE / DIRECTORY objectをuserspaceへraw pointerなしで公開します。close後のstale generation拒否、rights/type検査、process teardown時のclose-allまでhost testとQEMUで確認済みです。
+process-local handle tableはtype・rights・generation・close callbackを保持し、PROCESS / FILE / DIRECTORY / PIPE objectをuserspaceへraw pointerなしで公開します。PIPEは4096-byte ring buffer、READ/WRITE endpoint別rights、`WOULD_BLOCK` backpressure、peer-close EOF/CLOSED semantics、close後stale generationまでhost testとQEMUで確認済みです。現在のPIPE syscallはnonblockingで、blocking wakeは7-7のwait objectへ分離します。
 
 ### Verified VFS / storage foundation
 
-**8-1〜8-6: block → FAT32 → VFS namespace → FILE/DIRECTORY**
+**8-1〜8-7: block → write-back cache → FAT32 → VFS namespace → FILE/DIRECTORY**
 
 canonical block I/O、ATA PIO device、VFS node/open-file/open-directory object、mount/path resolver、FAT32 adapterを接続しています。CIは64 MiBの実FAT32 imageを作成し、QEMU上で`/disk/RUNTIME.TXT`をFILE handleから読み、`/disk`をDIRECTORY handleで列挙してEOFまで到達することを必須化しています。
 
+block cacheは固定16-entryのsector cacheで、device identity + LBAをkeyにread hit/missを処理し、full-sector writeはdirty entryとして保持します。dirty read-after-write、replacement/device unregister/explicit flushでのwriteback、writeback failure時のdirty保持までhost testで固定しています。`sb_block_flush()`と`sb_vfs_sync()`がcanonical flush境界です。
+
 ### Primary work
 
-**8-7: cache / writeback**
+**7-7: event / wait object**
 
-canonical block read境界へ固定16-entryのsector cacheを追加済みです。cache keyはdevice identity + LBAで、hit/miss/fill/invalidation統計、write後invalidate、failed-read非fill、device unregister時の全entry invalidationをhost testで固定しています。
-
-現在のcacheは**read cacheのみ**です。dirty page/sector、writeback queue、flush ordering、fsyncとの接続は未実装のため8-7全体は継続中です。
+次はWAIT/SIGNAL可能なevent objectをprocess-local handleへ載せ、現在`WOULD_BLOCK`を返すPIPEなどのIPCをschedulerのBLOCKED/wake経路へ共通化します。process WAITで実証済みの保存syscall frame復帰モデルを、process専用ではないwaitable kernel objectへ一般化する段階です。
 
 ### Deliberately still partial
 
@@ -316,7 +316,7 @@ canonical block read境界へ固定16-entryのsector cacheを追加済みです�
 - **4-7**: user/kernel stackは動作するが、guard page・overflow policy・可変stack policyは未完成
 - **5-2**: IRQ preemption contextとcooperative kernel contextは分離済みだが、context ABI全体の整理は継続中
 - **6-7**: 複数processの並行実行は確認済みだが、一般的なmulti-thread runtimeは未完成
-- **8-7**: read cacheは実装済みだが、dirty tracking / writeback / flush semanticsは未完成
+- **8-8**: block/VFS flushとVFS file sync contractは実装済みだが、read-only FAT32のためuserspace fsync・writable metadata ordering・atomic updateは未完成
 
 ---
 
