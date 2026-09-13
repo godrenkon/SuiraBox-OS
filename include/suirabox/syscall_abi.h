@@ -7,36 +7,39 @@
 #define SB_SYSCALL_ABI_VERSION 1
 #define SB_SYSCALL_VECTOR      0x80
 
-#define SB_SYS_GET_TICKS             0
-#define SB_SYS_PROCESS_ID            1
-#define SB_SYS_EXIT                  2
-#define SB_SYS_SLEEP                 3
-#define SB_SYS_SPAWN                 4
-#define SB_SYS_WAIT_PROCESS          5
-#define SB_SYS_ABI_VERSION           6
-#define SB_SYS_LOG_WRITE             7
-#define SB_SYS_ABI_INFO              8
-#define SB_SYS_PROCESS_OPEN_SELF     9
-#define SB_SYS_HANDLE_INFO           10
-#define SB_SYS_HANDLE_CLOSE          11
-#define SB_SYS_SPAWN_REQUEST         12
-#define SB_SYS_FILE_OPEN_BOOT_MODULE 13
-#define SB_SYS_FILE_READ             14
-#define SB_SYS_FILE_SEEK             15
-#define SB_SYS_FILE_OPEN             16
-#define SB_SYS_DIRECTORY_OPEN        17
-#define SB_SYS_DIRECTORY_READ        18
-#define SB_SYS_PIPE_CREATE           19
-#define SB_SYS_PIPE_READ             20
-#define SB_SYS_PIPE_WRITE            21
-#define SB_SYS_EVENT_CREATE          22
-#define SB_SYS_EVENT_WAIT            23
-#define SB_SYS_EVENT_SIGNAL          24
-#define SB_SYS_EVENT_RESET           25
-#define SB_SYS_THREAD_CREATE         26
+#define SB_SYS_GET_TICKS              0
+#define SB_SYS_PROCESS_ID             1
+#define SB_SYS_EXIT                   2
+#define SB_SYS_SLEEP                  3
+#define SB_SYS_SPAWN                  4
+#define SB_SYS_WAIT_PROCESS           5
+#define SB_SYS_ABI_VERSION            6
+#define SB_SYS_LOG_WRITE              7
+#define SB_SYS_ABI_INFO               8
+#define SB_SYS_PROCESS_OPEN_SELF      9
+#define SB_SYS_HANDLE_INFO            10
+#define SB_SYS_HANDLE_CLOSE           11
+#define SB_SYS_SPAWN_REQUEST          12
+#define SB_SYS_FILE_OPEN_BOOT_MODULE  13
+#define SB_SYS_FILE_READ              14
+#define SB_SYS_FILE_SEEK              15
+#define SB_SYS_FILE_OPEN              16
+#define SB_SYS_DIRECTORY_OPEN         17
+#define SB_SYS_DIRECTORY_READ         18
+#define SB_SYS_PIPE_CREATE            19
+#define SB_SYS_PIPE_READ              20
+#define SB_SYS_PIPE_WRITE             21
+#define SB_SYS_EVENT_CREATE           22
+#define SB_SYS_EVENT_WAIT             23
+#define SB_SYS_EVENT_SIGNAL           24
+#define SB_SYS_EVENT_RESET            25
+#define SB_SYS_THREAD_CREATE          26
+#define SB_SYS_MESSAGE_QUEUE_CREATE   27
+#define SB_SYS_MESSAGE_QUEUE_SEND     28
+#define SB_SYS_MESSAGE_QUEUE_RECEIVE  29
 
 #define SB_SYS_CORE_MAX_NUMBER   SB_SYS_FILE_OPEN
-#define SB_SYS_PUBLIC_MAX_NUMBER SB_SYS_THREAD_CREATE
+#define SB_SYS_PUBLIC_MAX_NUMBER SB_SYS_MESSAGE_QUEUE_RECEIVE
 #ifdef SB_SYSCALL_CORE_DISPATCH_BUILD
 #define SB_SYS_MAX_NUMBER SB_SYS_CORE_MAX_NUMBER
 #else
@@ -56,11 +59,12 @@
 #define SB_SYS_ERROR_CLOSED       -9
 #define SB_SYS_ERROR_TIMEOUT      -10
 
-#define SB_SYS_LOG_MAX       256
-#define SB_SYS_FILE_IO_MAX   256
-#define SB_SYS_PIPE_IO_MAX   256
-#define SB_SYS_FILE_NAME_MAX 63
-#define SB_SYS_PATH_MAX      255
+#define SB_SYS_LOG_MAX           256
+#define SB_SYS_FILE_IO_MAX       256
+#define SB_SYS_PIPE_IO_MAX       256
+#define SB_SYS_MESSAGE_MAX       64
+#define SB_SYS_FILE_NAME_MAX     63
+#define SB_SYS_PATH_MAX          255
 
 #define SB_FILE_ACCESS_READ 0x1
 
