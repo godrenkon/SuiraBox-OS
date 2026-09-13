@@ -55,15 +55,6 @@ int scheduler_add_user_task(uint64_t id,
                             uint64_t address_space_cr3,
                             uint64_t user_entry,
                             uint64_t user_stack_top);
-/* Same synthetic ring3-frame creation as scheduler_add_user_task(), with the
- * first SysV argument register initialized before the task becomes runnable. */
-int scheduler_add_user_task_arg(uint64_t id,
-                                uint64_t process_id,
-                                uint32_t priority,
-                                uint64_t address_space_cr3,
-                                uint64_t user_entry,
-                                uint64_t user_stack_top,
-                                uint64_t initial_rdi);
 
 sb_task_t *scheduler_pick_next(void);
 uint32_t scheduler_task_count(void);
