@@ -3,21 +3,7 @@
 
 #include <suirabox/handle_abi.h>
 
-/*
- * SuiraBox userspace syscall ABI, version 1.
- *
- * x86_64 entry mechanism: int $0x80
- *   rax = syscall number
- *   rdi = arg0
- *   rsi = arg1
- *   rdx = arg2
- *   r10 = arg3
- *   r8  = arg4
- *
- * Return:
- *   rax >= 0 : success/result
- *   rax <  0 : stable ABI error code
- */
+/* SuiraBox userspace syscall ABI, version 1. */
 #define SB_SYSCALL_ABI_VERSION 1
 #define SB_SYSCALL_VECTOR      0x80
 
@@ -47,20 +33,17 @@
 #define SB_SYS_EVENT_WAIT            23
 #define SB_SYS_EVENT_SIGNAL          24
 #define SB_SYS_EVENT_RESET           25
+#define SB_SYS_THREAD_CREATE         26
 
-/* The original frame dispatcher owns 0..16. The entry router extends the same
- * ABI append-only with object-specific calls 17 and above. */
 #define SB_SYS_CORE_MAX_NUMBER   SB_SYS_FILE_OPEN
-#define SB_SYS_PUBLIC_MAX_NUMBER SB_SYS_EVENT_RESET
+#define SB_SYS_PUBLIC_MAX_NUMBER SB_SYS_THREAD_CREATE
 #ifdef SB_SYSCALL_CORE_DISPATCH_BUILD
 #define SB_SYS_MAX_NUMBER SB_SYS_CORE_MAX_NUMBER
 #else
 #define SB_SYS_MAX_NUMBER SB_SYS_PUBLIC_MAX_NUMBER
 #endif
 
-/* Legacy bootstrap selector retained for ABI v1 compatibility. New code should
- * use SB_SYS_SPAWN_REQUEST and an explicit source/name request. */
-#define SB_SPAWN_IMAGE_CHILD   1
+#define SB_SPAWN_IMAGE_CHILD 1
 
 #define SB_SYS_ERROR_INVALID      -1
 #define SB_SYS_ERROR_FAULT        -2
@@ -73,29 +56,21 @@
 #define SB_SYS_ERROR_CLOSED       -9
 #define SB_SYS_ERROR_TIMEOUT      -10
 
-#define SB_SYS_LOG_MAX          256
-#define SB_SYS_FILE_IO_MAX      256
-#define SB_SYS_PIPE_IO_MAX      256
-#define SB_SYS_FILE_NAME_MAX    63
-#define SB_SYS_PATH_MAX         255
+#define SB_SYS_LOG_MAX       256
+#define SB_SYS_FILE_IO_MAX   256
+#define SB_SYS_PIPE_IO_MAX   256
+#define SB_SYS_FILE_NAME_MAX 63
+#define SB_SYS_PATH_MAX      255
 
-/* Stable userspace FILE_OPEN access bits. Unsupported bits are rejected rather
- * than silently ignored so future write/create flags remain append-only. */
-#define SB_FILE_ACCESS_READ     0x1
+#define SB_FILE_ACCESS_READ 0x1
 
-/* PIPE_CREATE copies this fixed pair to writable userspace memory. The handles
- * are opaque and role-specific through their rights: read vs write. */
 #define SB_PIPE_HANDLES_READ_OFFSET  0
 #define SB_PIPE_HANDLES_WRITE_OFFSET 8
 #define SB_PIPE_HANDLES_SIZE         16
 
-/* EVENT_CREATE takes rdi=0/1 for the initial manual-reset signal state.
- * EVENT_WAIT takes rsi=timeout ticks. A zero timeout is a nonblocking poll and
- * returns WOULD_BLOCK for an unsignaled event. */
 #define SB_EVENT_INITIAL_UNSIGNALED 0
 #define SB_EVENT_INITIAL_SIGNALED   1
 
-/* Fixed directory-entry ABI. Names are a non-empty component, never a path. */
 #define SB_DIRECTORY_ENTRY_TYPE_NONE      0
 #define SB_DIRECTORY_ENTRY_TYPE_REGULAR   1
 #define SB_DIRECTORY_ENTRY_TYPE_DIRECTORY 2
@@ -107,14 +82,10 @@
 #define SB_DIRECTORY_ENTRY_NAME_MAX           63
 #define SB_DIRECTORY_ENTRY_SIZE               80
 
-/* Fixed ABI_INFO output layout, also usable by assembler tests. */
 #define SB_ABI_INFO_VERSION_OFFSET     0
 #define SB_ABI_INFO_MAX_SYSCALL_OFFSET 8
 #define SB_ABI_INFO_SIZE               16
 
-/* Versioned spawn request. Version 1 names the image source separately from its
- * identifier. Source 1 preserves the bootstrap module ABI; source 2 resolves an
- * absolute path through the kernel-wide VFS namespace. */
 #define SB_SPAWN_REQUEST_VERSION              1
 #define SB_SPAWN_SOURCE_BOOT_MODULE           1
 #define SB_SPAWN_SOURCE_VFS_PATH              2
