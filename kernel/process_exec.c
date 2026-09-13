@@ -8,6 +8,7 @@
 #include "mm/vmm.h"
 
 #define SB_USER_STACK_PAGES 4u
+#define SB_USER_STACK_GUARD_PAGES 1u
 
 typedef struct {
     const uint8_t *data;
@@ -16,6 +17,7 @@ typedef struct {
 
 static uint64_t registered_multiboot_info;
 static int vfs_spawn_staged_logged;
+static int additional_thread_logged;
 
 static void process_exec_debug_char(char c) {
     while (1) {
@@ -60,19 +62,33 @@ static int exec_memory_read(sb_vfs_node_t *node,
 static const sb_vfs_node_ops_t exec_memory_ops = {
     .read = exec_memory_read,
     .write = 0,
+    .sync = 0,
     .lookup = 0,
     .readdir = 0,
     .release = 0,
 };
+
+static void unmap_user_stack(sb_address_space_t *space,
+                             uint64_t bottom,
+                             uint64_t top) {
+    if (space == 0 || top <= bottom) return;
+    for (uint64_t va = bottom; va < top; va += SB_PAGE_SIZE) {
+        (void)address_space_unmap_owned_user(space, va);
+    }
+}
 
 static int map_user_stack(sb_address_space_t *space,
                           uint64_t bottom,
                           uint64_t top) {
     if (space == 0 || top <= bottom || ((top - bottom) % SB_PAGE_SIZE) != 0u) return -1;
 
+    uint64_t mapped_top = bottom;
     for (uint64_t va = bottom; va < top; va += SB_PAGE_SIZE) {
         void *page = pmm_alloc_page();
-        if (page == 0) return -1;
+        if (page == 0) {
+            unmap_user_stack(space, bottom, mapped_top);
+            return -1;
+        }
         for (uint32_t i = 0; i < SB_PAGE_SIZE; ++i) {
             ((uint8_t *)page)[i] = 0;
         }
@@ -80,8 +96,10 @@ static int map_user_stack(sb_address_space_t *space,
                                    (uint64_t)(uintptr_t)page,
                                    SB_VMM_WRITABLE | SB_VMM_NX | SB_VMM_OWNED) != 0) {
             pmm_free_page(page);
+            unmap_user_stack(space, bottom, mapped_top);
             return -1;
         }
+        mapped_top = va + SB_PAGE_SIZE;
     }
     return 0;
 }
@@ -178,6 +196,75 @@ sb_process_t *process_spawn_elf_image(const void *image,
     process->state = SB_PROCESS_RUNNING;
     thread->state = SB_PROCESS_RUNNING;
     return process;
+}
+
+int process_spawn_user_thread(sb_process_t *process,
+                              uint64_t user_entry,
+                              uint32_t priority,
+                              uint64_t *tid_out) {
+    if (tid_out != 0) *tid_out = 0u;
+    if (process == 0 || tid_out == 0 ||
+        process->state != SB_PROCESS_RUNNING ||
+        process->address_space.pml4_physical == 0u ||
+        process->thread_count == 0u ||
+        process->thread_count >= SB_MAX_THREADS_PER_PROCESS ||
+        user_entry < SB_USER_BASE || user_entry >= SB_USER_LIMIT) {
+        return -1;
+    }
+
+    uint64_t entry_physical = 0u;
+    if (address_space_translate_user(&process->address_space,
+                                     user_entry,
+                                     &entry_physical) != 0) {
+        return -2;
+    }
+
+    const uint64_t stack_stride =
+        (SB_USER_STACK_PAGES + SB_USER_STACK_GUARD_PAGES) * SB_PAGE_SIZE;
+    const uint64_t slot = process->thread_count;
+    if (slot > (SB_USER_STACK_TOP - SB_USER_BASE) / stack_stride) return -3;
+
+    const uint64_t stack_top = SB_USER_STACK_TOP - slot * stack_stride;
+    const uint64_t stack_bottom = stack_top - SB_USER_STACK_PAGES * SB_PAGE_SIZE;
+    if (stack_bottom <= SB_USER_BASE || stack_top >= SB_USER_LIMIT) return -3;
+    if (map_user_stack(&process->address_space, stack_bottom, stack_top) != 0) {
+        return -4;
+    }
+
+    const uint64_t tid = process_allocate_tid();
+    if (tid == 0u) {
+        unmap_user_stack(&process->address_space, stack_bottom, stack_top);
+        return -5;
+    }
+
+    sb_thread_t *thread = process_create_thread(process, tid, priority);
+    if (thread == 0) {
+        unmap_user_stack(&process->address_space, stack_bottom, stack_top);
+        return -6;
+    }
+
+    if (scheduler_add_user_task(thread->tid,
+                                process->pid,
+                                thread->priority,
+                                process->address_space.pml4_physical,
+                                user_entry,
+                                stack_top) != 0) {
+        if (process->thread_count != 0u &&
+            &process->threads[process->thread_count - 1u] == thread) {
+            --process->thread_count;
+            *thread = (sb_thread_t){0};
+        }
+        unmap_user_stack(&process->address_space, stack_bottom, stack_top);
+        return -7;
+    }
+
+    thread->state = SB_PROCESS_RUNNING;
+    *tid_out = tid;
+    if (!additional_thread_logged) {
+        additional_thread_logged = 1;
+        process_exec_debug("Thread: additional user thread created\r\n");
+    }
+    return 0;
 }
 
 sb_process_t *process_spawn_vfs_file(sb_vfs_file_t *file,
