@@ -38,6 +38,12 @@ static uint16_t pdpt_index(uint64_t address) { return (uint16_t)((address >> 30)
 static uint16_t pd_index(uint64_t address) { return (uint16_t)((address >> 21) & 0x1FFu); }
 static uint16_t pt_index(uint64_t address) { return (uint16_t)((address >> 12) & 0x1FFu); }
 
+static uint64_t read_cr3(void) {
+    uint64_t value;
+    __asm__ volatile ("mov %%cr3, %0" : "=r"(value));
+    return value;
+}
+
 int address_space_create(sb_address_space_t *space) {
     if (space == 0) return -1;
 
@@ -47,8 +53,7 @@ int address_space_create(sb_address_space_t *space) {
     uint64_t *new_pml4 = (uint64_t *)pml4_page;
     zero_page(new_pml4);
 
-    uint64_t current_cr3;
-    __asm__ volatile ("mov %%cr3, %0" : "=r"(current_cr3));
+    const uint64_t current_cr3 = read_cr3();
     uint64_t *current = (uint64_t *)(uintptr_t)(current_cr3 & ENTRY_ADDR_MASK);
 
     /* Keep the bootstrap/kernel identity mapping supervisor-only in PML4[0]. */
@@ -67,9 +72,6 @@ int address_space_map_user(sb_address_space_t *space,
         pml4_index(virtual_address) != SB_USER_PML4_INDEX ||
         virtual_address >= SB_USER_LIMIT) return -1;
 
-    /* Bit 63 is reserved unless EFER.NXE is enabled. Guarantee the CPU mode
-     * before publishing an NX PTE so a non-executable user page cannot turn
-     * into a reserved-bit page fault on first access. */
     if ((flags & SB_VMM_NX) != 0u && sb_cpu_enable_nx() != 0) return -3;
 
     uint64_t *pml4 = (uint64_t *)(uintptr_t)space->pml4_physical;
@@ -86,6 +88,48 @@ int address_space_map_user(sb_address_space_t *space,
     pt[index] = (physical_address & ENTRY_ADDR_MASK) |
                 SB_VMM_PRESENT | SB_VMM_USER |
                 (flags & (SB_VMM_WRITABLE | SB_VMM_OWNED | SB_VMM_NX));
+    return 0;
+}
+
+int address_space_unmap_owned_user(sb_address_space_t *space,
+                                   uint64_t virtual_address) {
+    if (space == 0 || space->pml4_physical == 0u ||
+        (virtual_address & PAGE_OFFSET_MASK) != 0u ||
+        pml4_index(virtual_address) != SB_USER_PML4_INDEX ||
+        virtual_address >= SB_USER_LIMIT) {
+        return -1;
+    }
+
+    uint64_t *pml4 = (uint64_t *)(uintptr_t)space->pml4_physical;
+    const uint64_t e4 = pml4[pml4_index(virtual_address)];
+    if ((e4 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER) ||
+        (e4 & ENTRY_HUGE_PAGE) != 0u) return -2;
+
+    uint64_t *pdpt = table_from_entry(e4);
+    const uint64_t e3 = pdpt[pdpt_index(virtual_address)];
+    if ((e3 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER) ||
+        (e3 & ENTRY_HUGE_PAGE) != 0u) return -2;
+
+    uint64_t *pd = table_from_entry(e3);
+    const uint64_t e2 = pd[pd_index(virtual_address)];
+    if ((e2 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER) ||
+        (e2 & ENTRY_HUGE_PAGE) != 0u) return -2;
+
+    uint64_t *pt = table_from_entry(e2);
+    const uint16_t index = pt_index(virtual_address);
+    const uint64_t e1 = pt[index];
+    if ((e1 & (SB_VMM_PRESENT | SB_VMM_USER | SB_VMM_OWNED)) !=
+        (SB_VMM_PRESENT | SB_VMM_USER | SB_VMM_OWNED)) {
+        return -2;
+    }
+
+    const uint64_t physical = e1 & ENTRY_ADDR_MASK;
+    pt[index] = 0u;
+    if ((read_cr3() & ENTRY_ADDR_MASK) ==
+        (space->pml4_physical & ENTRY_ADDR_MASK)) {
+        __asm__ volatile ("invlpg (%0)" : : "r"(virtual_address) : "memory");
+    }
+    pmm_free_page((void *)(uintptr_t)physical);
     return 0;
 }
 
@@ -158,9 +202,6 @@ static void destroy_user_pd(uint64_t *pd) {
     for (uint32_t i = 0u; i < PT_ENTRIES; ++i) {
         const uint64_t entry = pd[i];
         if ((entry & SB_VMM_PRESENT) == 0u) continue;
-        /* User address spaces currently never create 2 MiB huge mappings. Do
-         * not guess ownership if one appears; leave it untouched rather than
-         * freeing an ambiguous physical range. */
         if ((entry & ENTRY_HUGE_PAGE) != 0u) continue;
         destroy_user_pt(table_from_entry(entry));
         pd[i] = 0u;
@@ -173,7 +214,6 @@ static void destroy_user_pdpt(uint64_t *pdpt) {
     for (uint32_t i = 0u; i < PT_ENTRIES; ++i) {
         const uint64_t entry = pdpt[i];
         if ((entry & SB_VMM_PRESENT) == 0u) continue;
-        /* User address spaces currently never create 1 GiB huge mappings. */
         if ((entry & ENTRY_HUGE_PAGE) != 0u) continue;
         destroy_user_pd(table_from_entry(entry));
         pdpt[i] = 0u;
@@ -192,7 +232,6 @@ void address_space_destroy(sb_address_space_t *space) {
         pml4[SB_USER_PML4_INDEX] = 0u;
     }
 
-    /* PML4[0] is shared kernel state and is intentionally never reclaimed here. */
     pmm_free_page((void *)(uintptr_t)space->pml4_physical);
     space->pml4_physical = 0u;
 }
