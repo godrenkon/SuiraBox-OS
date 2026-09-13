@@ -20,6 +20,11 @@ int address_space_map_user(sb_address_space_t *space,
                            uint64_t virtual_address,
                            uint64_t physical_address,
                            uint64_t flags);
+/* Remove one 4 KiB user leaf only when it is marked kernel-owned. The owned
+ * physical page is returned to PMM. Intermediate page-table pages are retained
+ * until address_space_destroy(), which keeps rollback simple and safe. */
+int address_space_unmap_owned_user(sb_address_space_t *space,
+                                   uint64_t virtual_address);
 int address_space_translate_user(const sb_address_space_t *space,
                                  uint64_t virtual_address,
                                  uint64_t *physical_address);
