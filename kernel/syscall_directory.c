@@ -1,6 +1,7 @@
 #include "syscall.h"
 #include "syscall_pipe.h"
 #include "syscall_event.h"
+#include "syscall_thread.h"
 #include "scheduler.h"
 #include "process.h"
 #include "user_access.h"
@@ -20,7 +21,7 @@ _Static_assert(SB_DIRECTORY_ENTRY_TYPE_DEVICE == SB_VFS_NODE_DEVICE,
                "directory device type mismatch");
 _Static_assert(sizeof(sb_directory_entry_t) == SB_DIRECTORY_ENTRY_SIZE,
                "directory entry ABI size mismatch");
-_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER == SB_SYS_EVENT_RESET,
+_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER == SB_SYS_THREAD_CREATE,
                "public syscall max-number table is stale");
 
 static int directory_open_logged;
@@ -29,40 +30,29 @@ static int directory_end_logged;
 static int writable_pointer_logged;
 static int readonly_pointer_logged;
 
-static uint64_t directory_error(int64_t code) {
-    return (uint64_t)code;
-}
+static uint64_t directory_error(int64_t code) { return (uint64_t)code; }
 
 static uint64_t directory_handle_error(int result) {
     switch (result) {
-        case SB_HANDLE_ERROR_NO_SPACE:
-            return directory_error(SB_SYS_ERROR_LIMIT);
-        case SB_HANDLE_ERROR_STALE:
-            return directory_error(SB_SYS_ERROR_STALE);
-        case SB_HANDLE_ERROR_RIGHTS:
-            return directory_error(SB_SYS_ERROR_RIGHTS);
+        case SB_HANDLE_ERROR_NO_SPACE: return directory_error(SB_SYS_ERROR_LIMIT);
+        case SB_HANDLE_ERROR_STALE: return directory_error(SB_SYS_ERROR_STALE);
+        case SB_HANDLE_ERROR_RIGHTS: return directory_error(SB_SYS_ERROR_RIGHTS);
         case SB_HANDLE_ERROR_INVALID:
         case SB_HANDLE_ERROR_TYPE:
-        default:
-            return directory_error(SB_SYS_ERROR_INVALID);
+        default: return directory_error(SB_SYS_ERROR_INVALID);
     }
 }
 
 static uint64_t directory_vfs_error(int result) {
     switch (result) {
-        case SB_VFS_OBJECT_ACCESS:
-            return directory_error(SB_SYS_ERROR_RIGHTS);
-        case SB_VFS_OBJECT_IO:
-            return directory_error(SB_SYS_ERROR_IO);
-        case SB_VFS_OBJECT_NOT_FOUND:
-            return directory_error(SB_SYS_ERROR_NOT_FOUND);
-        case SB_VFS_OBJECT_RANGE:
-            return directory_error(SB_SYS_ERROR_LIMIT);
+        case SB_VFS_OBJECT_ACCESS: return directory_error(SB_SYS_ERROR_RIGHTS);
+        case SB_VFS_OBJECT_IO: return directory_error(SB_SYS_ERROR_IO);
+        case SB_VFS_OBJECT_NOT_FOUND: return directory_error(SB_SYS_ERROR_NOT_FOUND);
+        case SB_VFS_OBJECT_RANGE: return directory_error(SB_SYS_ERROR_LIMIT);
         case SB_VFS_OBJECT_INVALID:
         case SB_VFS_OBJECT_NOT_SUPPORTED:
         case SB_VFS_OBJECT_CLOSED:
-        default:
-            return directory_error(SB_SYS_ERROR_INVALID);
+        default: return directory_error(SB_SYS_ERROR_INVALID);
     }
 }
 
@@ -88,9 +78,7 @@ static sb_process_t *directory_current_process(void) {
 static int directory_path_uses_boot_provider(const char *path, uint64_t length) {
     if (path == 0 || length < 5u ||
         path[0] != '/' || path[1] != 'b' || path[2] != 'o' ||
-        path[3] != 'o' || path[4] != 't') {
-        return 0;
-    }
+        path[3] != 'o' || path[4] != 't') return 0;
     return length == 5u || path[5] == '/';
 }
 
@@ -171,8 +159,7 @@ static sb_irq_frame_t *directory_open(sb_irq_frame_t *frame) {
         }
     }
 
-    sb_vfs_directory_t *directory =
-        (sb_vfs_directory_t *)kheap_alloc(sizeof(*directory));
+    sb_vfs_directory_t *directory = (sb_vfs_directory_t *)kheap_alloc(sizeof(*directory));
     if (directory == 0) {
         frame->rax = directory_error(SB_SYS_ERROR_LIMIT);
         return frame;
@@ -188,8 +175,7 @@ static sb_irq_frame_t *directory_open(sb_irq_frame_t *frame) {
     sb_handle_t handle = SB_HANDLE_INVALID;
     const int handle_result = sb_handle_allocate(&process->handles,
                                                  SB_HANDLE_TYPE_DIRECTORY,
-                                                 SB_HANDLE_RIGHT_READ |
-                                                     SB_HANDLE_RIGHT_QUERY,
+                                                 SB_HANDLE_RIGHT_READ | SB_HANDLE_RIGHT_QUERY,
                                                  directory,
                                                  directory_handle_close,
                                                  &handle);
@@ -225,9 +211,7 @@ static sb_irq_frame_t *directory_read(sb_irq_frame_t *frame) {
         return frame;
     }
 
-    if (user_access_validate(process,
-                             frame->rsi,
-                             sizeof(sb_directory_entry_t),
+    if (user_access_validate(process, frame->rsi, sizeof(sb_directory_entry_t),
                              SB_USER_ACCESS_WRITE) != 0) {
         frame->rax = directory_error(SB_SYS_ERROR_FAULT);
         return frame;
@@ -244,8 +228,7 @@ static sb_irq_frame_t *directory_read(sb_irq_frame_t *frame) {
         return frame;
     }
 
-    if (source.name_length == 0u ||
-        source.name_length > SB_DIRECTORY_ENTRY_NAME_MAX ||
+    if (source.name_length == 0u || source.name_length > SB_DIRECTORY_ENTRY_NAME_MAX ||
         source.type < SB_VFS_NODE_REGULAR || source.type > SB_VFS_NODE_DEVICE) {
         frame->rax = directory_error(SB_SYS_ERROR_IO);
         return frame;
@@ -255,9 +238,7 @@ static sb_irq_frame_t *directory_read(sb_irq_frame_t *frame) {
     entry.type = (uint32_t)source.type;
     entry.name_length = source.name_length;
     entry.size = source.size;
-    for (uint16_t i = 0u; i < source.name_length; ++i) {
-        entry.name[i] = source.name[i];
-    }
+    for (uint16_t i = 0u; i < source.name_length; ++i) entry.name[i] = source.name[i];
     entry.name[source.name_length] = '\0';
 
     if (user_copy_to(process, frame->rsi, &entry, sizeof(entry)) != 0) {
@@ -278,11 +259,10 @@ sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame) {
     if (frame->rax == SB_SYS_ABI_INFO) return entry_abi_info(frame);
     if (frame->rax == SB_SYS_DIRECTORY_OPEN) return directory_open(frame);
     if (frame->rax == SB_SYS_DIRECTORY_READ) return directory_read(frame);
-    if (frame->rax >= SB_SYS_PIPE_CREATE && frame->rax <= SB_SYS_PIPE_WRITE) {
+    if (frame->rax >= SB_SYS_PIPE_CREATE && frame->rax <= SB_SYS_PIPE_WRITE)
         return sb_syscall_dispatch_pipe(frame);
-    }
-    if (frame->rax >= SB_SYS_EVENT_CREATE && frame->rax <= SB_SYS_EVENT_RESET) {
+    if (frame->rax >= SB_SYS_EVENT_CREATE && frame->rax <= SB_SYS_EVENT_RESET)
         return sb_syscall_dispatch_event(frame);
-    }
+    if (frame->rax == SB_SYS_THREAD_CREATE) return sb_syscall_dispatch_thread(frame);
     return sb_syscall_dispatch_frame(frame);
 }
