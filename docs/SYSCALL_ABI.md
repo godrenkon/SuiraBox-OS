@@ -43,10 +43,11 @@ Current errors:
 | `-7` | `SB_SYS_ERROR_IO` | underlying object/provider I/O failed |
 | `-8` | `SB_SYS_ERROR_WOULD_BLOCK` | nonblocking operation cannot make progress yet |
 | `-9` | `SB_SYS_ERROR_CLOSED` | peer/end of an IPC object is closed |
+| `-10` | `SB_SYS_ERROR_TIMEOUT` | timed blocking wait reached its deadline |
 
 ## Version 1 syscall table
 
-The current public maximum syscall number is **21**.
+The current public maximum syscall number is **25**.
 
 | Number | Name | Arguments | Result |
 | ---: | --- | --- | --- |
@@ -72,12 +73,16 @@ The current public maximum syscall number is **21**.
 | 19 | `SB_SYS_PIPE_CREATE` | `rdi=writable sb_pipe_handles_t*` | 0 and fills read/write PIPE handles |
 | 20 | `SB_SYS_PIPE_READ` | `rdi=read_pipe`, `rsi=writable buffer`, `rdx=length` | bytes read, 0 at EOF, or `WOULD_BLOCK` |
 | 21 | `SB_SYS_PIPE_WRITE` | `rdi=write_pipe`, `rsi=readable buffer`, `rdx=length` | bytes written, `WOULD_BLOCK`, or `CLOSED` |
+| 22 | `SB_SYS_EVENT_CREATE` | `rdi=initial_signal_state` | EVENT handle |
+| 23 | `SB_SYS_EVENT_WAIT` | `rdi=event`, `rsi=timeout_ticks` | 0, `WOULD_BLOCK`, or `TIMEOUT` |
+| 24 | `SB_SYS_EVENT_SIGNAL` | `rdi=event` | 0 |
+| 25 | `SB_SYS_EVENT_RESET` | `rdi=event` | 0 |
 
 Syscall 4 and syscall 13 are retained for ABI-v1 compatibility. New code should prefer the versioned spawn request and generic VFS path interfaces.
 
 ## ABI info routing
 
-The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 21.
+The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 25.
 
 ## Userspace pointer rules
 
@@ -125,13 +130,7 @@ QEMU proves legacy selector spawn, versioned boot-module spawn, VFS-path spawn, 
 
 Handles are process-local opaque 64-bit values. Userspace may store, compare, and pass them back, but must not decode slot/generation representation.
 
-Each live entry contains:
-
-- object type;
-- rights mask;
-- kernel-only object pointer;
-- optional close callback;
-- generation used to reject stale values.
+Each live entry contains object type, rights mask, kernel-only object pointer, optional close callback, and a generation used to reject stale values.
 
 Current public object types include PROCESS, FILE, PIPE, EVENT, SHARED_MEMORY, SERVICE, and DIRECTORY. Defining a type does not imply every corresponding subsystem is complete.
 
@@ -141,39 +140,13 @@ Closing a handle invalidates its generation before invoking the object-specific 
 
 Process teardown closes all remaining handles before destroying the user address space and collecting the process slot.
 
-## FILE handles
+## FILE and DIRECTORY handles
 
-A VFS node represents the resource; an open `sb_vfs_file_t` owns independent offset/access state and a node reference. FILE handles currently use READ|QUERY for the read-only paths proven in CI.
+A VFS node represents the resource; an open `sb_vfs_file_t` owns independent offset/access state and a node reference. FILE handles currently use READ|QUERY for the read-only paths proven in CI. `SB_SYS_FILE_OPEN` resolves an absolute path through the system namespace. QEMU proves both `/boot/user-child` and `/disk/RUNTIME.TXT`.
 
-`SB_SYS_FILE_OPEN` resolves an absolute path through the system namespace. QEMU proves both `/boot/user-child` and a real FAT32 disk path `/disk/RUNTIME.TXT`.
+DIRECTORY handles use READ|QUERY. `SB_SYS_DIRECTORY_READ` copies a stable public 80-byte entry and reports EOF as `SB_SYS_ERROR_NOT_FOUND` without advancing the cursor. QEMU verifies a rejected read-only userspace output pointer does not consume the first FAT32 directory entry.
 
-The runtime disk test uses the full path:
-
-`QEMU IDE -> ATA PIO -> block device -> FAT32 -> system VFS /disk -> FILE handle -> userspace read`.
-
-FILE close releases the VFS object and heap-owned open state through the handle close callback.
-
-The VFS object layer also exposes `sb_vfs_file_sync()`. Writable backends may provide a node-level sync callback; the block/VFS layer already provides explicit device/mount flush operations. The current FAT32 runtime mount remains read-only, so userspace fsync and atomic update semantics are not yet complete.
-
-## DIRECTORY handles
-
-`SB_SYS_DIRECTORY_OPEN` resolves an absolute directory path through the same system VFS namespace and returns a DIRECTORY handle with READ|QUERY rights.
-
-`SB_SYS_DIRECTORY_READ` copies a stable public 80-byte entry:
-
-```c
-typedef struct {
-    uint32_t type;
-    uint16_t name_length;
-    uint16_t reserved;
-    uint64_t size;
-    char name[64];
-} sb_directory_entry_t;
-```
-
-Entry type values are regular file, directory, or device. `name` is one component, not a path. EOF is reported as `SB_SYS_ERROR_NOT_FOUND` and does not advance the cursor.
-
-The kernel validates the destination for the full 80 bytes before calling the VFS directory iterator. QEMU deliberately supplies a read-only output pointer first, requires `SB_SYS_ERROR_FAULT`, then verifies the first real FAT32 entry is still `RUNTIME.TXT`. It subsequently verifies EOF, close, and stale-generation behavior.
+The VFS object layer exposes `sb_vfs_file_sync()`. Writable backends may provide a node-level sync callback; the block/VFS layer also exposes explicit device/mount flush operations. The current FAT32 runtime mount remains read-only, so userspace fsync and atomic update semantics are not yet complete.
 
 ## PIPE handles
 
@@ -195,18 +168,30 @@ The current ABI is deliberately nonblocking. Reading an empty pipe while a write
 
 The phase-1 pipe uses a fixed 4096-byte kernel ring buffer and supports partial transfers. Endpoint close callbacks update reader/writer counts and release the shared pipe object after the last endpoint closes. QEMU verifies endpoint rights, empty-read backpressure, exact `PIPEPING` payload transfer, writer-close EOF, handle close, and stale-generation rejection.
 
-Blocking pipe semantics are intentionally deferred until the generic event/wait-object layer can wake scheduler-blocked syscall frames without embedding scheduler policy inside the ring-buffer core.
+Blocking pipe semantics are intentionally deferred until the wait-object layer has cross-task object sharing/wake semantics; the ring-buffer core itself does not embed scheduler policy.
+
+## EVENT handles and timed waits
+
+`SB_SYS_EVENT_CREATE` returns a manual-reset EVENT handle with `WAIT|SIGNAL|QUERY` rights. The initial state is explicitly unsignaled (`0`) or signaled (`1`).
+
+`SB_SYS_EVENT_WAIT` behaves as follows:
+
+- signaled event: returns 0 immediately;
+- unsignaled + timeout `0`: returns `SB_SYS_ERROR_WOULD_BLOCK` without changing scheduler state;
+- unsignaled + timeout `>0`: records one waiter, marks the current user task BLOCKED, saves a timer deadline, and immediately reschedules another runnable frame;
+- deadline expiry: timer code overwrites the blocked task's saved syscall-frame `RAX` with `SB_SYS_ERROR_TIMEOUT`, makes it READY, and later `iretq` resumes immediately after the original `int 0x80`.
+
+`SB_SYS_EVENT_SIGNAL` sets the manual-reset signal state and, if a still-blocked waiter is registered, completes that wait with result 0. `SB_SYS_EVENT_RESET` clears the signal state.
+
+The current event core intentionally supports one registered waiter and is single-CPU/non-SMP-safe. QEMU currently proves the real timed BLOCKED/resume path, manual signal state, immediate signaled wait, reset, close, and stale-handle behavior. A separate task signaling an already-blocked waiter is not yet part of the userspace QEMU proof, because process-local handle transfer/multi-thread handle sharing is not yet exposed.
 
 ## Current filesystem/VFS proof
 
-The current system namespace exposes:
-
-- `/boot`: registered Multiboot modules through a VFS directory provider;
-- `/disk`: read-only FAT32 mounted from the QEMU primary IDE disk when available.
+The current system namespace exposes `/boot` for registered Multiboot modules and `/disk` for the read-only FAT32 runtime disk when present.
 
 FAT32 currently supports 8.3 lookup, directory iteration, nested subdirectories, and read-only regular-file access. LFN/write support is not implied by the current ABI.
 
-The canonical block layer now includes a fixed write-back sector cache. Full-sector writes become dirty cache entries, reads observe dirty data immediately, explicit flush/device unregister/replacement performs writeback, and a failed writeback preserves dirty state for retry. `sb_block_flush()` and `sb_vfs_sync()` provide the current synchronization boundary.
+The canonical block layer includes a fixed write-back sector cache. Full-sector writes become dirty cache entries, reads observe dirty data immediately, explicit flush/device unregister/replacement performs writeback, and a failed writeback preserves dirty state for retry. `sb_block_flush()` and `sb_vfs_sync()` provide the current synchronization boundary.
 
 ## Compatibility policy
 
