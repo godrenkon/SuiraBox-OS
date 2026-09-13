@@ -112,7 +112,12 @@ jobs:
           grep -F "Scheduler: timed user task entered BLOCKED" qemu.log
           grep -F "Event: unsignaled wait blocked with timeout" qemu.log
           grep -F "Scheduler: timed blocked task woke" qemu.log
+          grep -F "Thread: additional user thread created" qemu.log
+          grep -F "Thread: THREAD_CREATE syscall registered user thread" qemu.log
+          grep -F "Event: SIGNAL woke blocked user task" qemu.log
           grep -F "Event: manual-reset event signaled" qemu.log
+          grep -F "Userspace: secondary thread signaled event" qemu.log
+          grep -F "Userspace: cross-thread EVENT wake OK" qemu.log
           grep -F "Event: signaled wait completed immediately" qemu.log
           grep -F "Event: manual-reset event reset" qemu.log
           grep -F "Userspace: EVENT wait/timeout lifecycle OK" qemu.log
@@ -128,8 +133,8 @@ jobs:
           grep -F "Userspace: spawn syscall created child process" qemu.log
           grep -F "Scheduler: user task entered BLOCKED" qemu.log
           grep -F "Userspace: wait syscall blocked for child" qemu.log
-          grep -F "Scheduler: cross-process CR3 switch verified" qemu.log
           grep -F "Scheduler: blocked user task descheduled" qemu.log
+          grep -F "Scheduler: cross-process CR3 switch verified" qemu.log
           grep -F "Userspace: child process PID syscall OK" qemu.log
           grep -F "Userspace: child requested process exit" qemu.log
           grep -F "Scheduler: blocked user task woke" qemu.log
@@ -220,7 +225,15 @@ jobs:
                   "Scheduler: timed user task entered BLOCKED",
                   "Event: unsignaled wait blocked with timeout",
                   "Scheduler: timed blocked task woke",
+              ],
+              "cross-thread-event-wake": [
+                  "Thread: additional user thread created",
+                  "Thread: THREAD_CREATE syscall registered user thread",
+                  "Event: blocking wait registered",
+                  "Event: SIGNAL woke blocked user task",
                   "Event: manual-reset event signaled",
+                  "Userspace: secondary thread signaled event",
+                  "Userspace: cross-thread EVENT wake OK",
                   "Event: signaled wait completed immediately",
                   "Event: manual-reset event reset",
                   "Userspace: EVENT wait/timeout lifecycle OK",
@@ -230,8 +243,8 @@ jobs:
                   "Userspace: spawn syscall created child process",
                   "Scheduler: user task entered BLOCKED",
                   "Userspace: wait syscall blocked for child",
-                  "Scheduler: cross-process CR3 switch verified",
                   "Scheduler: blocked user task descheduled",
+                  "Scheduler: cross-process CR3 switch verified",
                   "Userspace: child process PID syscall OK",
                   "Userspace: child requested process exit",
                   "Scheduler: blocked user task woke",
@@ -284,8 +297,6 @@ jobs:
                   position = log.find(marker, cursor + 1)
                   if position < 0:
                       raise SystemExit(f"missing {name} marker: {marker}")
-                  if position <= cursor:
-                      raise SystemExit(f"out-of-order {name} marker: {marker}")
                   cursor = position
               print(f"ordered QEMU proof OK: {name}")
           PY
