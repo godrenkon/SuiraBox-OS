@@ -36,10 +36,6 @@ jobs:
         run: |
           set -o pipefail
 
-          # Real FAT32 media for ATA -> block -> filesystem -> system VFS ->
-          # userspace FILE/DIRECTORY verification. This is a partitionless
-          # superfloppy image because the current FAT32 layer mounts a block
-          # device at sector zero rather than parsing partition tables yet.
           truncate -s 64M build/runtime-fat32.img
           printf 'SUIRABOX-RUNTIME-FAT32\n' > build/runtime.txt
           mformat -i build/runtime-fat32.img -F ::
@@ -112,8 +108,16 @@ jobs:
           grep -F "Pipe: EOF observed after writer close" qemu.log
           grep -F "Userspace: PIPE handle lifecycle OK" qemu.log
 
-          grep -F "Spawn: executable staged from VFS file" qemu.log
+          grep -F "Event: userspace manual-reset event created" qemu.log
+          grep -F "Scheduler: timed user task entered BLOCKED" qemu.log
+          grep -F "Event: unsignaled wait blocked with timeout" qemu.log
+          grep -F "Scheduler: timed blocked task woke" qemu.log
+          grep -F "Event: manual-reset event signaled" qemu.log
+          grep -F "Event: signaled wait completed immediately" qemu.log
+          grep -F "Event: manual-reset event reset" qemu.log
+          grep -F "Userspace: EVENT wait/timeout lifecycle OK" qemu.log
 
+          grep -F "Spawn: executable staged from VFS file" qemu.log
           grep -F "Scheduler: timer preemption switched to user task" qemu.log
           grep -F "Userspace: entering ring3" qemu.log
           grep -F "Userspace: first syscall reached kernel" qemu.log
@@ -151,7 +155,6 @@ jobs:
 
           grep -F "Userspace: concurrent child processes armed" qemu.log
           grep -F "Userspace: concurrent child processes completed" qemu.log
-
           grep -F "Scheduler: user task entered SLEEPING" qemu.log
           grep -F "Userspace: sleep syscall requested" qemu.log
           grep -F "Scheduler: sleeping user task descheduled" qemu.log
@@ -211,6 +214,16 @@ jobs:
                   "Pipe: data read to userspace",
                   "Pipe: EOF observed after writer close",
                   "Userspace: PIPE handle lifecycle OK",
+              ],
+              "event-timeout-lifecycle": [
+                  "Event: userspace manual-reset event created",
+                  "Scheduler: timed user task entered BLOCKED",
+                  "Event: unsignaled wait blocked with timeout",
+                  "Scheduler: timed blocked task woke",
+                  "Event: manual-reset event signaled",
+                  "Event: signaled wait completed immediately",
+                  "Event: manual-reset event reset",
+                  "Userspace: EVENT wait/timeout lifecycle OK",
               ],
               "legacy-wait/child/reap": [
                   "Spawn: executable staged from VFS file",
