@@ -1,5 +1,8 @@
 #include "process.h"
 #include "scheduler.h"
+#include "shared_memory.h"
+#include "mm/pmm.h"
+#include "mm/vmm.h"
 #include <stdint.h>
 
 static sb_process_t processes[SB_MAX_PROCESSES];
@@ -13,13 +16,31 @@ static void clear_process(sb_process_t *process) {
     process->state = SB_PROCESS_UNUSED;
 }
 
+static void release_shared_mappings(sb_process_t *process) {
+    if (process == 0) return;
+    for (uint32_t slot = 0u; slot < SB_MAX_SHARED_MAPPINGS; ++slot) {
+        sb_process_shared_mapping_t *mapping = &process->shared_mappings[slot];
+        if (mapping->in_use == 0u || mapping->memory == 0) continue;
+
+        const uint32_t pages = mapping->memory->page_count;
+        for (uint32_t page = 0u; page < pages; ++page) {
+            (void)address_space_unmap_shared_user(
+                &process->address_space,
+                mapping->base + (uint64_t)page * SB_PAGE_SIZE,
+                0);
+        }
+        sb_shared_memory_release(mapping->memory);
+        *mapping = (sb_process_shared_mapping_t){0};
+    }
+}
+
 static void release_process_resources(sb_process_t *process) {
     if (process == 0 || process->state == SB_PROCESS_UNUSED) return;
 
-    /* Handle callbacks run before the address space disappears so future
-     * resource types can release process-owned backing objects in a stable
-     * teardown phase. Scheduler-owned task stacks have already been reaped in
-     * the normal EXIT path before this helper is reached. */
+    /* Mapping references must disappear while the page tables still exist.
+     * Handle callbacks then drop object-owner references, and only afterwards
+     * may address-space teardown discard the page-table hierarchy. */
+    release_shared_mappings(process);
     (void)sb_handle_close_all(&process->handles);
     address_space_destroy(&process->address_space);
     process->entry_point = 0u;
@@ -59,8 +80,6 @@ void process_init(void) {
         clear_process(&processes[i]);
     }
     process_count_value = 0u;
-    /* PID 1 is reserved for init. User-thread IDs start well above bootstrap
-     * scheduler IDs used by early kernel self-tests. */
     next_pid_value = 2u;
     next_tid_value = 10001u;
 }
@@ -145,6 +164,116 @@ int process_activate(sb_process_t *process) {
     return address_space_activate(&process->address_space);
 }
 
+int process_map_shared_memory(sb_process_t *process,
+                              sb_shared_memory_t *memory,
+                              uint64_t base,
+                              int writable) {
+    if (process == 0 || memory == 0 || memory->physical_base == 0u ||
+        memory->page_count == 0u || process->state == SB_PROCESS_UNUSED ||
+        process->state == SB_PROCESS_EXITED || process->state == SB_PROCESS_ZOMBIE ||
+        (base & (SB_PAGE_SIZE - 1u)) != 0u) {
+        return -1;
+    }
+
+    const uint64_t span = (uint64_t)memory->page_count * SB_PAGE_SIZE;
+    if (base < SB_USER_BASE || base >= SB_USER_LIMIT || span == 0u ||
+        base > SB_USER_LIMIT - span ||
+        ((base >> 39) & 0x1FFu) != SB_USER_PML4_INDEX) {
+        return -2;
+    }
+
+    sb_process_shared_mapping_t *slot = 0;
+    for (uint32_t i = 0u; i < SB_MAX_SHARED_MAPPINGS; ++i) {
+        if (process->shared_mappings[i].in_use == 0u) {
+            slot = &process->shared_mappings[i];
+            break;
+        }
+    }
+    if (slot == 0) return -4;
+
+    const uint64_t flags = SB_VMM_NX | (writable != 0 ? SB_VMM_WRITABLE : 0u);
+    uint32_t mapped = 0u;
+    for (; mapped < memory->page_count; ++mapped) {
+        const uint64_t virtual_address = base + (uint64_t)mapped * SB_PAGE_SIZE;
+        const uint64_t physical_address =
+            memory->physical_base + (uint64_t)mapped * SB_PAGE_SIZE;
+        if (address_space_map_user(&process->address_space,
+                                   virtual_address,
+                                   physical_address,
+                                   flags) != 0) {
+            break;
+        }
+    }
+    if (mapped != memory->page_count) {
+        while (mapped != 0u) {
+            --mapped;
+            (void)address_space_unmap_shared_user(
+                &process->address_space,
+                base + (uint64_t)mapped * SB_PAGE_SIZE,
+                0);
+        }
+        return -3;
+    }
+
+    if (sb_shared_memory_retain(memory) != 0) {
+        for (uint32_t i = 0u; i < memory->page_count; ++i) {
+            (void)address_space_unmap_shared_user(
+                &process->address_space,
+                base + (uint64_t)i * SB_PAGE_SIZE,
+                0);
+        }
+        return -3;
+    }
+
+    slot->base = base;
+    slot->size = memory->size;
+    slot->memory = memory;
+    slot->writable = writable != 0 ? 1u : 0u;
+    slot->in_use = 1u;
+    return 0;
+}
+
+int process_unmap_shared_memory(sb_process_t *process, uint64_t base) {
+    if (process == 0 || (base & (SB_PAGE_SIZE - 1u)) != 0u) return -1;
+
+    sb_process_shared_mapping_t *mapping = 0;
+    for (uint32_t i = 0u; i < SB_MAX_SHARED_MAPPINGS; ++i) {
+        if (process->shared_mappings[i].in_use != 0u &&
+            process->shared_mappings[i].base == base) {
+            mapping = &process->shared_mappings[i];
+            break;
+        }
+    }
+    if (mapping == 0 || mapping->memory == 0) return -2;
+
+    for (uint32_t page = 0u; page < mapping->memory->page_count; ++page) {
+        uint64_t physical = 0u;
+        const uint64_t virtual_address = base + (uint64_t)page * SB_PAGE_SIZE;
+        const uint64_t expected =
+            mapping->memory->physical_base + (uint64_t)page * SB_PAGE_SIZE;
+        if (address_space_translate_user(&process->address_space,
+                                         virtual_address,
+                                         &physical) != 0 ||
+            (physical & ~(uint64_t)(SB_PAGE_SIZE - 1u)) != expected) {
+            return -3;
+        }
+    }
+
+    for (uint32_t page = 0u; page < mapping->memory->page_count; ++page) {
+        const uint64_t virtual_address = base + (uint64_t)page * SB_PAGE_SIZE;
+        uint64_t physical = 0u;
+        if (address_space_unmap_shared_user(&process->address_space,
+                                            virtual_address,
+                                            &physical) != 0) {
+            return -3;
+        }
+    }
+
+    sb_shared_memory_release(mapping->memory);
+    *mapping = (sb_process_shared_mapping_t){0};
+    return 0;
+}
+
 int process_mark_exited(uint64_t pid, int64_t exit_code) {
     sb_process_t *process = process_get(pid);
     if (process == 0 || process->state == SB_PROCESS_EXITED ||
@@ -203,9 +332,6 @@ uint32_t process_reap_exited(void) {
         const int task_result = scheduler_reap_process(process->pid);
         if (task_result < 0) continue;
 
-        /* Task stacks are gone and this CR3 is no longer executing. Close all
-         * process-local resource handles, then release the user address space
-         * before making exit status visible to a waiting parent. */
         release_process_resources(process);
         ++reaped;
 
@@ -219,7 +345,6 @@ uint32_t process_reap_exited(void) {
             process->waiter_tid = 0u;
         }
 
-        /* No active waiter: preserve only process metadata/exit status. */
         process->state = SB_PROCESS_ZOMBIE;
     }
 

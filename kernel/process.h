@@ -7,6 +7,9 @@
 
 #define SB_MAX_PROCESSES 32u
 #define SB_MAX_THREADS_PER_PROCESS 16u
+#define SB_MAX_SHARED_MAPPINGS 16u
+
+typedef struct sb_shared_memory sb_shared_memory_t;
 
 typedef enum {
     SB_PROCESS_UNUSED = 0,
@@ -25,6 +28,14 @@ typedef struct {
 } sb_thread_t;
 
 typedef struct {
+    uint64_t base;
+    uint64_t size;
+    sb_shared_memory_t *memory;
+    uint8_t writable;
+    uint8_t in_use;
+} sb_process_shared_mapping_t;
+
+typedef struct {
     uint64_t pid;
     uint64_t parent_pid;
     uint64_t waiter_tid;
@@ -34,6 +45,7 @@ typedef struct {
     sb_thread_t threads[SB_MAX_THREADS_PER_PROCESS];
     sb_address_space_t address_space;
     sb_handle_table_t handles;
+    sb_process_shared_mapping_t shared_mappings[SB_MAX_SHARED_MAPPINGS];
     uint64_t entry_point;
     uint64_t user_stack_top;
 } sb_process_t;
@@ -52,6 +64,15 @@ uint32_t process_count(void);
 int process_activate(sb_process_t *process);
 int process_mark_exited(uint64_t pid, int64_t exit_code);
 
+/* Shared mappings hold references independently from process-local handles.
+ * This lets a handle close without invalidating an established mapping and
+ * lets process teardown release mappings before its address space disappears. */
+int process_map_shared_memory(sb_process_t *process,
+                              sb_shared_memory_t *memory,
+                              uint64_t base,
+                              int writable);
+int process_unmap_shared_memory(sb_process_t *process, uint64_t base);
+
 /* Wait return values: 0 = already collected and exit_code filled,
  * 1 = waiter registered and caller must BLOCK+reschedule, <0 = invalid. */
 int process_wait_child(uint64_t parent_pid,
@@ -61,9 +82,8 @@ int process_wait_child(uint64_t parent_pid,
 int process_cancel_wait(uint64_t child_pid, uint64_t waiter_tid);
 
 /* Reap EXITED processes whose scheduler tasks are no longer executing.
- * Scheduler-owned stacks are released first, then process-local handles and
- * address-space resources. If a parent waiter exists it is completed and the
- * process slot is collected; otherwise only lightweight zombie metadata stays. */
+ * Scheduler-owned stacks are released first, then process-local mappings,
+ * handles and address-space resources. */
 uint32_t process_reap_exited(void);
 void process_destroy(sb_process_t *process);
 

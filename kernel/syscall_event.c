@@ -9,7 +9,7 @@
 
 _Static_assert(SB_HANDLE_TYPE_EVENT == SB_HANDLE_ABI_TYPE_EVENT,
                "kernel/public event handle type mismatch");
-_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER == SB_SYS_MESSAGE_QUEUE_RECEIVE,
+_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_MESSAGE_QUEUE_RECEIVE,
                "public syscall max-number table is stale");
 
 static int event_create_logged;

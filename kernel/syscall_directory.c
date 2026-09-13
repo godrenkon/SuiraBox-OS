@@ -2,6 +2,7 @@
 #include "syscall_pipe.h"
 #include "syscall_event.h"
 #include "syscall_message_queue.h"
+#include "syscall_shared_memory.h"
 #include "scheduler.h"
 #include "process.h"
 #include "process_exec.h"
@@ -24,7 +25,7 @@ _Static_assert(SB_DIRECTORY_ENTRY_TYPE_DEVICE == SB_VFS_NODE_DEVICE,
                "directory device type mismatch");
 _Static_assert(sizeof(sb_directory_entry_t) == SB_DIRECTORY_ENTRY_SIZE,
                "directory entry ABI size mismatch");
-_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_MESSAGE_QUEUE_RECEIVE,
+_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_SHARED_MEMORY_UNMAP,
                "public syscall max-number table is stale");
 
 static int directory_open_logged;
@@ -273,5 +274,8 @@ sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame) {
     if (frame->rax >= SB_SYS_MESSAGE_QUEUE_CREATE &&
         frame->rax <= SB_SYS_MESSAGE_QUEUE_RECEIVE)
         return sb_syscall_dispatch_message_queue(frame);
+    if (frame->rax >= SB_SYS_SHARED_MEMORY_CREATE &&
+        frame->rax <= SB_SYS_SHARED_MEMORY_UNMAP)
+        return sb_syscall_dispatch_shared_memory(frame);
     return sb_syscall_dispatch_frame(frame);
 }

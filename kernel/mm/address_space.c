@@ -55,8 +55,6 @@ int address_space_create(sb_address_space_t *space) {
 
     const uint64_t current_cr3 = read_cr3();
     uint64_t *current = (uint64_t *)(uintptr_t)(current_cr3 & ENTRY_ADDR_MASK);
-
-    /* Keep the bootstrap/kernel identity mapping supervisor-only in PML4[0]. */
     new_pml4[0] = current[0];
     space->pml4_physical = (uint64_t)(uintptr_t)pml4_page;
     return 0;
@@ -91,45 +89,71 @@ int address_space_map_user(sb_address_space_t *space,
     return 0;
 }
 
-int address_space_unmap_owned_user(sb_address_space_t *space,
-                                   uint64_t virtual_address) {
-    if (space == 0 || space->pml4_physical == 0u ||
+static int resolve_leaf(sb_address_space_t *space,
+                        uint64_t virtual_address,
+                        uint64_t **pt_out,
+                        uint16_t *index_out) {
+    if (space == 0 || space->pml4_physical == 0u || pt_out == 0 || index_out == 0 ||
         (virtual_address & PAGE_OFFSET_MASK) != 0u ||
         pml4_index(virtual_address) != SB_USER_PML4_INDEX ||
-        virtual_address >= SB_USER_LIMIT) {
-        return -1;
-    }
+        virtual_address >= SB_USER_LIMIT) return -1;
 
     uint64_t *pml4 = (uint64_t *)(uintptr_t)space->pml4_physical;
     const uint64_t e4 = pml4[pml4_index(virtual_address)];
     if ((e4 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER) ||
         (e4 & ENTRY_HUGE_PAGE) != 0u) return -2;
-
     uint64_t *pdpt = table_from_entry(e4);
     const uint64_t e3 = pdpt[pdpt_index(virtual_address)];
     if ((e3 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER) ||
         (e3 & ENTRY_HUGE_PAGE) != 0u) return -2;
-
     uint64_t *pd = table_from_entry(e3);
     const uint64_t e2 = pd[pd_index(virtual_address)];
     if ((e2 & (SB_VMM_PRESENT | SB_VMM_USER)) != (SB_VMM_PRESENT | SB_VMM_USER) ||
         (e2 & ENTRY_HUGE_PAGE) != 0u) return -2;
 
-    uint64_t *pt = table_from_entry(e2);
-    const uint16_t index = pt_index(virtual_address);
-    const uint64_t e1 = pt[index];
-    if ((e1 & (SB_VMM_PRESENT | SB_VMM_USER | SB_VMM_OWNED)) !=
-        (SB_VMM_PRESENT | SB_VMM_USER | SB_VMM_OWNED)) {
-        return -2;
-    }
+    *pt_out = table_from_entry(e2);
+    *index_out = pt_index(virtual_address);
+    return 0;
+}
 
-    const uint64_t physical = e1 & ENTRY_ADDR_MASK;
-    pt[index] = 0u;
+static void invalidate_if_active(const sb_address_space_t *space,
+                                 uint64_t virtual_address) {
     if ((read_cr3() & ENTRY_ADDR_MASK) ==
         (space->pml4_physical & ENTRY_ADDR_MASK)) {
         __asm__ volatile ("invlpg (%0)" : : "r"(virtual_address) : "memory");
     }
+}
+
+int address_space_unmap_owned_user(sb_address_space_t *space,
+                                   uint64_t virtual_address) {
+    uint64_t *pt = 0;
+    uint16_t index = 0u;
+    if (resolve_leaf(space, virtual_address, &pt, &index) != 0) return -1;
+    const uint64_t entry = pt[index];
+    if ((entry & (SB_VMM_PRESENT | SB_VMM_USER | SB_VMM_OWNED)) !=
+        (SB_VMM_PRESENT | SB_VMM_USER | SB_VMM_OWNED)) return -2;
+
+    const uint64_t physical = entry & ENTRY_ADDR_MASK;
+    pt[index] = 0u;
+    invalidate_if_active(space, virtual_address);
     pmm_free_page((void *)(uintptr_t)physical);
+    return 0;
+}
+
+int address_space_unmap_shared_user(sb_address_space_t *space,
+                                    uint64_t virtual_address,
+                                    uint64_t *physical_address) {
+    uint64_t *pt = 0;
+    uint16_t index = 0u;
+    if (resolve_leaf(space, virtual_address, &pt, &index) != 0) return -1;
+    const uint64_t entry = pt[index];
+    if ((entry & (SB_VMM_PRESENT | SB_VMM_USER)) !=
+        (SB_VMM_PRESENT | SB_VMM_USER) ||
+        (entry & SB_VMM_OWNED) != 0u) return -2;
+
+    if (physical_address != 0) *physical_address = entry & ENTRY_ADDR_MASK;
+    pt[index] = 0u;
+    invalidate_if_active(space, virtual_address);
     return 0;
 }
 
@@ -172,10 +196,7 @@ int address_space_translate_user_access(const sb_address_space_t *space,
 int address_space_translate_user(const sb_address_space_t *space,
                                  uint64_t virtual_address,
                                  uint64_t *physical_address) {
-    return address_space_translate_user_access(space,
-                                               virtual_address,
-                                               0,
-                                               physical_address);
+    return address_space_translate_user_access(space, virtual_address, 0, physical_address);
 }
 
 int address_space_activate(const sb_address_space_t *space) {

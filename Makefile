@@ -51,6 +51,7 @@ HANDLE_OBJ := $(BUILD)/handle.o
 PIPE_OBJ := $(BUILD)/pipe.o
 EVENT_OBJ := $(BUILD)/event.o
 MESSAGE_QUEUE_OBJ := $(BUILD)/message_queue.o
+SHARED_MEMORY_OBJ := $(BUILD)/shared_memory.o
 PROCESS_OBJ := $(BUILD)/process.o
 PROCESS_EXEC_OBJ := $(BUILD)/process_exec.o
 USER_ACCESS_OBJ := $(BUILD)/user_access.o
@@ -59,6 +60,7 @@ SYSCALL_DIR_OBJ := $(BUILD)/syscall_directory.o
 SYSCALL_PIPE_OBJ := $(BUILD)/syscall_pipe.o
 SYSCALL_EVENT_OBJ := $(BUILD)/syscall_event.o
 SYSCALL_MESSAGE_QUEUE_OBJ := $(BUILD)/syscall_message_queue.o
+SYSCALL_SHARED_MEMORY_OBJ := $(BUILD)/syscall_shared_memory.o
 SYSCALL_ARCH_OBJ := $(BUILD)/syscall_arch.o
 ADDRSPACE_OBJ := $(BUILD)/address_space.o
 ELF_OBJ := $(BUILD)/elf.o
@@ -163,7 +165,10 @@ $(EVENT_OBJ): kernel/event.c kernel/event.h | $(BUILD)
 $(MESSAGE_QUEUE_OBJ): kernel/message_queue.c kernel/message_queue.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/handle.h include/suirabox/handle_abi.h kernel/scheduler.h kernel/mm/address_space.h | $(BUILD)
+$(SHARED_MEMORY_OBJ): kernel/shared_memory.c kernel/shared_memory.h kernel/mm/heap.h kernel/mm/pmm.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
+
+$(PROCESS_OBJ): kernel/process.c kernel/process.h kernel/handle.h kernel/shared_memory.h include/suirabox/handle_abi.h kernel/scheduler.h kernel/mm/address_space.h kernel/mm/pmm.h kernel/mm/vmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
 $(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.h kernel/handle.h include/suirabox/handle_abi.h kernel/scheduler.h kernel/elf_loader.h kernel/mm/address_space.h kernel/mm/multiboot_modules.h kernel/mm/pmm.h kernel/mm/vmm.h | $(BUILD)
@@ -175,7 +180,7 @@ $(USER_ACCESS_OBJ): kernel/user_access.c kernel/user_access.h kernel/process.h k
 $(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -DSB_SYSCALL_CORE_DISPATCH_BUILD -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_DIR_OBJ): kernel/syscall_directory.c kernel/syscall.h kernel/syscall_pipe.h kernel/syscall_event.h kernel/syscall_message_queue.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/handle.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(SYSCALL_DIR_OBJ): kernel/syscall_directory.c kernel/syscall.h kernel/syscall_pipe.h kernel/syscall_event.h kernel/syscall_message_queue.h kernel/syscall_shared_memory.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/handle.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
 $(SYSCALL_PIPE_OBJ): kernel/syscall_pipe.c kernel/syscall_pipe.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/pipe.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
@@ -185,6 +190,9 @@ $(SYSCALL_EVENT_OBJ): kernel/syscall_event.c kernel/syscall_event.h kernel/sysca
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
 $(SYSCALL_MESSAGE_QUEUE_OBJ): kernel/syscall_message_queue.c kernel/syscall_message_queue.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/message_queue.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
+
+$(SYSCALL_SHARED_MEMORY_OBJ): kernel/syscall_shared_memory.c kernel/syscall_shared_memory.h kernel/syscall.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/shared_memory.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
 $(SYSCALL_ARCH_OBJ): kernel/arch/x86_64/syscall.S kernel/arch/x86_64/irq_frame.h | $(BUILD)
@@ -222,7 +230,7 @@ $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 
 userspace: $(USER_ELF) $(CHILD_ELF)
 
-KERNEL_OBJECTS := $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(BLOCK_CACHE_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_NAMESPACE_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PIPE_OBJ) $(EVENT_OBJ) $(MESSAGE_QUEUE_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_DIR_OBJ) $(SYSCALL_PIPE_OBJ) $(SYSCALL_EVENT_OBJ) $(SYSCALL_MESSAGE_QUEUE_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
+KERNEL_OBJECTS := $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(BLOCK_CACHE_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_NAMESPACE_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PIPE_OBJ) $(EVENT_OBJ) $(MESSAGE_QUEUE_OBJ) $(SHARED_MEMORY_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_DIR_OBJ) $(SYSCALL_PIPE_OBJ) $(SYSCALL_EVENT_OBJ) $(SYSCALL_MESSAGE_QUEUE_OBJ) $(SYSCALL_SHARED_MEMORY_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
 $(KERNEL): $(KERNEL_OBJECTS) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJECTS)
