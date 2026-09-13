@@ -30,9 +30,6 @@ int process_prepare_boot_module(sb_process_t *process,
                                 const char *module_name,
                                 sb_process_image_t *image_info);
 
-/* Generic memory-image spawn boundary. The caller owns image memory and only
- * needs to keep it alive until this function returns; ELF segments are copied
- * into the new process address space. Failure is transactional. */
 sb_process_t *process_spawn_elf_image(const void *image,
                                       uint64_t image_size,
                                       uint64_t pid,
@@ -41,9 +38,6 @@ sb_process_t *process_spawn_elf_image(const void *image,
                                       uint32_t priority,
                                       sb_process_image_t *image_info);
 
-/* Generic VFS-file spawn boundary. The file's current offset is preserved.
- * The implementation stages at most SB_PROCESS_EXEC_MAX_IMAGE_SIZE bytes in
- * kernel heap memory, then routes through process_spawn_elf_image(). */
 sb_process_t *process_spawn_vfs_file(sb_vfs_file_t *file,
                                      uint64_t pid,
                                      uint64_t parent_pid,
@@ -51,8 +45,6 @@ sb_process_t *process_spawn_vfs_file(sb_vfs_file_t *file,
                                      uint32_t priority,
                                      sb_process_image_t *image_info);
 
-/* Create, load, create the initial thread, and register it with the scheduler.
- * Failure is transactional: no process object or address-space pages remain. */
 sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
                                         const char *module_name,
                                         uint64_t pid,
@@ -61,9 +53,15 @@ sb_process_t *process_spawn_boot_module(uint64_t multiboot_info,
                                         uint32_t priority,
                                         sb_process_image_t *image_info);
 
-/* Bootstrap registry used until a persistent filesystem-backed executable
- * namespace is mounted. Returned image/name pointers are Multiboot-owned and
- * immutable; callers must not free or modify them. */
+/* Add a second or later ring3 thread to an existing process. The entry address
+ * must already belong to the process address space. Each thread receives a
+ * private four-page user stack separated from the previous stack by one
+ * unmapped guard page. On failure, newly mapped stack pages are rolled back. */
+int process_spawn_user_thread(sb_process_t *process,
+                              uint64_t user_entry,
+                              uint32_t priority,
+                              uint64_t *tid_out);
+
 int process_registered_boot_module_exists(const char *module_name);
 int process_registered_boot_module_view(const char *module_name,
                                         const void **image_out,
