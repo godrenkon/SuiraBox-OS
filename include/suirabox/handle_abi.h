@@ -13,6 +13,7 @@
 #define SB_HANDLE_ABI_TYPE_SHARED_MEMORY 5
 #define SB_HANDLE_ABI_TYPE_SERVICE       6
 #define SB_HANDLE_ABI_TYPE_DIRECTORY     7
+#define SB_HANDLE_ABI_TYPE_MESSAGE_QUEUE 8
 
 #define SB_HANDLE_ABI_RIGHT_READ      (1 << 0)
 #define SB_HANDLE_ABI_RIGHT_WRITE     (1 << 1)
@@ -27,15 +28,12 @@
 
 #ifndef __ASSEMBLER__
 #include <stdint.h>
-
 typedef uint64_t sb_handle_t;
-
 typedef struct {
     uint32_t type;
     uint32_t reserved;
     uint64_t rights;
 } sb_handle_info_t;
-
 _Static_assert(sizeof(sb_handle_info_t) == SB_HANDLE_INFO_SIZE,
                "handle info ABI layout mismatch");
 #endif
