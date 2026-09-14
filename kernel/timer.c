@@ -15,7 +15,6 @@ struct __attribute__((packed)) debug_desc_ptr { uint16_t limit; uint64_t base; }
 struct __attribute__((packed)) debug_idt_entry { uint16_t offset_low; uint16_t selector; uint8_t ist; uint8_t type_attr; uint16_t offset_mid; uint32_t offset_high; uint32_t zero; };
 
 static volatile uint64_t ticks;
-static int process_reap_logged;
 
 static void outb(uint16_t port, uint8_t value) {
     __asm__ volatile ("outb %0, %1" : : "a"(value), "Nd"(port));
@@ -81,7 +80,6 @@ void timer_init(uint32_t frequency_hz) {
     if (divisor == 0u) divisor = 1u;
     if (divisor > 0xFFFFu) divisor = 0xFFFFu;
     ticks = 0;
-    process_reap_logged = 0;
     timer_debug("[TIMER] PIC remap begin\r\n"); pic_remap(); timer_debug("[TIMER] PIC remap complete\r\n");
     timer_debug("[TIMER] PIT program begin\r\n");
     outb(PIT_COMMAND, 0x36u); outb(PIT_CHANNEL0, (uint8_t)(divisor & 0xFFu)); outb(PIT_CHANNEL0, (uint8_t)((divisor >> 8) & 0xFFu));
@@ -104,10 +102,11 @@ sb_irq_frame_t *sb_timer_tick(sb_irq_frame_t *frame) {
 
     /* EXIT is deliberately two-phase. The syscall first switches away from
      * the exiting stack/CR3; a later timer interrupt can then safely reclaim
-     * EXITED scheduler stacks and process address-space pages. */
+     * EXITED scheduler stacks and process address-space pages. Emit this proof
+     * for every reap rather than only the first process in a boot: nested
+     * process trees must not hide later lifecycle verification. */
     const uint32_t reaped = process_reap_exited();
-    if (reaped != 0u && !process_reap_logged) {
-        process_reap_logged = 1;
+    if (reaped != 0u) {
         timer_debug("Process: exited process resources reaped\r\n");
     }
 
