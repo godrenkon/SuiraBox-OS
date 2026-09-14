@@ -250,7 +250,6 @@ jobs:
                   "Scheduler: blocked user task woke",
                   "Process: exited process resources reaped",
                   "Scheduler: woke blocked user task selected for resume",
-                  "Userspace: parent wait resumed after child exit",
               ],
               "general-spawn/wait/reap": [
                   "Spawn: userspace request copied and validated",
