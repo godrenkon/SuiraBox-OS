@@ -98,6 +98,13 @@ int main(void) {
     if (require(sb_service_register(&registry, service_name, 4u, 43u,
                                     &duplicate) == SB_SERVICE_EXISTS,
                 "duplicate service rejected")) return 1;
+
+    received = required = 0u;
+    if (require(sb_service_receive(server, buffer, sizeof(buffer),
+                                   &received, &required) == SB_SERVICE_WOULD_BLOCK &&
+                received == 0u && required == 0u,
+                "server waits for first client")) return 1;
+
     if (require(sb_service_connect(&registry, "none", 4u, &client) ==
                     SB_SERVICE_NOT_FOUND,
                 "missing service")) return 1;
