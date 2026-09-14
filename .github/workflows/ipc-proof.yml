@@ -47,6 +47,13 @@ jobs:
           grep -F "SharedMemory: mapping released" artifact/qemu.log
           grep -F "Userspace: shared memory alias/permission lifecycle OK" artifact/qemu.log
 
+          grep -F "Service: named local endpoint registered" artifact/qemu.log
+          grep -F "Service: client connected by name" artifact/qemu.log
+          grep -F "Service: message sent through local transport" artifact/qemu.log
+          grep -F "Service: message received through local transport" artifact/qemu.log
+          grep -F "Userspace: child local service round-trip OK" artifact/qemu.log
+          grep -F "Userspace: cross-process local service round-trip OK" artifact/qemu.log
+
           python3 - <<'PY'
           from pathlib import Path
 
@@ -84,6 +91,14 @@ jobs:
                   "SharedMemory: read-only alias installed",
                   "SharedMemory: mapping released",
                   "Userspace: shared memory alias/permission lifecycle OK",
+              ],
+              "local-service-cross-process": [
+                  "Service: named local endpoint registered",
+                  "Service: client connected by name",
+                  "Service: message sent through local transport",
+                  "Service: message received through local transport",
+                  "Userspace: child local service round-trip OK",
+                  "Userspace: cross-process local service round-trip OK",
               ],
           }
 
