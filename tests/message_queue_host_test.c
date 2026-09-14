@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "message_queue.h"
+#include "service.h"
 
 static int require(int condition, const char *message) {
     if (condition) return 0;
@@ -81,6 +82,80 @@ int main(void) {
                     SB_MESSAGE_QUEUE_INVALID,
                 "oversized message rejected")) return 1;
 
-    puts("message queue host test OK");
+    sb_service_registry_t registry;
+    sb_service_endpoint_t *server = 0;
+    sb_service_endpoint_t *client = 0;
+    sb_service_endpoint_t *duplicate = 0;
+    const char service_name[] = "echo";
+    const uint8_t ping[] = { 'p', 'i', 'n', 'g' };
+    const uint8_t pong[] = { 'p', 'o', 'n', 'g' };
+
+    sb_service_registry_init(&registry);
+    if (require(sb_service_register(&registry, service_name, 4u, 42u, &server) ==
+                    SB_SERVICE_OK && server != 0 &&
+                server->role == SB_SERVICE_ROLE_SERVER,
+                "service register")) return 1;
+    if (require(sb_service_register(&registry, service_name, 4u, 43u,
+                                    &duplicate) == SB_SERVICE_EXISTS,
+                "duplicate service rejected")) return 1;
+    if (require(sb_service_connect(&registry, "none", 4u, &client) ==
+                    SB_SERVICE_NOT_FOUND,
+                "missing service")) return 1;
+    if (require(sb_service_connect(&registry, service_name, 4u, &client) ==
+                    SB_SERVICE_OK && client != 0 &&
+                client->role == SB_SERVICE_ROLE_CLIENT,
+                "service connect")) return 1;
+    if (require(sb_service_connect(&registry, service_name, 4u, &duplicate) ==
+                    SB_SERVICE_BUSY,
+                "second active client rejected")) return 1;
+
+    if (require(sb_service_send(client, ping, sizeof(ping)) == SB_SERVICE_OK,
+                "client send")) return 1;
+    received = required = 0u;
+    if (require(sb_service_receive(server, buffer, 2u, &received, &required) ==
+                    SB_SERVICE_RANGE && required == sizeof(ping),
+                "service short receive preserves message")) return 1;
+    received = required = 0u;
+    if (require(sb_service_receive(server, buffer, sizeof(buffer),
+                                   &received, &required) == SB_SERVICE_OK &&
+                received == sizeof(ping) && buffer[0] == 'p' && buffer[3] == 'g',
+                "server receives client message")) return 1;
+
+    if (require(sb_service_send(server, pong, sizeof(pong)) == SB_SERVICE_OK,
+                "server send")) return 1;
+    received = required = 0u;
+    if (require(sb_service_receive(client, buffer, sizeof(buffer),
+                                   &received, &required) == SB_SERVICE_OK &&
+                received == sizeof(pong) && buffer[0] == 'p' && buffer[1] == 'o',
+                "client receives server message")) return 1;
+
+    if (require(sb_service_close_endpoint(client) == SB_SERVICE_OK,
+                "client close")) return 1;
+    received = required = 0u;
+    if (require(sb_service_receive(server, buffer, sizeof(buffer),
+                                   &received, &required) == SB_SERVICE_CLOSED,
+                "server observes client close")) return 1;
+    if (require(sb_service_connect(&registry, service_name, 4u, &client) ==
+                    SB_SERVICE_OK,
+                "client reconnect")) return 1;
+
+    if (require(sb_service_close_endpoint(server) == SB_SERVICE_OK,
+                "server close")) return 1;
+    if (require(sb_service_send(client, ping, sizeof(ping)) == SB_SERVICE_CLOSED,
+                "client observes server close")) return 1;
+    if (require(sb_service_connect(&registry, service_name, 4u, &duplicate) ==
+                    SB_SERVICE_NOT_FOUND,
+                "closed service removed from registry")) return 1;
+    if (require(sb_service_close_endpoint(client) == SB_SERVICE_OK,
+                "final client close")) return 1;
+
+    server = 0;
+    if (require(sb_service_register(&registry, service_name, 4u, 44u, &server) ==
+                    SB_SERVICE_OK && server != 0,
+                "service slot reusable")) return 1;
+    if (require(sb_service_close_endpoint(server) == SB_SERVICE_OK,
+                "reused service close")) return 1;
+
+    puts("message queue/service host test OK");
     return 0;
 }
