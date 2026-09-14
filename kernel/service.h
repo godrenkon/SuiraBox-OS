@@ -33,6 +33,7 @@ struct sb_service_slot {
     uint8_t registered;
     uint8_t server_open;
     uint8_t client_open;
+    uint8_t client_seen;
     uint64_t owner_pid;
     sb_message_queue_t client_to_server;
     sb_message_queue_t server_to_client;
@@ -137,6 +138,7 @@ static inline int sb_service_connect(sb_service_registry_t *registry,
             return SB_SERVICE_BUSY;
         }
         slot->client_open = 1u;
+        slot->client_seen = 1u;
         slot->client_endpoint.slot = slot;
         slot->client_endpoint.role = SB_SERVICE_ROLE_CLIENT;
         *endpoint_out = &slot->client_endpoint;
@@ -187,10 +189,12 @@ static inline int sb_service_receive(sb_service_endpoint_t *endpoint,
 
     sb_message_queue_t *queue = 0;
     int peer_open = 0;
+    int peer_has_connected = 1;
     if (endpoint->role == SB_SERVICE_ROLE_SERVER) {
         if (slot->server_open == 0u) return SB_SERVICE_CLOSED;
         queue = &slot->client_to_server;
         peer_open = slot->client_open != 0u;
+        peer_has_connected = slot->client_seen != 0u;
     } else if (endpoint->role == SB_SERVICE_ROLE_CLIENT) {
         if (slot->client_open == 0u) return SB_SERVICE_CLOSED;
         queue = &slot->server_to_client;
@@ -204,7 +208,8 @@ static inline int sb_service_receive(sb_service_endpoint_t *endpoint,
     if (result == SB_MESSAGE_QUEUE_OK) return SB_SERVICE_OK;
     if (result == SB_MESSAGE_QUEUE_RANGE) return SB_SERVICE_RANGE;
     if (result == SB_MESSAGE_QUEUE_WOULD_BLOCK) {
-        return peer_open ? SB_SERVICE_WOULD_BLOCK : SB_SERVICE_CLOSED;
+        if (peer_open || !peer_has_connected) return SB_SERVICE_WOULD_BLOCK;
+        return SB_SERVICE_CLOSED;
     }
     return SB_SERVICE_INVALID;
 }
