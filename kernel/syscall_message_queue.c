@@ -500,3 +500,13 @@ sb_irq_frame_t *sb_syscall_dispatch_message_queue(sb_irq_frame_t *frame) {
             return frame;
     }
 }
+
+extern sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame);
+
+sb_irq_frame_t *sb_syscall_dispatch_public(sb_irq_frame_t *frame) {
+    if (frame == 0) return 0;
+    if (frame->rax >= SB_SYS_SERVICE_REGISTER && frame->rax <= SB_SYS_SERVICE_RECEIVE) {
+        return sb_syscall_dispatch_message_queue(frame);
+    }
+    return sb_syscall_dispatch_entry(frame);
+}
