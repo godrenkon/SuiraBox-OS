@@ -3,7 +3,7 @@
 
 .global sb_syscall_int80_stub
 .type sb_syscall_int80_stub, @function
-.extern sb_syscall_dispatch_entry
+.extern sb_syscall_dispatch_public
 
 /*
  * Compatibility syscall entry through IDT vector 0x80.
@@ -44,7 +44,7 @@ sb_syscall_int80_stub:
 
     cld
     andq $-16, %rsp
-    call sb_syscall_dispatch_entry
+    call sb_syscall_dispatch_public
 
     testq %rax, %rax
     cmovzq %rbx, %rax
