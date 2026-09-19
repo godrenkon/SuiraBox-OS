@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **7-7 event / wait object**。process-local generation handle、nonblocking PIPE、一般VFS FILE/DIRECTORY、VFS path spawn、ATA/FAT32、block write-back cacheまでQEMU/host testで確認済みです。次はevent/wait objectを作り、PIPEなどのIPCをscheduler BLOCKED/wakeへ安全に接続できる共通待機基盤へ進みます。
+> **Current focus:** **8-8 fsync / atomic update semantics**。Syscall/IPC 7-1〜7-9は、generation handle、PIPE、EVENT wait/timeout、MESSAGE QUEUE、SHARED MEMORY、named local service transportまでQEMU/host testと独立IPC proofで確認済みです。次は既存のVFS/block flush境界をuserspace FILE_SYNCへ公開し、writable filesystemのmetadata orderingとatomic update contractへ進みます。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -143,10 +143,10 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **7-3** user pointer validation
 - [x] **7-4** handle / descriptor基盤
 - [x] **7-5** pipe
-- [ ] **7-6** message queue
-- [*] **7-7** event / wait object
-- [ ] **7-8** shared memory + permission
-- [ ] **7-9** local service transport
+- [x] **7-6** message queue
+- [x] **7-7** event / wait object
+- [x] **7-8** shared memory + permission
+- [x] **7-9** local service transport
 
 ## 8. VFS / Storage
 
@@ -157,7 +157,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **8-5** filesystem abstraction
 - [x] **8-6** 初期filesystem実装
 - [x] **8-7** cache / writeback
-- [-] **8-8** fsync / atomic update semantics
+- [*] **8-8** fsync / atomic update semantics
 - [ ] **8-9** storage recovery
 
 ## 9. Network Stack
@@ -290,11 +290,11 @@ GitHub Actions上のx86_64 QEMU smoke testで、timer IRQによるring3 taskへ�
 
 ### Verified syscall / handle / IPC boundary
 
-**7-1〜7-5: versioned ABI + user pointer validation + generation handles + PIPE**
+**7-1〜7-9: versioned ABI + generation handles + PIPE / EVENT / MESSAGE QUEUE / SHARED MEMORY / local service**
 
 `int 0x80` entryでは全GPRを保存し、共通ABI headerでsyscall番号・register ABI・error表現・ABI versionを固定しています。user pointerは対象processのpage tableを走査してPRESENT / USER / WRITABLEを検査し、kernelはuser virtual addressを直接dereferenceせず、検証済みphysical mappingをページ単位でcopyします。
 
-process-local handle tableはtype・rights・generation・close callbackを保持し、PROCESS / FILE / DIRECTORY / PIPE objectをuserspaceへraw pointerなしで公開します。PIPEは4096-byte ring buffer、READ/WRITE endpoint別rights、`WOULD_BLOCK` backpressure、peer-close EOF/CLOSED semantics、close後stale generationまでhost testとQEMUで確認済みです。現在のPIPE syscallはnonblockingで、blocking wakeは7-7のwait objectへ分離します。
+process-local handle tableはtype・rights・generation・close callbackを保持し、PROCESS / FILE / DIRECTORY / PIPE / EVENT / MESSAGE_QUEUE / SHARED_MEMORY / SERVICE objectをuserspaceへraw pointerなしで公開します。PIPEは4096-byte ring bufferとEOF/CLOSED semantics、EVENTはmanual-reset・timeout・scheduler BLOCKED/wake、MESSAGE QUEUEは32-slot×64-byteとshort-buffer保持、SHARED MEMORYはread/write permission付きalias map/unmap、SERVICEはnamed endpoint上の双方向queue transportを実装しています。QEMUでは別processのclientがservice名で接続してping/pongを完了し、独立`ipc-proof` jobが7-5〜7-9のordered lifecycleを検証します。
 
 ### Verified VFS / storage foundation
 
@@ -306,9 +306,9 @@ block cacheは固定16-entryのsector cacheで、device identity + LBAをkeyにr
 
 ### Primary work
 
-**7-7: event / wait object**
+**8-8: fsync / atomic update semantics**
 
-次はWAIT/SIGNAL可能なevent objectをprocess-local handleへ載せ、現在`WOULD_BLOCK`を返すPIPEなどのIPCをschedulerのBLOCKED/wake経路へ共通化します。process WAITで実証済みの保存syscall frame復帰モデルを、process専用ではないwaitable kernel objectへ一般化する段階です。
+VFS内部には`sb_vfs_file_sync()`、block layerには`sb_block_flush()`、mount境界には`sb_vfs_sync()`が既にあります。次はuserspace FILE handleからこのflush経路へ到達する`FILE_SYNC` syscallをABIへ追加し、QEMUでhandle→VFS→block flushのdurability境界を検証します。その後、現在read-onlyのFAT32をwrite対応へ拡張し、data/FAT/directory metadataのwrite orderingとatomic update policyを定義します。
 
 ### Deliberately still partial
 
@@ -316,7 +316,8 @@ block cacheは固定16-entryのsector cacheで、device identity + LBAをkeyにr
 - **4-7**: user/kernel stackは動作するが、guard page・overflow policy・可変stack policyは未完成
 - **5-2**: IRQ preemption contextとcooperative kernel contextは分離済みだが、context ABI全体の整理は継続中
 - **6-7**: 複数processの並行実行は確認済みだが、一般的なmulti-thread runtimeは未完成
-- **8-8**: block/VFS flushとVFS file sync contractは実装済みだが、read-only FAT32のためuserspace fsync・writable metadata ordering・atomic updateは未完成
+- **7-9**: Roadmap上のlocal service MVPは完了。現実装はregistry 8枠・1 active client/service・64-byte messageで、multi-client・blocking receive・credential policyは将来拡張
+- **8-8**: block/VFS flushとVFS file sync contractは実装済みだが、userspace FILE_SYNC・writable FAT32 metadata ordering・atomic updateは未完成
 
 ---
 
