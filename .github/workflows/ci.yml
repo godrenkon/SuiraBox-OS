@@ -66,3 +66,19 @@ jobs:
             build/user-hello.elf
             build/user-child.elf
             qemu.log
+
+  ipc-proof:
+    needs: kernel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download QEMU smoke artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: suirabox-kernel
+          path: artifact
+
+      - name: Verify IPC lifecycle
+        run: python3 tests/ipc_log_check.py artifact/qemu.log
