@@ -158,6 +158,9 @@ static int vfs_adapter_test(sb_vfs_mount_t *mount) {
                 bytes_read == 27u &&
                 strcmp(buffer, "Hello from SuiraBox FAT32!\n") == 0,
                 "FAT32 generic VFS read failed")) return 0;
+    if (!expect((file.node->capabilities & SB_VFS_CAP_SYNC) != 0u &&
+                sb_vfs_file_sync(&file) == SB_VFS_OBJECT_OK,
+                "FAT32 file sync did not reach mount flush")) return 0;
 
     memset(buffer, 0, sizeof(buffer));
     if (!expect(sb_vfs_namespace_open_file(&namespace_state,
@@ -227,6 +230,8 @@ static int vfs_adapter_test(sb_vfs_mount_t *mount) {
                 "adapter destroy ignored an open file reference")) return 0;
     if (!expect(sb_vfs_file_close(&file) == SB_VFS_OBJECT_OK,
                 "FAT32 generic file close failed")) return 0;
+    if (!expect(sb_vfs_file_sync(&file) == SB_VFS_OBJECT_CLOSED,
+                "closed FAT32 file accepted sync")) return 0;
     if (!expect(sb_fat32_vfs_destroy(&adapter) == SB_VFS_OBJECT_OK,
                 "FAT32 VFS adapter destroy failed")) return 0;
 
