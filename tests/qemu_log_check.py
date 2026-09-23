@@ -66,6 +66,8 @@ def main() -> None:
             "Userspace: FILE handle read/seek lifecycle OK",
             "File: generic VFS path opened as FILE handle",
             "Userspace: generic VFS FILE_OPEN lifecycle OK",
+            "File: FILE_SYNC flushed VFS backing store",
+            "Userspace: runtime FAT32 FILE_SYNC lifecycle OK",
             "Userspace: runtime FAT32 file read through generic VFS OK",
             "Directory: generic VFS path opened as DIRECTORY handle",
             "Directory: entry copied to userspace",
@@ -128,6 +130,8 @@ def main() -> None:
         "runtime-fat32-vfs": [
             "Storage: ATA primary master registered",
             "Storage: FAT32 system mount /disk ready",
+            "File: FILE_SYNC flushed VFS backing store",
+            "Userspace: runtime FAT32 FILE_SYNC lifecycle OK",
             "Userspace: runtime FAT32 file read through generic VFS OK",
             "Directory: generic VFS path opened as DIRECTORY handle",
             "Directory: entry copied to userspace",

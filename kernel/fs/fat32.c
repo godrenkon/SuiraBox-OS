@@ -364,8 +364,25 @@ static int fat32_vfs_file_read(sb_vfs_node_t *node,
     return SB_VFS_OBJECT_OK;
 }
 
+
+static int fat32_vfs_file_sync(sb_vfs_node_t *node) {
+    if (node == 0 || node->private_data == 0) return SB_VFS_OBJECT_INVALID;
+
+    sb_fat32_vfs_node_t *slot = (sb_fat32_vfs_node_t *)node->private_data;
+    if (slot->in_use == 0u || slot->owner == 0 || slot->owner->mounted == 0u ||
+        slot->owner->fs.mount == 0 ||
+        (slot->entry.attributes & SB_FAT32_ATTR_DIRECTORY) != 0u ||
+        node->size != slot->entry.file_size) {
+        return SB_VFS_OBJECT_IO;
+    }
+
+    return sb_vfs_sync(slot->owner->fs.mount) == SB_VFS_OK
+        ? SB_VFS_OBJECT_OK : SB_VFS_OBJECT_IO;
+}
+
 static const sb_vfs_node_ops_t fat32_file_ops = {
     .read = fat32_vfs_file_read,
+    .sync = fat32_vfs_file_sync,
 };
 
 static int fat32_subdir_lookup(sb_vfs_node_t *directory,
@@ -413,7 +430,7 @@ static sb_fat32_vfs_node_t *cache_entry(sb_fat32_vfs_t *adapter,
                                                 : SB_VFS_NODE_REGULAR,
                                             is_directory
                                                 ? (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR)
-                                                : SB_VFS_CAP_READ,
+                                                : (SB_VFS_CAP_READ | SB_VFS_CAP_SYNC),
                                             is_directory ? 0u : entry->file_size,
                                             is_directory
                                                 ? &fat32_subdir_ops

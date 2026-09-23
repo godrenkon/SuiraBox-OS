@@ -221,9 +221,25 @@ _start:
     cmpl $0x584f4241, file_header_buffer+4(%rip)
     jne lifecycle_failed
     mov %r12, %rdi
+    mov $SB_SYS_FILE_SYNC, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
     mov $SB_SYS_HANDLE_CLOSE, %rax
     int $SB_SYSCALL_VECTOR
     test %rax, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_FILE_SYNC, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_STALE, %rax
+    jne lifecycle_failed
+    lea runtime_sync_message(%rip), %rdi
+    mov $runtime_sync_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_sync_message_len, %rax
     jne lifecycle_failed
     lea runtime_disk_message(%rip), %rdi
     mov $runtime_disk_message_len, %rsi
@@ -639,6 +655,9 @@ file_message:
 generic_file_message:
     .ascii "Userspace: generic VFS FILE_OPEN lifecycle OK\r\n"
 .set generic_file_message_len, . - generic_file_message
+runtime_sync_message:
+    .ascii "Userspace: runtime FAT32 FILE_SYNC lifecycle OK\r\n"
+.set runtime_sync_message_len, . - runtime_sync_message
 runtime_disk_message:
     .ascii "Userspace: runtime FAT32 file read through generic VFS OK\r\n"
 .set runtime_disk_message_len, . - runtime_disk_message
