@@ -13,6 +13,7 @@
 
 #define ATA_CMD_READ_SECTORS 0x20u
 #define ATA_CMD_WRITE_SECTORS 0x30u
+#define ATA_CMD_CACHE_FLUSH 0xE7u
 #define ATA_CMD_IDENTIFY 0xECu
 
 #define ATA_STATUS_BSY 0x80u
@@ -130,6 +131,22 @@ static sb_block_status_t ata_write(sb_block_device_t *device, uint64_t lba, uint
     return SB_BLOCK_OK;
 }
 
+static sb_block_status_t ata_flush(sb_block_device_t *device) {
+    if (device == 0 || device != &g_ata_device) return SB_BLOCK_INVALID_ARGUMENT;
+
+    outb(ATA_PRIMARY_IO + ATA_REG_DRIVE, 0xE0u);
+    io_wait();
+    uint8_t status = ata_wait_not_busy();
+    if (status & ATA_STATUS_BSY) return SB_BLOCK_NOT_READY;
+    if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) return SB_BLOCK_IO_ERROR;
+
+    outb(ATA_PRIMARY_IO + ATA_REG_COMMAND, ATA_CMD_CACHE_FLUSH);
+    status = ata_wait_not_busy();
+    if (status & ATA_STATUS_BSY) return SB_BLOCK_NOT_READY;
+    if (status & (ATA_STATUS_ERR | ATA_STATUS_DF)) return SB_BLOCK_IO_ERROR;
+    return SB_BLOCK_OK;
+}
+
 sb_block_status_t sb_ata_pio_init(void) {
     outb(ATA_PRIMARY_CTRL, 0u);
     io_wait();
@@ -159,6 +176,7 @@ sb_block_status_t sb_ata_pio_init(void) {
     g_ata_device.sector_size = SB_BLOCK_SECTOR_SIZE;
     g_ata_device.read = ata_read;
     g_ata_device.write = ata_write;
+    g_ata_device.flush = ata_flush;
     g_ata_device.driver_data = 0;
     g_ata_ready = 1u;
     return sb_block_register(&g_ata_device);

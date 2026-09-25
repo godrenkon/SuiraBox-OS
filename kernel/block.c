@@ -8,6 +8,7 @@
 static sb_block_device_t *g_devices[SB_MAX_BLOCK_DEVICES];
 static uint32_t g_device_count;
 static uint8_t g_test_disk[SB_SELFTEST_SECTORS * SB_BLOCK_SECTOR_SIZE];
+static uint32_t g_test_flushes;
 
 static sb_block_status_t test_disk_read(sb_block_device_t *device,
                                         uint64_t lba,
@@ -47,6 +48,12 @@ static sb_block_status_t test_disk_write(sb_block_device_t *device,
     return SB_BLOCK_OK;
 }
 
+static sb_block_status_t test_disk_flush(sb_block_device_t *device) {
+    if (device == 0) return SB_BLOCK_INVALID_ARGUMENT;
+    ++g_test_flushes;
+    return SB_BLOCK_OK;
+}
+
 sb_block_status_t sb_block_read(sb_block_device_t *device,
                                 uint64_t lba,
                                 uint32_t count,
@@ -71,7 +78,11 @@ sb_block_status_t sb_block_write(sb_block_device_t *device,
 
 sb_block_status_t sb_block_flush(sb_block_device_t *device) {
     if (device == 0) return SB_BLOCK_INVALID_ARGUMENT;
-    return sb_block_cache_flush_device(device);
+
+    const sb_block_status_t cache_status = sb_block_cache_flush_device(device);
+    if (cache_status != SB_BLOCK_OK) return cache_status;
+
+    return device->flush != 0 ? device->flush(device) : SB_BLOCK_OK;
 }
 
 sb_block_status_t sb_block_register(sb_block_device_t *device) {
@@ -139,24 +150,27 @@ static sb_block_status_t selftest_finish(uint32_t initial_count,
 
 sb_block_status_t sb_block_selftest(void) {
     static sb_block_device_t test_device = {
-        "memory-test",
-        SB_SELFTEST_SECTORS,
-        SB_BLOCK_SECTOR_SIZE,
-        test_disk_read,
-        test_disk_write,
-        0,
+        .name = "memory-test",
+        .sector_count = SB_SELFTEST_SECTORS,
+        .sector_size = SB_BLOCK_SECTOR_SIZE,
+        .read = test_disk_read,
+        .write = test_disk_write,
+        .flush = test_disk_flush,
+        .driver_data = 0,
     };
     static sb_block_device_t read_only_device = {
-        "memory-test-ro",
-        SB_SELFTEST_SECTORS,
-        SB_BLOCK_SECTOR_SIZE,
-        test_disk_read,
-        0,
-        0,
+        .name = "memory-test-ro",
+        .sector_count = SB_SELFTEST_SECTORS,
+        .sector_size = SB_BLOCK_SECTOR_SIZE,
+        .read = test_disk_read,
+        .write = 0,
+        .flush = 0,
+        .driver_data = 0,
     };
     static uint8_t write_buffer[SB_BLOCK_SECTOR_SIZE];
     static uint8_t read_buffer[SB_BLOCK_SECTOR_SIZE];
     const uint32_t initial_count = g_device_count;
+    g_test_flushes = 0u;
 
     for (uint32_t i = 0; i < SB_BLOCK_SECTOR_SIZE; ++i) {
         write_buffer[i] = (uint8_t)(i ^ 0xA5u);
@@ -170,7 +184,7 @@ sb_block_status_t sb_block_selftest(void) {
     sb_block_device_t *device = sb_block_get(sb_block_count() - 1u);
     if (device == 0 || sb_block_write(device, 2u, 1u, write_buffer) != SB_BLOCK_OK ||
         sb_block_read(device, 2u, 1u, read_buffer) != SB_BLOCK_OK ||
-        sb_block_flush(device) != SB_BLOCK_OK) {
+        sb_block_flush(device) != SB_BLOCK_OK || g_test_flushes != 1u) {
         return selftest_finish(initial_count, SB_BLOCK_NOT_READY);
     }
 

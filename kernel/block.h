@@ -26,6 +26,9 @@ typedef struct sb_block_device {
                                uint64_t lba,
                                uint32_t count,
                                const void *buffer);
+    /* Optional device-level durability barrier. A null callback means the
+     * driver has no volatile write cache that needs an explicit flush. */
+    sb_block_status_t (*flush)(struct sb_block_device *device);
     void *driver_data;
 } sb_block_device_t;
 
@@ -39,9 +42,9 @@ static inline int sb_block_range_valid(const sb_block_device_t *device,
 }
 
 /* Canonical block I/O boundary. 512-byte reads/writes may be satisfied by the
- * shared sector cache; sb_block_flush() establishes persistence to the backing
- * driver for all dirty entries belonging to the device. Filesystems and other
- * callers must not invoke driver callbacks directly. */
+ * shared sector cache; sb_block_flush() first writes back all dirty entries and
+ * then invokes the optional device-level durability barrier. Filesystems and
+ * other callers must not invoke driver callbacks directly. */
 sb_block_status_t sb_block_read(sb_block_device_t *device,
                                 uint64_t lba,
                                 uint32_t count,

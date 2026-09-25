@@ -10,8 +10,10 @@ static uint8_t disk_b[TEST_SECTORS * SB_BLOCK_SECTOR_SIZE];
 static uint32_t reads_a;
 static uint32_t reads_b;
 static uint32_t writes_a;
+static uint32_t flushes_a;
 static int fail_next_a_read;
 static int fail_next_a_write;
+static int fail_next_a_flush;
 
 static int require(int condition, const char *message) {
     if (condition) return 0;
@@ -68,6 +70,16 @@ static sb_block_status_t write_a(sb_block_device_t *device,
     return SB_BLOCK_OK;
 }
 
+static sb_block_status_t flush_a(sb_block_device_t *device) {
+    if (device == 0) return SB_BLOCK_INVALID_ARGUMENT;
+    ++flushes_a;
+    if (fail_next_a_flush) {
+        fail_next_a_flush = 0;
+        return SB_BLOCK_IO_ERROR;
+    }
+    return SB_BLOCK_OK;
+}
+
 static sb_block_status_t read_b(sb_block_device_t *device,
                                 uint64_t lba,
                                 uint32_t count,
@@ -89,6 +101,7 @@ int main(void) {
         .sector_size = SB_BLOCK_SECTOR_SIZE,
         .read = read_a,
         .write = write_a,
+        .flush = flush_a,
         .driver_data = 0,
     };
     sb_block_device_t b = {
@@ -97,6 +110,7 @@ int main(void) {
         .sector_size = SB_BLOCK_SECTOR_SIZE,
         .read = read_b,
         .write = 0,
+        .flush = 0,
         .driver_data = 0,
     };
     uint8_t buffer[SB_BLOCK_SECTOR_SIZE];
@@ -169,6 +183,20 @@ int main(void) {
     if (require(bytes_equal(&disk_a[3u * SB_BLOCK_SECTOR_SIZE], external,
                             sizeof(external)),
                 "retry persists dirty data")) return 1;
+
+    /* The canonical flush adds the device-level durability barrier after all
+     * dirty cache entries have reached the backend, and propagates failures. */
+    const uint32_t flushes_before_barrier = flushes_a;
+    if (require(sb_block_flush(&a) == SB_BLOCK_OK &&
+                flushes_a == flushes_before_barrier + 1u,
+                "canonical flush reaches device barrier")) return 1;
+    fail_next_a_flush = 1;
+    if (require(sb_block_flush(&a) == SB_BLOCK_IO_ERROR &&
+                flushes_a == flushes_before_barrier + 2u,
+                "device flush error propagated")) return 1;
+    if (require(sb_block_flush(&a) == SB_BLOCK_OK &&
+                flushes_a == flushes_before_barrier + 3u,
+                "device flush retry succeeds")) return 1;
 
     /* Backend read failures are misses but never populate a valid entry. */
     sb_block_cache_invalidate(&a, 4u, 1u);
