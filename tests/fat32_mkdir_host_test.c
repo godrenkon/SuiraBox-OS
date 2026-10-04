@@ -199,6 +199,36 @@ int main(void) {
     if (check(mkdir_path("/disk/BADMIRROR", &dir) == SB_VFS_OBJECT_INVALID &&
         mkdir_path("/disk/MIRROR", &dir) == SB_VFS_OBJECT_IO && sb_block_cache_stats().dirty_writes == 0u,
         "invalid name and inconsistent allocation copies rejected")) return 1;
+    if (finish() || start(1)) return 1;
+    for (uint32_t copy = 0u; copy < 2u; ++copy)
+        for (uint32_t c = 7u; c < 31u; ++c) put32(disk + (3u + copy) * 512u + c * 4u, 0x0FFFFFFFu);
+    sb_block_cache_reset();
+    if (check(mkdir_path("/disk/NEWDIR", &dir) == SB_VFS_OBJECT_RANGE &&
+        sb_block_cache_stats().dirty_writes == 0u && barriers == 0u,
+        "full parent requires both child and growth space before writes")) return 1;
+    if (finish() || start(1)) return 1;
+    sb_vfs_node_t *node;
+    for (uint32_t i = 0u; i < SB_FAT32_VFS_NODE_CACHE; ++i) {
+        char name[12] = "F000.TXT";
+        name[2] = (char)('0' + i / 10u); name[3] = (char)('0' + i % 10u);
+        const char *lookup = i == 0u ? "NEST" : i == 1u ? "LOCKED" : name;
+        if (check(sb_vfs_node_lookup(sb_fat32_vfs_root(&adapter), lookup, strlen(lookup), &node) == SB_VFS_OBJECT_OK &&
+            sb_vfs_node_release(node) == SB_VFS_OBJECT_OK, "populate inode cache")) return 1;
+    }
+    if (check(mkdir_path("/disk/NEWDIR", &dir) == SB_VFS_OBJECT_RANGE &&
+        sb_block_cache_stats().dirty_writes == 0u && barriers == 0u, "inode capacity reserved before allocation")) return 1;
+    if (finish() || start(0)) return 1;
+    put32(disk + 4u * 512u + 12u, 0u); sb_block_cache_reset();
+    if (check(mkdir_path("/disk/NEWDIR", &dir) == SB_VFS_OBJECT_IO &&
+        sb_block_cache_stats().dirty_writes == 0u, "inconsistent parent-chain copies rejected")) return 1;
+    if (finish() || start(0)) return 1;
+    device.write = 0;
     if (finish()) return 1;
+    sb_block_cache_reset();
+    if (attach()) return 1;
+    if (check(mkdir_path("/disk/NEWDIR", &dir) == SB_VFS_OBJECT_ACCESS &&
+        sb_block_cache_stats().dirty_writes == 0u, "read-only device refuses mkdir")) return 1;
+    if (finish()) return 1;
+    device.write = write_disk;
     puts("fat32 mkdir host test OK"); return 0;
 }

@@ -184,7 +184,8 @@ creation's parent resolution, path normalization, duplicate protection and mount
 root protection. Parent directories must already exist; there is no mkdir-p mode.
 
 The FAT32 backend preflights the name, duplicate aliases, parent chain, mirrored
-FATs and node-cache capacity. It allocates one child cluster, initializes `.` to
+FATs and node-cache capacity. A full parent requires two free clusters (child and
+parent extension) before writes begin. It allocates one child cluster, initializes `.` to
 the child and `..` to its parent (zero for a root parent), and zeros every remaining
 byte of every sector. Child data is flushed before its mirrored FAT EOC and
 invalidated primary FSInfo hints are flushed. Only then is the parent's short

@@ -895,14 +895,14 @@ static int directory_chain_valid(sb_fat32_t *fs, uint32_t cluster) {
     return 0;
 }
 
-static int find_free_cluster(sb_fat32_t *fs, uint32_t *cluster_out) {
+static int find_free_cluster(sb_fat32_t *fs, uint32_t excluded, uint32_t *cluster_out) {
     uint64_t limit = (fs->total_sectors - fs->first_data_sector) / fs->sectors_per_cluster + 2u;
     const uint64_t fat_limit = (uint64_t)fs->fat_size_sectors * 128u;
     if (limit > fat_limit) limit = fat_limit;
     if (limit > 0x0FFFFFF7u) limit = 0x0FFFFFF7u;
     for (uint32_t c = 2u; (uint64_t)c < limit; ++c) {
         uint32_t value;
-        if (c == fs->root_cluster) continue;
+        if (c == fs->root_cluster || c == excluded) continue;
         if (!fat_next_cluster(fs, c, &value)) return SB_VFS_OBJECT_IO;
         if (value != 0u) continue;
         if (!fat_copies_equal(fs, c, 0u)) return SB_VFS_OBJECT_IO;
@@ -931,7 +931,7 @@ static int grow_directory_and_create(sb_fat32_vfs_t *adapter, uint32_t tail,
     uint32_t tail_value, allocated = 0u;
     if (!fat_next_cluster(fs, tail, &tail_value) || tail_value < SB_FAT32_EOC_MIN ||
         !fat_copies_equal(fs, tail, tail_value)) return SB_VFS_OBJECT_IO;
-    const int allocation = find_free_cluster(fs, &allocated);
+    const int allocation = find_free_cluster(fs, 0u, &allocated);
     if (allocation != SB_VFS_OBJECT_OK) return allocation;
     uint64_t lba;
     if (!cluster_to_lba(fs, allocated, &lba)) return SB_VFS_OBJECT_IO;
@@ -960,6 +960,8 @@ release_slot:
     *slot = (sb_fat32_vfs_node_t){0};
     return SB_VFS_OBJECT_IO;
 }
+
+enum { CREATE_PARENT_FULL = 1 }; /* Internal successful preflight result. */
 
 static int create_in_cluster(sb_fat32_vfs_t *adapter, uint32_t directory_cluster,
                               const char *name, uint64_t name_length, uint8_t attributes,
@@ -1022,7 +1024,7 @@ static int create_in_cluster(sb_fat32_vfs_t *adapter, uint32_t directory_cluster
     }
     if (free_lba == 0u) {
         if (previous_lfn) return SB_VFS_OBJECT_RANGE;
-        if (preflight) return SB_VFS_OBJECT_OK;
+        if (preflight) return CREATE_PARENT_FULL;
         return grow_directory_and_create(adapter, cluster, encoded, attributes, first_cluster, node_out);
     }
 found:
@@ -1059,10 +1061,16 @@ static int mkdir_in_cluster(sb_fat32_vfs_t *adapter, uint32_t parent,
                              const char *name, uint64_t length, sb_vfs_node_t **node_out) {
     sb_fat32_t *fs = &adapter->fs;
     int result = create_in_cluster(adapter, parent, name, length, SB_FAT32_ATTR_DIRECTORY, 0u, 1, node_out);
-    if (result != SB_VFS_OBJECT_OK) return result;
+    const int needs_growth = result == CREATE_PARENT_FULL;
+    if (result != SB_VFS_OBJECT_OK && !needs_growth) return result;
     uint32_t child = 0u;
-    result = find_free_cluster(fs, &child);
+    result = find_free_cluster(fs, 0u, &child);
     if (result != SB_VFS_OBJECT_OK) return result;
+    if (needs_growth) {
+        uint32_t parent_extension;
+        result = find_free_cluster(fs, child, &parent_extension);
+        if (result != SB_VFS_OBJECT_OK) return result;
+    }
     uint64_t lba;
     if (!cluster_to_lba(fs, child, &lba)) return SB_VFS_OBJECT_IO;
     uint8_t sector[SB_FAT32_SECTOR_BYTES] = {0};
