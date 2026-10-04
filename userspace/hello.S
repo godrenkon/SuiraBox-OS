@@ -565,6 +565,139 @@ runtime_append_read_loop:
     int $SB_SYSCALL_VECTOR
     cmp $runtime_directory_message_len, %rax
     jne lifecycle_failed
+#ifdef SB_STORAGE_DURABILITY_PROOF
+runtime_fat32_create_probe:
+    xor %r14, %r14
+runtime_create_fill_handles:
+    mov $SB_SYS_PROCESS_OPEN_SELF, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    lea runtime_create_handles(%rip), %rdi
+    mov %rax, (%rdi,%r14,8)
+    inc %r14
+    cmp $32, %r14
+    jne runtime_create_fill_handles
+    lea runtime_create_path(%rip), %rdi
+    mov $runtime_create_path_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_LIMIT, %rax
+    jne lifecycle_failed
+runtime_create_release_handles:
+    dec %r14
+    lea runtime_create_handles(%rip), %rdi
+    mov (%rdi,%r14,8), %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    test %r14, %r14
+    jnz runtime_create_release_handles
+    mov $1, %rdi
+    mov $runtime_create_path_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+    lea runtime_create_path(%rip), %rdi
+    mov $runtime_create_path_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+    lea runtime_create_path(%rip), %rdi
+    mov $runtime_create_path_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+    lea runtime_create_path(%rip), %rdi
+    mov $runtime_create_path_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_HANDLE_ABI_TYPE_FILE, SB_HANDLE_INFO_TYPE_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $(SB_HANDLE_ABI_RIGHT_READ | SB_HANDLE_ABI_RIGHT_WRITE | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea runtime_write_buffer(%rip), %rsi
+    mov $1, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_create_path(%rip), %rdi
+    mov $runtime_create_path_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_EXISTS, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea runtime_create_payload(%rip), %rsi
+    mov $runtime_create_payload_len, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_create_payload_len, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_FILE_SYNC, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_create_path(%rip), %rdi
+    mov $runtime_create_path_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_write_buffer(%rip), %rsi
+    mov $runtime_create_payload_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_create_payload_len, %rax
+    jne lifecycle_failed
+    lea runtime_write_buffer(%rip), %rdi
+    lea runtime_create_payload(%rip), %rsi
+    mov $runtime_create_payload_len, %rcx
+    cld
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_create_message(%rip), %rdi
+    mov $runtime_create_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_create_message_len, %rax
+    jne lifecycle_failed
+#endif
 runtime_disk_skipped:
 
     lea pipe_handles_buffer(%rip), %rdi
@@ -898,6 +1031,15 @@ runtime_append_payload:
     .ascii "SUIRABOX-APPEND\n"
     .endr
 .set runtime_append_payload_len, . - runtime_append_payload
+runtime_create_path:
+    .ascii "/disk/NEWFILE.TXT"
+.set runtime_create_path_len, . - runtime_create_path
+runtime_create_payload:
+    .ascii "SUIRABOX-CREATED-FAT32\n"
+.set runtime_create_payload_len, . - runtime_create_payload
+runtime_create_message:
+    .ascii "Userspace: FAT32 create/write/sync/reopen lifecycle OK\r\n"
+.set runtime_create_message_len, . - runtime_create_message
 runtime_append_message:
     .ascii "Userspace: FAT32 extend/sync/reopen lifecycle OK\r\n"
 .set runtime_append_message_len, . - runtime_append_message
@@ -972,6 +1114,8 @@ runtime_disk_directory_path:
 .section .data
 #ifdef SB_STORAGE_DURABILITY_PROOF
 runtime_write_buffer:
+    .zero 256
+runtime_create_handles:
     .zero 256
 #endif
 .align 8

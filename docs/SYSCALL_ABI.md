@@ -49,7 +49,7 @@ Current errors:
 
 ## Version 1 syscall table
 
-The current public maximum syscall number is **38**.
+The current public maximum syscall number is **39**.
 
 | Number | Name | Arguments | Result |
 | ---: | --- | --- | --- |
@@ -92,12 +92,13 @@ The current public maximum syscall number is **38**.
 | 36 | `SB_SYS_SERVICE_RECEIVE` | `rdi=service`, `rsi=writable buffer`, `rdx=capacity` | bytes received |
 | 37 | `SB_SYS_FILE_SYNC` | `rdi=file` | 0 after backing-store/device flush |
 | 38 | `SB_SYS_FILE_WRITE` | `rdi=file`, `rsi=readable buffer`, `rdx=length` | bytes accepted; may be short |
+| 39 | `SB_SYS_FILE_CREATE` | `rdi=absolute path`, `rsi=path length`, `rdx=READ/WRITE access` | new FILE handle; exclusive creation |
 
 Syscall 4 and syscall 13 are retained for ABI-v1 compatibility. New code should prefer the versioned spawn request and generic VFS path interfaces.
 
 ## ABI info routing
 
-The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 38.
+The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 39.
 
 ## Userspace pointer rules
 
@@ -161,9 +162,11 @@ A VFS node represents the resource; an open `sb_vfs_file_t` owns independent off
 
 `SB_SYS_FILE_WRITE` requires a live FILE handle with WRITE. Requests over 256 bytes return LIMIT. The complete source is copied from readable userspace before file data or offset changes; an invalid source returns FAULT. Zero length returns 0 after handle/rights validation without inspecting the pointer. A successful short write advances the offset by accepted bytes only; callers retry the remainder. FAT32 writes may extend EOF; seeking a hole, insufficient allocation space or size overflow returns LIMIT before mutation.
 
+`SB_SYS_FILE_CREATE` takes an absolute path and access flags matching FILE_OPEN, with WRITE required. It returns a new FILE handle with QUERY plus requested rights, or EXISTS for an existing name without truncation. The whole path is copied before mutation; heap and handle slots are reserved before directory publication. Parent directories must exist, and writable FAT32 supports the ASCII 8.3 subset described in FILESYSTEM.md. Full directories or node caches return LIMIT. The new entry is cached until FILE_SYNC; writing the empty file allocates clusters through the extension path. Creation does not implicitly truncate, overwrite, or create directories.
+
 DIRECTORY handles use READ|QUERY. `SB_SYS_DIRECTORY_READ` copies a stable public 80-byte entry and reports EOF as `SB_SYS_ERROR_NOT_FOUND` without advancing the cursor. QEMU verifies a rejected read-only userspace output pointer does not consume the first FAT32 directory entry.
 
-`SB_SYS_FILE_SYNC` requires QUERY and reaches `sb_vfs_file_sync()`, FAT32 mount sync, dirty block-cache writeback and the device flush barrier. WRITE success alone does not promise durability, and CLOSE does not implicitly sync. FAT32 supports overwrite and extension of existing files. Extension flushes data, then mirrored FATs, before accepting directory size; FILE_SYNC persists that final metadata. Extension errors leave offset/size unchanged but may modify overlapping existing bytes. Failed FAT rollback quarantines writes and file sync until repair/remount. Creation and atomic replacement remain future work.
+`SB_SYS_FILE_SYNC` requires QUERY and reaches `sb_vfs_file_sync()`, FAT32 mount sync, dirty block-cache writeback and the device flush barrier. WRITE success alone does not promise durability, and CLOSE does not implicitly sync. FAT32 supports overwrite and extension of existing files. Extension flushes data, then mirrored FATs, before accepting directory size; FILE_SYNC persists that final metadata. Extension errors leave offset/size unchanged but may modify overlapping existing bytes. Failed FAT rollback quarantines writes and file sync until repair/remount. Atomic replacement remains future work.
 
 ## PIPE handles
 
@@ -206,7 +209,7 @@ The current event core intentionally supports one registered waiter and is singl
 
 The current system namespace exposes `/boot` for registered Multiboot modules and `/disk` for the FAT32 runtime disk when present.
 
-FAT32 supports 8.3 lookup, directory iteration, nested subdirectories, reads, regular-file overwrites and extension on writable devices. Extension allocates at most eight clusters per backend request; the syscall's 256-byte limit remains unchanged. Seeking beyond EOF is rejected. LFN and file creation are not implemented.
+FAT32 supports 8.3 lookup, directory iteration, nested subdirectories, reads, exclusive file creation, regular-file overwrites and extension on writable devices. Extension allocates at most eight clusters per backend request; the syscall's 256-byte limit remains unchanged. Seeking beyond EOF is rejected. LFN and directory growth/creation are not implemented.
 
 The canonical block layer includes a fixed write-back sector cache. Full-sector writes become dirty cache entries, reads observe dirty data immediately, explicit flush/device unregister/replacement performs writeback, and a failed writeback preserves dirty state for retry. `sb_block_flush()` and `sb_vfs_sync()` provide the current synchronization boundary.
 

@@ -66,6 +66,9 @@ jobs:
           cmp build/runtime-expected.txt build/runtime-persisted.txt
           mcopy -i build/runtime-fat32.img ::GUARD.TXT build/guard-persisted.txt
           cmp build/guard.txt build/guard-persisted.txt
+          mcopy -i build/runtime-fat32.img ::NEWFILE.TXT build/created-persisted.txt
+          printf 'SUIRABOX-CREATED-FAT32\n' > build/created-expected.txt
+          cmp build/created-expected.txt build/created-persisted.txt
           fsck.fat -n build/runtime-fat32.img
 
       - name: Verify durability proof is opt-in
@@ -79,9 +82,14 @@ jobs:
             echo 'normal userspace still contains file write fixture'
             exit 1
           fi
+          if nm build/user-hello.elf | grep -q 'runtime_fat32_create_probe'; then
+            echo 'normal userspace still contains file creation fixture'
+            exit 1
+          fi
           make STORAGE_DURABILITY_PROOF=1 build/suirabox.elf userspace
           nm build/suirabox.elf | grep -q 'sb_storage_durability_stage'
           nm build/user-hello.elf | grep -q 'runtime_fat32_write_probe'
+          nm build/user-hello.elf | grep -q 'runtime_fat32_create_probe'
 
       - name: Upload kernel artifacts
         if: always()

@@ -28,7 +28,7 @@ FAT32          Future filesystems
 
 ## Initial implementation
 
-The current on-disk filesystem supports FAT32 reads, overwrites and file extension:
+The current on-disk filesystem supports FAT32 reads, exclusive creation, overwrites and file extension:
 
 - validate the boot sector
 - read FAT metadata
@@ -40,8 +40,9 @@ The current on-disk filesystem supports FAT32 reads, overwrites and file extensi
 - overwrite and extend existing regular files on writable devices
 - allocate and zero up to eight new clusters per extension request
 - update mirrored FATs and the physical directory slot with ordered flushes
+- create empty regular files in existing directory slots, then allocate on write
 
-Long filenames, file creation, timestamps, general permissions, journaling, and advanced caching are later milestones. FAT read-only attributes and read-only block devices reject write access. Reads honor the BPB active FAT; extension currently requires mirrored FATs.
+Long filenames, directory creation/growth, timestamps, general permissions, journaling, and advanced caching are later milestones. FAT read-only attributes and read-only block devices reject write access. Reads honor the BPB active FAT; creation and extension currently require mirrored FATs.
 
 ## Why read-only first
 
@@ -109,7 +110,41 @@ contents, guard-file preservation and `fsck.fat -n` after QEMU exits.
 
 The metadata rules follow the [Microsoft FAT32 specification](https://www.cs.fsu.edu/~cop4610t/assignments/project3/spec/fatspec.pdf).
 
-Future creation and replacement should retain this ordering and add a recovery policy. User data and cache data must remain distinguishable, and deleting an application or Minecraft instance must not implicitly delete unrelated user data.
+## Exclusive regular-file creation
+
+FILE_CREATE (ABI 39) creates an empty file and returns a FILE handle. WRITE is
+required; READ is optional. The final name accepts ASCII letters, digits, `_`
+and `-` in a base of 1..8 characters and an optional extension of 1..3. Names
+are stored in uppercase. Invalid names are rejected rather than shortened.
+Duplicate 8.3 aliases, including aliases with LFN entries, return EXISTS without
+truncation. Parent directories must already exist and permit CREATE.
+
+The generic VFS CREATE capability is separate from file WRITE. Namespace
+creation uses the normal mount resolver for the parent, protects mounted roots,
+and rejects trailing slash or terminal dot components. The syscall copies the
+whole path and reserves heap/handle space before invoking the backend. The FAT32
+backend validates the directory chain and reserves node-cache capacity before
+publishing an empty short entry. It reuses a deleted slot or the end marker;
+a full directory returns LIMIT until directory growth is implemented.
+
+When moving the end marker within a sector, the new entry and successor marker
+are accepted together. Across sectors or fragmented clusters, the successor
+marker is flushed first. This keeps garbage after the old end invisible. Slots
+immediately following live orphaned LFN entries are not reused. Initial creation
+does not allocate FAT clusters. Subsequent writes use the extension contract;
+FILE_SYNC persists the created entry and data, and failures can be retried.
+
+`make host-fat32-create-test` covers root/nested creation, deleted slots, aliases,
+invalid paths, read-only/quarantined mounts, full directories/node caches,
+fragmented end-marker ordering and injected I/O/barrier failures. The opt-in
+QEMU probe checks invalid pointers/access and exhausted handle capacity before
+creation, duplicate rejection, writing, syncing and reopening NEWFILE.TXT.
+mtools compares that file after QEMU exits and fsck checks the resulting image.
+
+Creation is not a power-loss transaction. Atomic replacement and recovery
+remain future work. User data and cache data must remain distinguishable, and
+deleting an application or Minecraft instance must not implicitly delete
+unrelated user data.
 
 ## Performance direction
 
