@@ -175,6 +175,43 @@ slack, and byte-for-byte preservation of the original cluster except RUNTIME's
 expected size update. Corrupted mirrors, existing entries and slack fail the
 checker. The original baseline is retained as an artifact alongside the image.
 
+## Mount-time recovery status
+
+Before enabling writable FAT32 nodes, mount reads FAT[1]'s clean-shutdown bit
+(`0x08000000`) and no-hard-error bit (`0x04000000`). These meanings follow the
+[Microsoft FAT specification, page 18](https://www.cs.fsu.edu/~cop4610t/assignments/project3/spec/fatspec.pdf).
+When mirroring is enabled, every FAT copy is inspected. Any clear status bit or
+status-bit disagreement sets recovery flags and mounts the filesystem read-only.
+Reserved high nibbles and other FAT[1] bits are not compared. When mirroring is
+disabled, only BPB's selected active FAT supplies status; inactive copies are
+ignored. An unreadable required status sector rejects the mount rather than
+assuming the volume is clean.
+
+Recovery-required volumes retain lookup, directory enumeration, existing-file
+reads and read-handle FILE_SYNC. Writable file handles, regular-file writes,
+FILE_CREATE and DIRECTORY_CREATE return ACCESS/RIGHTS, including direct backend
+calls and cached nested nodes. Mount and sync do not clear or repair FAT[1], and
+kernel serial output reports the read-only mode and reason flags (unclean=1,
+hard-error=2, mirrored-status disagreement=4). The block device may still be
+writable; this is a filesystem policy, not a device-wide write lock.
+
+This is a recovery entry condition, not a complete integrity check or automatic
+repair. It does not scan chains for lost/cross-linked clusters and does not
+implement transactions. SuiraBox's current writers do not yet persist the dirty
+bit before their own mutations or clear it through a clean-unmount protocol.
+Consequently a clean marker is not evidence that an interrupted SuiraBox write
+was atomic, and this gate detects only status already recorded on disk. Ordered
+dirty-marking, clean shutdown, repair and crash recovery remain future work.
+
+`make host-fat32-recovery-test` covers both status bits, mirrored disagreement,
+reserved-nibble differences, active-FAT selection, status-read failures, clean
+writability, nested reads, mutation denial and preservation of the entire image.
+CI separately builds `STORAGE_RECOVERY_PROOF=1` (durability proof disabled), boots
+writable QEMU disks with dirty, hard-error and inconsistent-status fixtures, and
+requires existing reads/sync/enumeration followed by WRITE-open/FILE_CREATE/mkdir
+rejection. SHA-256 comparison after each boot requires every image byte to remain
+unchanged, including recovery evidence. Normal-build fixture removal is checked.
+
 ## Exclusive directory creation
 
 DIRECTORY_CREATE (ABI 40) returns a READ|QUERY directory handle. VFS providers

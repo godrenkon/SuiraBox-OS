@@ -52,6 +52,14 @@ def main() -> None:
 
     if "Exception:" in log:
         fail("unexpected kernel/user exception detected")
+    if "--recovery-proof" in sys.argv[2:]:
+        require_ordered(log, "fat32-recovery-read-only", [
+            "Storage: FAT32 recovery required; mounted read-only",
+            "Userspace: runtime FAT32 FILE_SYNC lifecycle OK",
+            "Userspace: runtime FAT32 file read through generic VFS OK",
+            "Userspace: runtime FAT32 directory enumeration OK",
+            "Userspace: FAT32 recovery read-only rejection lifecycle OK",
+        ])
 
     require_all(
         log,

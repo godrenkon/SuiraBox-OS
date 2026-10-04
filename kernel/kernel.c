@@ -229,6 +229,12 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
         serial_write("Storage: ATA primary master registered\r\n");
         if (mount_runtime_fat32()) {
             serial_write("Storage: FAT32 system mount /disk ready\r\n");
+            if (runtime_fat32.fs.recovery_flags != 0u) {
+                serial_write("Storage: FAT32 recovery required; mounted read-only\r\n");
+                serial_write("Storage: FAT32 recovery status flags = ");
+                serial_write_u64(runtime_fat32.fs.recovery_flags);
+                serial_write("\r\n");
+            }
 #ifdef SB_STORAGE_DURABILITY_PROOF
             serial_write(sb_storage_durability_stage(sb_ata_pio_device()) ?
                 "Storage: durability fixture staged dirty\r\n" :
