@@ -15,6 +15,7 @@ typedef enum {
 #define SB_VFS_CAP_LOOKUP  (1u << 2)
 #define SB_VFS_CAP_READDIR (1u << 3)
 #define SB_VFS_CAP_SYNC    (1u << 4)
+#define SB_VFS_CAP_CREATE  (1u << 5)
 
 #define SB_VFS_ACCESS_READ  (1u << 0)
 #define SB_VFS_ACCESS_WRITE (1u << 1)
@@ -31,6 +32,7 @@ typedef enum {
     SB_VFS_OBJECT_CLOSED = -5,
     SB_VFS_OBJECT_RANGE = -6,
     SB_VFS_OBJECT_NOT_FOUND = -7,
+    SB_VFS_OBJECT_EXISTS = -8,
 } sb_vfs_object_result_t;
 
 struct sb_vfs_node;
@@ -74,6 +76,8 @@ typedef struct {
     sb_vfs_node_lookup_fn lookup;
     sb_vfs_node_readdir_fn readdir;
     sb_vfs_node_release_fn release;
+    /* Exclusive regular-file creation; returns a borrowed live node. */
+    sb_vfs_node_lookup_fn create;
 } sb_vfs_node_ops_t;
 
 struct sb_vfs_node {
@@ -111,6 +115,8 @@ int sb_vfs_node_lookup(sb_vfs_node_t *directory,
                        const char *name,
                        uint64_t name_length,
                        sb_vfs_node_t **node_out);
+int sb_vfs_node_create(sb_vfs_node_t *directory, const char *name,
+                       uint64_t name_length, sb_vfs_node_t **node_out);
 
 int sb_vfs_file_open(sb_vfs_node_t *node,
                      uint32_t access,

@@ -16,6 +16,7 @@ VFS_NAMESPACE_HOST_TEST := $(BUILD)/vfs-namespace-host-test
 STORAGE_DURABILITY_HOST_TEST := $(BUILD)/storage-durability-host-test
 FAT32_WRITE_HOST_TEST := $(BUILD)/fat32-write-host-test
 FAT32_EXTEND_HOST_TEST := $(BUILD)/fat32-extend-host-test
+FAT32_CREATE_HOST_TEST := $(BUILD)/fat32-create-host-test
 STORAGE_DURABILITY_PROOF ?= 0
 
 CC ?= gcc
@@ -334,7 +335,13 @@ $(FAT32_EXTEND_HOST_TEST): tests/fat32_extend_host_test.c kernel/fs/fat32.c kern
 host-fat32-extend-test: $(FAT32_EXTEND_HOST_TEST)
 	$(FAT32_EXTEND_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test host-fat32-write-test host-fat32-extend-test
+$(FAT32_CREATE_HOST_TEST): tests/fat32_create_host_test.c kernel/fs/fat32.c kernel/fs/fat32.h kernel/fs/fat32_vfs.h kernel/vfs.c kernel/vfs.h kernel/vfs_object.c kernel/vfs_object.h kernel/vfs_namespace.c kernel/vfs_namespace.h kernel/block.c kernel/block.h kernel/block_cache.c kernel/block_cache.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/fat32_create_host_test.c kernel/fs/fat32.c kernel/vfs.c kernel/block.c kernel/block_cache.c -o $@
+.PHONY: host-fat32-create-test
+host-fat32-create-test: $(FAT32_CREATE_HOST_TEST)
+	$(FAT32_CREATE_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test host-fat32-write-test host-fat32-extend-test host-fat32-create-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \

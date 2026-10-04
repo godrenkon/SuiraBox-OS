@@ -43,6 +43,10 @@ def main() -> None:
             "Userspace: FAT32 extend/sync/reopen lifecycle OK",
             "Userspace: FAT32 write/sync/reopen lifecycle OK",
         ])
+        require_ordered(log, "fat32-create/write/sync/reopen", [
+            "Userspace: runtime FAT32 directory enumeration OK",
+            "Userspace: FAT32 create/write/sync/reopen lifecycle OK",
+        ])
 
     if "Exception:" in log:
         fail("unexpected kernel/user exception detected")

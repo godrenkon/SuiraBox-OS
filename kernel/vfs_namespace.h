@@ -59,6 +59,10 @@ int sb_vfs_namespace_open_file(sb_vfs_namespace_t *namespace_state,
                                uint64_t path_length,
                                uint32_t access,
                                sb_vfs_file_t *file_out);
+/* Exclusive creation in an existing parent; WRITE is required in access. */
+int sb_vfs_namespace_create_file(sb_vfs_namespace_t *namespace_state,
+                                 const char *path, uint64_t path_length,
+                                 uint32_t access, sb_vfs_file_t *file_out);
 int sb_vfs_namespace_open_directory(sb_vfs_namespace_t *namespace_state,
                                     const char *path,
                                     uint64_t path_length,
@@ -80,6 +84,8 @@ int sb_vfs_system_open_file(const char *path,
                             uint64_t path_length,
                             uint32_t access,
                             sb_vfs_file_t *file_out);
+int sb_vfs_system_create_file(const char *path, uint64_t path_length,
+                              uint32_t access, sb_vfs_file_t *file_out);
 int sb_vfs_system_open_directory(const char *path,
                                  uint64_t path_length,
                                  sb_vfs_directory_t *directory_out);

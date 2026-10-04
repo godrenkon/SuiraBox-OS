@@ -111,7 +111,8 @@ ATA PIO provides the `CACHE FLUSH` command as its device barrier.
 block writeback -> device barrier. FAT32 supports overwriting and extending
 existing files, including allocating a first cluster for an empty file. Extension
 flushes data before mirrored FATs, then publishes directory size; FILE_SYNC is
-required for final directory durability. Creation remains future work.
+required for final directory durability. FILE_CREATE publishes an empty 8.3
+entry without allocation; its first write uses this same extension path.
 
 GitHub Actions opts in with `make STORAGE_DURABILITY_PROOF=1`. The fixture is a
 64 MiB FAT32 image with one additional sector outside the BPB volume boundary.
@@ -128,6 +129,9 @@ consistency. Host tests exercise fragmented/nested files, sector/cluster
 boundaries, read-only permissions, malformed chains and short I/O progress.
 `host-fat32-extend-test` adds allocation, backend-observed metadata ordering,
 FSInfo invalidation, FAT rollback and failed-rollback write quarantine.
+The creation host test exercises root/nested/deleted slots, duplicate protection,
+directory/node-cache exhaustion and ordered end-marker publication. QEMU creates
+NEWFILE.TXT, writes and syncs it, then the host compares its exact contents.
 
 `make host-storage-durability-test` uses separate volatile and durable device
 buffers to detect a missing or incorrectly ordered barrier. It exercises
