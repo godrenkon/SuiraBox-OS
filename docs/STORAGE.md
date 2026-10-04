@@ -112,7 +112,7 @@ block writeback -> device barrier. FAT32 supports overwriting and extending
 existing files, including allocating a first cluster for an empty file. Extension
 flushes data before mirrored FATs, then publishes directory size; FILE_SYNC is
 required for final directory durability. FILE_CREATE publishes an empty 8.3
-entry without allocation; its first write uses this same extension path.
+entry without file-data allocation; its first write uses this same extension path.
 If the parent directory is full, creation adds one initialized directory cluster
 and flushes it before mirrored FAT publication, with rollback on FAT failure.
 
@@ -138,6 +138,11 @@ The directory-growth host test models volatile/durable device buffers and checks
 data-before-FAT ordering, mirrored allocation, rollback and quarantine. CI fills
 the original root cluster, then verifies the appended directory cluster and all
 existing entries after QEMU exit, retaining the original directory snapshot.
+DIRECTORY_CREATE allocates and initializes a child directory cluster, flushes its
+data and mirrored FAT before publishing its parent entry, then flushes the parent
+before returning a directory handle. A failed publication barrier quarantines
+writes and retains the child allocation. The mkdir host/image checks and QEMU
+verify SAVES/WORLDS/LEVEL.DAT persistence, dot parents and zeroed directory slack.
 
 `make host-storage-durability-test` uses separate volatile and durable device
 buffers to detect a missing or incorrectly ordered barrier. It exercises

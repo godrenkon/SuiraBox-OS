@@ -607,6 +607,15 @@ runtime_create_fill_handles:
     cmp $SB_SYS_ERROR_LIMIT, %rax
     jne lifecycle_failed
 runtime_create_release_handles:
+    /* Reserved DIRECTORY handles must fail before any mkdir mutation too. */
+    lea runtime_mkdir_path(%rip), %rdi
+    mov $runtime_mkdir_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_LIMIT, %rax
+    jne lifecycle_failed
+runtime_mkdir_release_handles:
     dec %r14
     lea runtime_create_handles(%rip), %rdi
     mov (%rdi,%r14,8), %rdi
@@ -615,7 +624,7 @@ runtime_create_release_handles:
     test %rax, %rax
     jne lifecycle_failed
     test %r14, %r14
-    jnz runtime_create_release_handles
+    jnz runtime_mkdir_release_handles
     mov $1, %rdi
     mov $runtime_create_path_len, %rsi
     mov $SB_FILE_ACCESS_ALL, %rdx
@@ -723,6 +732,202 @@ runtime_create_release_handles:
     mov $SB_SYS_LOG_WRITE, %rax
     int $SB_SYSCALL_VECTOR
     cmp $runtime_directory_growth_message_len, %rax
+    jne lifecycle_failed
+runtime_mkdir_probe:
+    mov $1, %rdi
+    mov $runtime_mkdir_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_path(%rip), %rdi
+    mov $runtime_mkdir_path_len, %rsi
+    xor %rdx, %rdx
+    mov $1, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_INVALID, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_missing_path(%rip), %rdi
+    mov $runtime_mkdir_missing_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_boot_path(%rip), %rdi
+    mov $runtime_mkdir_boot_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_path(%rip), %rdi
+    mov $runtime_mkdir_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_HANDLE_ABI_TYPE_DIRECTORY, SB_HANDLE_INFO_TYPE_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $(SB_HANDLE_ABI_RIGHT_READ | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_path(%rip), %rdi
+    mov $runtime_mkdir_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_EXISTS, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_nested_path(%rip), %rdi
+    mov $runtime_mkdir_nested_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_file_path(%rip), %rdi
+    mov $runtime_mkdir_file_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_mkdir_payload(%rip), %rsi
+    mov $runtime_mkdir_payload_len, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_mkdir_payload_len, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_FILE_SYNC, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_path(%rip), %rdi
+    mov $runtime_mkdir_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_DIRECTORY, SB_DIRECTORY_ENTRY_TYPE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpw $6, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_nested_path(%rip), %rdi
+    mov $runtime_mkdir_nested_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_REGULAR, SB_DIRECTORY_ENTRY_TYPE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpw $9, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_file_path(%rip), %rdi
+    mov $runtime_mkdir_file_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_write_buffer(%rip), %rsi
+    mov $runtime_mkdir_payload_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_mkdir_payload_len, %rax
+    jne lifecycle_failed
+    lea runtime_write_buffer(%rip), %rdi
+    lea runtime_mkdir_payload(%rip), %rsi
+    mov $runtime_mkdir_payload_len, %rcx
+    cld
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_mkdir_message(%rip), %rdi
+    mov $runtime_mkdir_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_mkdir_message_len, %rax
     jne lifecycle_failed
 #endif
 runtime_disk_skipped:
@@ -1070,6 +1275,27 @@ runtime_create_message:
 runtime_directory_growth_message:
     .ascii "Userspace: FAT32 full-directory growth lifecycle OK\r\n"
 .set runtime_directory_growth_message_len, . - runtime_directory_growth_message
+runtime_mkdir_path:
+    .ascii "/disk/SAVES"
+.set runtime_mkdir_path_len, . - runtime_mkdir_path
+runtime_mkdir_nested_path:
+    .ascii "/disk/SAVES/WORLDS"
+.set runtime_mkdir_nested_path_len, . - runtime_mkdir_nested_path
+runtime_mkdir_file_path:
+    .ascii "/disk/SAVES/WORLDS/LEVEL.DAT"
+.set runtime_mkdir_file_path_len, . - runtime_mkdir_file_path
+runtime_mkdir_missing_path:
+    .ascii "/disk/MISSING/CHILD"
+.set runtime_mkdir_missing_path_len, . - runtime_mkdir_missing_path
+runtime_mkdir_boot_path:
+    .ascii "/boot/SAVES"
+.set runtime_mkdir_boot_path_len, . - runtime_mkdir_boot_path
+runtime_mkdir_payload:
+    .ascii "SUIRABOX-WORLD-DATA\n"
+.set runtime_mkdir_payload_len, . - runtime_mkdir_payload
+runtime_mkdir_message:
+    .ascii "Userspace: FAT32 mkdir/nested-file/sync/reopen lifecycle OK\r\n"
+.set runtime_mkdir_message_len, . - runtime_mkdir_message
 runtime_append_message:
     .ascii "Userspace: FAT32 extend/sync/reopen lifecycle OK\r\n"
 .set runtime_append_message_len, . - runtime_append_message

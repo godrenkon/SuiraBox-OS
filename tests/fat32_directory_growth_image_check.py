@@ -61,7 +61,7 @@ def seed(image: Path, snapshot: Path) -> None:
     print("FAT32 directory growth fixture OK: original root cluster is full")
 
 
-def verify(image: Path, snapshot: Path) -> None:
+def verify(image: Path, snapshot: Path, mkdir: bool = False) -> None:
     data = image.read_bytes()
     geo = geometry(data)
     root = geo[4]
@@ -85,7 +85,12 @@ def verify(image: Path, snapshot: Path) -> None:
     added = data[new_offset:new_offset + 512]
     if added[:11] != b"NEWFILE TXT" or added[11] != 0x20 or u32(added, 28) != len(b"SUIRABOX-CREATED-FAT32\n"):
         raise ValueError("created file missing from appended directory cluster")
-    if any(added[32:]):
+    slack_start = 32
+    if mkdir:
+        if added[32:43] != b"SAVES      " or added[43] != 0x10 or u32(added, 60) != 0:
+            raise ValueError("created SAVES directory missing from appended root cluster")
+        slack_start = 64
+    if any(added[slack_start:]):
         raise ValueError("new directory end marker/slack is not zeroed")
     print("FAT32 directory growth image proof OK: mirrored extension and existing entries preserved")
 

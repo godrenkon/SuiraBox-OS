@@ -658,11 +658,14 @@ static int fat32_subdir_readdir(sb_vfs_node_t *directory,
                                 sb_vfs_dir_entry_t *entry_out);
 static int fat32_directory_create(sb_vfs_node_t *directory, const char *name,
                                    uint64_t name_length, sb_vfs_node_t **node_out);
+static int fat32_directory_mkdir(sb_vfs_node_t *directory, const char *name,
+                                  uint64_t name_length, sb_vfs_node_t **node_out);
 
 static const sb_vfs_node_ops_t fat32_subdir_ops = {
     .lookup = fat32_subdir_lookup,
     .readdir = fat32_subdir_readdir,
     .create = fat32_directory_create,
+    .mkdir = fat32_directory_mkdir,
 };
 
 static sb_fat32_vfs_node_t *find_cached(sb_fat32_vfs_t *adapter,
@@ -701,7 +704,7 @@ static sb_fat32_vfs_node_t *cache_entry(sb_fat32_vfs_t *adapter,
                                             is_directory
                                                 ? (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR |
                                                    ((adapter->fs.mirrored && adapter->fs.mount->block_device->write != 0 &&
-                                                     (entry->attributes & SB_FAT32_ATTR_READ_ONLY) == 0u) ? SB_VFS_CAP_CREATE : 0u))
+                                                     (entry->attributes & SB_FAT32_ATTR_READ_ONLY) == 0u) ? (SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR) : 0u))
                                                 : file_capabilities,
                                             is_directory ? 0u : entry->file_size,
                                             is_directory
@@ -892,34 +895,48 @@ static int directory_chain_valid(sb_fat32_t *fs, uint32_t cluster) {
     return 0;
 }
 
-/* Full directories grow by one cluster per create. Initialize the entire new
- * cluster, including its first empty-file entry, before any FAT link exposes it.
- * FAT failures restore the old tail; failed rollback quarantines the mount. */
-static int grow_directory_and_create(sb_fat32_vfs_t *adapter, uint32_t tail,
-                                      const uint8_t encoded[11], sb_vfs_node_t **node_out) {
-    sb_fat32_t *fs = &adapter->fs;
-    uint32_t tail_value, allocated = 0u;
-    if (!fat_next_cluster(fs, tail, &tail_value) || tail_value < SB_FAT32_EOC_MIN ||
-        !fat_copies_equal(fs, tail, tail_value)) return SB_VFS_OBJECT_IO;
+static int find_free_cluster(sb_fat32_t *fs, uint32_t excluded, uint32_t *cluster_out) {
     uint64_t limit = (fs->total_sectors - fs->first_data_sector) / fs->sectors_per_cluster + 2u;
     const uint64_t fat_limit = (uint64_t)fs->fat_size_sectors * 128u;
     if (limit > fat_limit) limit = fat_limit;
     if (limit > 0x0FFFFFF7u) limit = 0x0FFFFFF7u;
     for (uint32_t c = 2u; (uint64_t)c < limit; ++c) {
         uint32_t value;
-        if (c == fs->root_cluster) continue;
+        if (c == fs->root_cluster || c == excluded) continue;
         if (!fat_next_cluster(fs, c, &value)) return SB_VFS_OBJECT_IO;
         if (value != 0u) continue;
         if (!fat_copies_equal(fs, c, 0u)) return SB_VFS_OBJECT_IO;
-        allocated = c;
-        break;
+        *cluster_out = c;
+        return SB_VFS_OBJECT_OK;
     }
-    if (allocated == 0u) return SB_VFS_OBJECT_RANGE;
+    return SB_VFS_OBJECT_RANGE;
+}
+
+static void initialize_short_entry(uint8_t *raw, const uint8_t encoded[11],
+                                    uint8_t attributes, uint32_t first_cluster) {
+    for (uint32_t i = 0u; i < 32u; ++i) raw[i] = 0u;
+    for (uint32_t i = 0u; i < 11u; ++i) raw[i] = encoded[i];
+    raw[11] = attributes;
+    raw[20] = (uint8_t)(first_cluster >> 16);
+    raw[21] = (uint8_t)(first_cluster >> 24);
+    raw[26] = (uint8_t)first_cluster;
+    raw[27] = (uint8_t)(first_cluster >> 8);
+}
+
+/* Initialize and flush the new parent cluster before exposing it through FAT. */
+static int grow_directory_and_create(sb_fat32_vfs_t *adapter, uint32_t tail,
+                                      const uint8_t encoded[11], uint8_t attributes,
+                                      uint32_t first_cluster, sb_vfs_node_t **node_out) {
+    sb_fat32_t *fs = &adapter->fs;
+    uint32_t tail_value, allocated = 0u;
+    if (!fat_next_cluster(fs, tail, &tail_value) || tail_value < SB_FAT32_EOC_MIN ||
+        !fat_copies_equal(fs, tail, tail_value)) return SB_VFS_OBJECT_IO;
+    const int allocation = find_free_cluster(fs, 0u, &allocated);
+    if (allocation != SB_VFS_OBJECT_OK) return allocation;
     uint64_t lba;
     if (!cluster_to_lba(fs, allocated, &lba)) return SB_VFS_OBJECT_IO;
     uint8_t sector[SB_FAT32_SECTOR_BYTES] = {0};
-    for (uint32_t i = 0u; i < 11u; ++i) sector[i] = encoded[i];
-    sector[11] = 0x20u;
+    initialize_short_entry(sector, encoded, attributes, first_cluster);
     sb_fat32_dirent_t entry = {0};
     parse_dirent(sector, &entry);
     entry.directory_sector = lba;
@@ -944,8 +961,11 @@ release_slot:
     return SB_VFS_OBJECT_IO;
 }
 
+enum { CREATE_PARENT_FULL = 1 }; /* Internal successful preflight result. */
+
 static int create_in_cluster(sb_fat32_vfs_t *adapter, uint32_t directory_cluster,
-                              const char *name, uint64_t name_length, sb_vfs_node_t **node_out) {
+                              const char *name, uint64_t name_length, uint8_t attributes,
+                              uint32_t first_cluster, int preflight, sb_vfs_node_t **node_out) {
     sb_fat32_t *fs = &adapter->fs;
     uint8_t encoded[11];
     if (!encode_83(name, name_length, encoded)) return SB_VFS_OBJECT_INVALID;
@@ -1004,9 +1024,11 @@ static int create_in_cluster(sb_fat32_vfs_t *adapter, uint32_t directory_cluster
     }
     if (free_lba == 0u) {
         if (previous_lfn) return SB_VFS_OBJECT_RANGE;
-        return grow_directory_and_create(adapter, cluster, encoded, node_out);
+        if (preflight) return CREATE_PARENT_FULL;
+        return grow_directory_and_create(adapter, cluster, encoded, attributes, first_cluster, node_out);
     }
 found:
+    if (preflight) return SB_VFS_OBJECT_OK;
     /* If the end marker crosses a sector/cluster boundary, make its successor
      * durable first. Hidden garbage beyond the old terminator must stay hidden. */
     if (next_marker_lba != 0u) {
@@ -1019,9 +1041,7 @@ found:
     uint8_t sector[SB_FAT32_SECTOR_BYTES];
     if (!read_sector(fs, free_lba, sector)) return SB_VFS_OBJECT_IO;
     uint8_t *raw = sector + free_offset;
-    for (uint32_t i = 0u; i < 32u; ++i) raw[i] = 0u;
-    for (uint32_t i = 0u; i < 11u; ++i) raw[i] = encoded[i];
-    raw[11] = 0x20u;
+    initialize_short_entry(raw, encoded, attributes, first_cluster);
     if (at_end && free_offset != 480u) sector[free_offset + 32u] = 0u;
     sb_fat32_dirent_t entry = {0};
     parse_dirent(raw, &entry);
@@ -1037,27 +1057,88 @@ found:
     return SB_VFS_OBJECT_OK;
 }
 
-static int fat32_directory_create(sb_vfs_node_t *directory, const char *name,
-                                   uint64_t name_length, sb_vfs_node_t **node_out) {
+static int mkdir_in_cluster(sb_fat32_vfs_t *adapter, uint32_t parent,
+                             const char *name, uint64_t length, sb_vfs_node_t **node_out) {
+    sb_fat32_t *fs = &adapter->fs;
+    int result = create_in_cluster(adapter, parent, name, length, SB_FAT32_ATTR_DIRECTORY, 0u, 1, node_out);
+    const int needs_growth = result == CREATE_PARENT_FULL;
+    if (result != SB_VFS_OBJECT_OK && !needs_growth) return result;
+    uint32_t child = 0u;
+    result = find_free_cluster(fs, 0u, &child);
+    if (result != SB_VFS_OBJECT_OK) return result;
+    if (needs_growth) {
+        uint32_t parent_extension;
+        result = find_free_cluster(fs, child, &parent_extension);
+        if (result != SB_VFS_OBJECT_OK) return result;
+    }
+    uint64_t lba;
+    if (!cluster_to_lba(fs, child, &lba)) return SB_VFS_OBJECT_IO;
+    uint8_t sector[SB_FAT32_SECTOR_BYTES] = {0};
+    initialize_short_entry(sector, (const uint8_t *)".          ", SB_FAT32_ATTR_DIRECTORY, child);
+    /* FAT32 encodes a root parent as cluster zero in the '..' entry. */
+    initialize_short_entry(sector + 32u, (const uint8_t *)"..         ", SB_FAT32_ATTR_DIRECTORY,
+                           parent == fs->root_cluster ? 0u : parent);
+    for (uint32_t s = 0u; s < fs->sectors_per_cluster; ++s) {
+        if (s != 0u)
+            for (uint32_t i = 0u; i < SB_FAT32_SECTOR_BYTES; ++i) sector[i] = 0u;
+        if (sb_vfs_write_sectors(fs->mount, lba + s, 1u, sector) != SB_VFS_OK) return SB_VFS_OBJECT_IO;
+    }
+    if (sb_vfs_sync(fs->mount) != SB_VFS_OK) return SB_VFS_OBJECT_IO;
+    if (!invalidate_fsinfo(fs) || !fat_store(fs, child, 0x0FFFFFFFu) || sb_vfs_sync(fs->mount) != SB_VFS_OK) {
+        rollback_allocation(fs, 0u, 0u, &child, 1u);
+        return SB_VFS_OBJECT_IO;
+    }
+    result = create_in_cluster(adapter, parent, name, length, SB_FAT32_ATTR_DIRECTORY, child, 0, node_out);
+    if (result != SB_VFS_OBJECT_OK) {
+        /* A failed parent rollback may already expose this child. Retain its
+         * allocation in that case rather than risk a dangling directory. */
+        if (!fs->write_faulted) rollback_allocation(fs, 0u, 0u, &child, 1u);
+        return result;
+    }
+    if (sb_vfs_sync(fs->mount) != SB_VFS_OK) {
+        /* Publication was accepted and may have reached disk. Its allocation
+         * must remain valid; quarantine further mutations until repair. */
+        fs->write_faulted = 1u;
+        *node_out = 0;
+        return SB_VFS_OBJECT_IO;
+    }
+    return SB_VFS_OBJECT_OK;
+}
+
+static int fat32_directory_create_kind(sb_vfs_node_t *directory, const char *name,
+                                        uint64_t name_length, sb_vfs_node_t **node_out, int is_directory) {
     if (node_out != 0) *node_out = 0;
     if (directory == 0 || directory->private_data == 0 || node_out == 0) return SB_VFS_OBJECT_INVALID;
     /* Root and cached subdirectories have distinct private-data types. */
     if (directory->ops->lookup == fat32_root_lookup) {
         sb_fat32_vfs_t *adapter = directory->private_data;
         if (adapter->mounted == 0u || directory != &adapter->root) return SB_VFS_OBJECT_IO;
-        return create_in_cluster(adapter, adapter->fs.root_cluster, name, name_length, node_out);
+        return is_directory ? mkdir_in_cluster(adapter, adapter->fs.root_cluster, name, name_length, node_out)
+            : create_in_cluster(adapter, adapter->fs.root_cluster, name, name_length, 0x20u, 0u, 0, node_out);
     }
     sb_fat32_vfs_node_t *slot = directory->private_data;
     if (!slot->in_use || slot->owner == 0 || !slot->owner->mounted || directory != &slot->node ||
         (slot->entry.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u) return SB_VFS_OBJECT_IO;
     if ((slot->entry.attributes & SB_FAT32_ATTR_READ_ONLY) != 0u) return SB_VFS_OBJECT_ACCESS;
-    return create_in_cluster(slot->owner, slot->entry.first_cluster, name, name_length, node_out);
+    return is_directory ? mkdir_in_cluster(slot->owner, slot->entry.first_cluster, name, name_length, node_out)
+        : create_in_cluster(slot->owner, slot->entry.first_cluster, name, name_length, 0x20u, 0u, 0, node_out);
+}
+
+static int fat32_directory_create(sb_vfs_node_t *directory, const char *name,
+                                   uint64_t name_length, sb_vfs_node_t **node_out) {
+    return fat32_directory_create_kind(directory, name, name_length, node_out, 0);
+}
+
+static int fat32_directory_mkdir(sb_vfs_node_t *directory, const char *name,
+                                  uint64_t name_length, sb_vfs_node_t **node_out) {
+    return fat32_directory_create_kind(directory, name, name_length, node_out, 1);
 }
 
 static const sb_vfs_node_ops_t fat32_root_ops = {
     .lookup = fat32_root_lookup,
     .readdir = fat32_root_readdir,
     .create = fat32_directory_create,
+    .mkdir = fat32_directory_mkdir,
 };
 
 int sb_fat32_vfs_init(sb_fat32_vfs_t *adapter, sb_vfs_mount_t *mount) {
@@ -1068,7 +1149,7 @@ int sb_fat32_vfs_init(sb_fat32_vfs_t *adapter, sb_vfs_mount_t *mount) {
     if (sb_vfs_node_init(&adapter->root,
                          SB_VFS_NODE_DIRECTORY,
                          SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR |
-                             ((adapter->fs.mirrored && mount->block_device->write != 0) ? SB_VFS_CAP_CREATE : 0u),
+                             ((adapter->fs.mirrored && mount->block_device->write != 0) ? (SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR) : 0u),
                          0u,
                          &fat32_root_ops,
                          adapter) != SB_VFS_OBJECT_OK) {
