@@ -46,6 +46,7 @@ def main() -> None:
         require_ordered(log, "fat32-create/write/sync/reopen", [
             "Userspace: runtime FAT32 directory enumeration OK",
             "Userspace: FAT32 create/write/sync/reopen lifecycle OK",
+            "Userspace: FAT32 full-directory growth lifecycle OK",
         ])
 
     if "Exception:" in log:

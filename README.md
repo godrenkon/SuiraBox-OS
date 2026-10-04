@@ -314,7 +314,9 @@ FAT32の既存ファイルは現在サイズ内の上書きに対応しました
 
 既存ファイルの追記・拡張、空ファイルへの最初のcluster確保も実装しました。data flush → mirrored FAT flush → directory size更新の順序を守り、FAT更新失敗時は巻き戻し、巻き戻し失敗時はmountの書き込みを停止します。QEMUでは768 byteを追記してcluster境界を越え、再openと終了後の正確な内容・guard file・fsckを検証します。
 
-`FILE_CREATE`（ABI番号39）による8.3形式の新規ファイル作成も実装しました。既存directoryの空きslotを使い、同名ファイルはEXISTSで保護します。ハンドル・node cacheの不足は公開前に拒否し、directory終端を移すときは次の終端を先に保存します。CIではNEWFILE.TXTの作成・書込・sync・再openとQEMU終了後の内容を検証します。次はdirectoryの拡張・作成とatomic update・電源断時recoveryです。
+`FILE_CREATE`（ABI番号39）による8.3形式の新規ファイル作成も実装しました。既存directoryの空きslotを使い、同名ファイルはEXISTSで保護します。ハンドル・node cacheの不足は公開前に拒否し、directory終端を移すときは次の終端を先に保存します。CIではNEWFILE.TXTの作成・書込・sync・再openとQEMU終了後の内容を検証します。
+
+満杯のroot/subdirectoryは、作成時に1 clusterずつ自動拡張します。追加clusterを空ファイルentryとゼロ終端で初期化してflushした後にmirrored FATへ接続し、FAT失敗時は巻き戻します。CIはrootの元clusterを満杯にしてから新規作成し、終了後に追加cluster・両FATの接続・既存entryの保持まで照合します。次はdirectory作成とatomic update・電源断時recoveryです。
 
 ### Deliberately still partial
 
@@ -323,7 +325,7 @@ FAT32の既存ファイルは現在サイズ内の上書きに対応しました
 - **5-2**: IRQ preemption contextとcooperative kernel contextは分離済みだが、context ABI全体の整理は継続中
 - **6-7**: 複数processの並行実行は確認済みだが、一般的なmulti-thread runtimeは未完成
 - **7-9**: Roadmap上のlocal service MVPは完了。現実装はregistry 8枠・1 active client/service・64-byte messageで、multi-client・blocking receive・credential policyは将来拡張
-- **8-8**: FAT32ファイル作成・上書き・追記・cluster allocation・data/FAT/directory ordering・FILE_SYNCとfailure/retry contractは実装済み。directory拡張/作成・atomic update・電源断時recoveryは未完成
+- **8-8**: FAT32ファイル作成・directory自動拡張・上書き・追記・cluster allocation・data/FAT/directory ordering・FILE_SYNCとfailure/retry contractは実装済み。directory作成・atomic update・電源断時recoveryは未完成
 
 ---
 

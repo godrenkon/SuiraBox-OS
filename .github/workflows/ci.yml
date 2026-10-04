@@ -30,7 +30,7 @@ jobs:
       - name: Validate image and host tests
         run: |
           make check STORAGE_DURABILITY_PROOF=1
-          python3 -m unittest discover -s tests -p 'storage_image_check_test.py'
+          python3 -m unittest discover -s tests -p '*image_check_test.py'
 
       - name: Inspect kernel layout
         run: |
@@ -46,6 +46,7 @@ jobs:
           mcopy -i build/runtime-fat32.img build/runtime.txt ::RUNTIME.TXT
           printf 'SUIRABOX-GUARD-UNCHANGED\n' > build/guard.txt
           mcopy -i build/runtime-fat32.img build/guard.txt ::GUARD.TXT
+          python3 tests/fat32_directory_growth_image_check.py seed build/runtime-fat32.img build/root-directory-seed.bin
           python3 tests/storage_image_check.py seed build/runtime-fat32.img
 
           timeout 20s qemu-system-x86_64 \
@@ -69,6 +70,7 @@ jobs:
           mcopy -i build/runtime-fat32.img ::NEWFILE.TXT build/created-persisted.txt
           printf 'SUIRABOX-CREATED-FAT32\n' > build/created-expected.txt
           cmp build/created-expected.txt build/created-persisted.txt
+          python3 tests/fat32_directory_growth_image_check.py verify build/runtime-fat32.img build/root-directory-seed.bin
           fsck.fat -n build/runtime-fat32.img
 
       - name: Verify durability proof is opt-in
@@ -103,6 +105,7 @@ jobs:
             build/user-hello.elf
             build/user-child.elf
             build/runtime-fat32.img
+            build/root-directory-seed.bin
             qemu.log
 
   ipc-proof:

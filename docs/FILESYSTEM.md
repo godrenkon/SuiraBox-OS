@@ -42,7 +42,7 @@ The current on-disk filesystem supports FAT32 reads, exclusive creation, overwri
 - update mirrored FATs and the physical directory slot with ordered flushes
 - create empty regular files in existing directory slots, then allocate on write
 
-Long filenames, directory creation/growth, timestamps, general permissions, journaling, and advanced caching are later milestones. FAT read-only attributes and read-only block devices reject write access. Reads honor the BPB active FAT; creation and extension currently require mirrored FATs.
+Long filenames, directory creation, timestamps, general permissions, journaling, and advanced caching are later milestones. FAT read-only attributes and read-only block devices reject write access. Reads honor the BPB active FAT; creation and extension currently require mirrored FATs.
 
 ## Why read-only first
 
@@ -125,13 +125,14 @@ and rejects trailing slash or terminal dot components. The syscall copies the
 whole path and reserves heap/handle space before invoking the backend. The FAT32
 backend validates the directory chain and reserves node-cache capacity before
 publishing an empty short entry. It reuses a deleted slot or the end marker;
-a full directory returns LIMIT until directory growth is implemented.
+a full directory grows by one cluster when allocation space is available.
 
 When moving the end marker within a sector, the new entry and successor marker
 are accepted together. Across sectors or fragmented clusters, the successor
 marker is flushed first. This keeps garbage after the old end invisible. Slots
 immediately following live orphaned LFN entries are not reused. Initial creation
-does not allocate FAT clusters. Subsequent writes use the extension contract;
+does not allocate file-data clusters. A full parent may allocate a directory
+cluster as described below. Subsequent writes use the extension contract;
 FILE_SYNC persists the created entry and data, and failures can be retried.
 
 `make host-fat32-create-test` covers root/nested creation, deleted slots, aliases,
@@ -140,6 +141,39 @@ fragmented end-marker ordering and injected I/O/barrier failures. The opt-in
 QEMU probe checks invalid pointers/access and exhausted handle capacity before
 creation, duplicate rejection, writing, syncing and reopening NEWFILE.TXT.
 mtools compares that file after QEMU exits and fsck checks the resulting image.
+
+## Directory growth during creation
+
+When every existing slot is occupied, FILE_CREATE appends one cluster to the
+parent directory chain. Both root and nested directories support this path.
+Existing chain links are validated against every mirrored FAT copy, and the
+selected free cluster must be free in every copy. A node-cache slot is reserved
+before writes. Lack of space/cache capacity returns LIMIT before publication;
+an orphaned live LFN at the tail also prevents adding a short entry after it.
+
+The entire new cluster is initialized with an empty short entry followed by
+zeroed end-marker/slack bytes. A data flush makes it durable before the new FAT
+EOC and old tail link are changed. The FAT copies and invalidated primary FSInfo
+hint are then flushed. Only after that succeeds does creation return its FILE
+handle. Existing directory entries and first-cluster identities stay unchanged;
+directory sizes remain zero in FAT entries. File writes still require FILE_SYNC.
+
+Before the FAT phase, failed writes/barriers leave only unreferenced free-cluster
+contents. A FAT error invokes the existing rollback and flush contract. If that
+rollback succeeds, the old directory chain remains authoritative and creation
+can be retried without a duplicate entry. Failed rollback quarantines further
+mutations; reachability is then uncertain until repair/remount. Power loss can
+still interrupt FAT-copy updates, so this ordering is not an atomic transaction.
+
+`make host-fat32-directory-growth-test` uses separate volatile/durable buffers
+to prove initialized data is durable before FAT links, and tests root/nested
+growth, mirror inconsistency, space exhaustion, I/O/barrier failures, rollback
+and quarantine. CI fills the original root cluster with 14 empty filler files,
+then creates NEWFILE.TXT through userspace. The reopened image checker requires
+a matching new link in both FATs, the new entry in the added cluster, zeroed
+slack, and byte-for-byte preservation of the original cluster except RUNTIME's
+expected size update. Corrupted mirrors, existing entries and slack fail the
+checker. The original baseline is retained as an artifact alongside the image.
 
 Creation is not a power-loss transaction. Atomic replacement and recovery
 remain future work. User data and cache data must remain distinguishable, and

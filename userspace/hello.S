@@ -541,6 +541,27 @@ runtime_append_read_loop:
     mov $9, %rcx
     repe cmpsb
     jne lifecycle_failed
+    # The CI root contains 14 empty filler files after its two seed files.
+    mov $14, %r14
+runtime_directory_fillers:
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_REGULAR, SB_DIRECTORY_ENTRY_TYPE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpw $12, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $0, SB_DIRECTORY_ENTRY_SIZE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x46, SB_DIRECTORY_ENTRY_NAME_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpl $0x504d542e, SB_DIRECTORY_ENTRY_NAME_OFFSET+8+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    dec %r14
+    jnz runtime_directory_fillers
 #endif
     mov %r12, %rdi
     lea directory_entry_buffer(%rip), %rsi
@@ -696,6 +717,12 @@ runtime_create_release_handles:
     mov $SB_SYS_LOG_WRITE, %rax
     int $SB_SYSCALL_VECTOR
     cmp $runtime_create_message_len, %rax
+    jne lifecycle_failed
+    lea runtime_directory_growth_message(%rip), %rdi
+    mov $runtime_directory_growth_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_directory_growth_message_len, %rax
     jne lifecycle_failed
 #endif
 runtime_disk_skipped:
@@ -1040,6 +1067,9 @@ runtime_create_payload:
 runtime_create_message:
     .ascii "Userspace: FAT32 create/write/sync/reopen lifecycle OK\r\n"
 .set runtime_create_message_len, . - runtime_create_message
+runtime_directory_growth_message:
+    .ascii "Userspace: FAT32 full-directory growth lifecycle OK\r\n"
+.set runtime_directory_growth_message_len, . - runtime_directory_growth_message
 runtime_append_message:
     .ascii "Userspace: FAT32 extend/sync/reopen lifecycle OK\r\n"
 .set runtime_append_message_len, . - runtime_append_message
