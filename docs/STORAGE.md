@@ -157,9 +157,12 @@ hard-I/O-error bit, or disagreement between mirrored status copies makes the
 filesystem read-only while preserving existing reads and enumeration. Required
 status-sector I/O failures reject mount. BPB active-FAT selection is respected.
 Neither mount nor read-handle sync clears this evidence or performs repair.
-This policy does not lock direct block-device writes. SuiraBox does not yet mark
-its own transactions dirty before mutation, so this is only the recovery-entry
-foundation; it does not detect every interrupted SuiraBox write or prove atomicity.
+This policy does not lock direct block-device writes. SuiraBox persists FAT[1]'s
+dirty marker before its first filesystem mutation, with a device barrier before
+data or metadata publication. Marking failure quarantines writes; the marker is
+not rolled back. FILE_SYNC/CLOSE/mkdir leave the volume dirty, and clean-unmount
+support remains future work, so the next mount conservatively requires recovery.
+This ordering does not make updates atomic or implement a repair journal.
 
 CI adds three QEMU boots with writable disk backends and recorded dirty,
 hard-error and mirror-disagreement status. A separate recovery userspace build
@@ -168,3 +171,10 @@ require the entire disk image to remain unchanged. Host tests cover status reads
 active selection and backend/VFS denial; corruption tests verify the image checker.
 `STORAGE_RECOVERY_PROOF=1` is opt-in, mutually exclusive with the mutating durability
 proof, and switching it off removes the userspace recovery fixture.
+
+The additional STORAGE_DIRTY_PROOF creates an unsynced empty PENDING.TXT and
+stops before cache writeback. QEMU termination must leave only dirty-status bits
+changed on disk. The same image is then rebooted read-only, with mutation refusal
+and whole-image preservation checks. The dirty/recovery/durability proof modes
+are mutually exclusive. Normal durability data is fsck-checked on an offline
+repaired disposable copy; the primary dirty image is retained without repair.

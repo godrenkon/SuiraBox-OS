@@ -171,8 +171,12 @@ When FAT32 mounts with recorded unclean-shutdown, hard-error or inconsistent
 mirrored status, writable FILE_OPEN, FILE_CREATE and DIRECTORY_CREATE return
 RIGHTS. Existing reads, directory enumeration and read-handle FILE_SYNC remain
 available. Sync does not clear the status or repair the filesystem. This gate
-does not yet record dirty status for SuiraBox's own writes; atomic recovery and
-clean shutdown remain future work. No ABI numbers or public layouts change.
+records dirty status before SuiraBox's first mutation in a mount session.
+Failure to persist the marker returns IO and quarantines further writes; FILE_WRITE
+reports zero accepted bytes. FILE_SYNC, CLOSE and successful DIRECTORY_CREATE do
+not clear the marker, so the next mount requires recovery until clean-unmount
+support or external repair establishes a clean state. Atomic recovery and clean
+shutdown remain future work. No ABI numbers or public layouts change.
 
 `SB_SYS_DIRECTORY_CREATE` creates one directory in an existing parent and returns
 a DIRECTORY handle with READ|QUERY at cursor zero. Reserved flags (`rdx`) must be

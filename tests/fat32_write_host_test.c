@@ -108,6 +108,9 @@ int main(void) {
                 sb_vfs_file_open(node, SB_VFS_ACCESS_ALL, &file) == SB_VFS_OBJECT_OK &&
                 sb_vfs_file_open(node, SB_VFS_ACCESS_READ, &reader) == SB_VFS_OBJECT_OK,
                 "writable and read-only handles opened")) return 1;
+    /* Writeback/retry tests start after a durable dirty marker. */
+    if (require(sb_fat32_begin_write(&adapter.fs) == SB_VFS_OBJECT_OK, "dirty session prepared")) return 1;
+    memcpy(expected, disk, sizeof(disk)); sb_block_cache_reset(); flushes = 0u;
     if (require(sb_vfs_file_write(&reader, payload, 1u, &written) == SB_VFS_OBJECT_ACCESS &&
                 reader.offset == 0u && written == 0u, "read-only handle rejected")) return 1;
     if (require(sb_vfs_file_seek(&file, FILE_BYTES + 1u) == SB_VFS_OBJECT_RANGE &&

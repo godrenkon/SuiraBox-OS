@@ -70,10 +70,14 @@ static int start(void) {
     read_failure = write_failure = -1; barrier_failure = 0; barriers = 0u; marker_order_error = 0;
     sb_block_cache_reset();
     sb_vfs_namespace_init(&ns);
-    return check(sb_vfs_mount(&device, &mount) == SB_VFS_OK &&
+    if (check(sb_vfs_mount(&device, &mount) == SB_VFS_OK &&
         sb_fat32_vfs_init(&adapter, &mount) == SB_VFS_OBJECT_OK &&
         sb_vfs_namespace_mount(&ns, "/disk", 5u, sb_fat32_vfs_root(&adapter)) == SB_VFS_OBJECT_OK,
-        "namespace mounted");
+        "namespace mounted")) return 1;
+    /* These cases inject failures after the separately tested dirty barrier. */
+    if (check(sb_fat32_begin_write(&adapter.fs) == SB_VFS_OBJECT_OK, "dirty session prepared")) return 1;
+    memcpy(before, disk, sizeof(disk)); sb_block_cache_reset(); barriers = 0u;
+    return 0;
 }
 static int finish(void) {
     sb_vfs_namespace_destroy(&ns);

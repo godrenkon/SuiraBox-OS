@@ -92,10 +92,14 @@ static int start(void) {
     sb_block_cache_reset(); barriers = fail_barrier = fail_again = 0u;
     fail_read = fail_write = -1; ordering_error = 0; new_lba = 13u; grown_tail = 3u;
     sb_vfs_namespace_init(&ns);
-    return check(sb_vfs_mount(&device, &mount) == SB_VFS_OK &&
+    if (check(sb_vfs_mount(&device, &mount) == SB_VFS_OK &&
         sb_fat32_vfs_init(&adapter, &mount) == SB_VFS_OBJECT_OK &&
         sb_vfs_namespace_mount(&ns, "/disk", 5u, sb_fat32_vfs_root(&adapter)) == SB_VFS_OBJECT_OK,
-        "fixture mounted");
+        "fixture mounted")) return 1;
+    /* Keep data/FAT failure indices scoped after the dirty-status barrier. */
+    if (check(sb_fat32_begin_write(&adapter.fs) == SB_VFS_OBJECT_OK, "dirty session prepared")) return 1;
+    memcpy(initial, disk, sizeof(disk)); sb_block_cache_reset(); barriers = 0u;
+    return 0;
 }
 static int finish(void) {
     sb_vfs_namespace_destroy(&ns);

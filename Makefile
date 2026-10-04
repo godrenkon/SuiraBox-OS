@@ -20,10 +20,12 @@ FAT32_CREATE_HOST_TEST := $(BUILD)/fat32-create-host-test
 FAT32_DIRECTORY_GROWTH_HOST_TEST := $(BUILD)/fat32-directory-growth-host-test
 FAT32_MKDIR_HOST_TEST := $(BUILD)/fat32-mkdir-host-test
 FAT32_RECOVERY_HOST_TEST := $(BUILD)/fat32-recovery-host-test
+FAT32_DIRTY_HOST_TEST := $(BUILD)/fat32-dirty-host-test
 STORAGE_DURABILITY_PROOF ?= 0
 STORAGE_RECOVERY_PROOF ?= 0
-ifeq ($(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF),1:1)
-$(error Storage durability and read-only recovery proofs require separate builds)
+STORAGE_DIRTY_PROOF ?= 0
+ifneq ($(word 2,$(filter 1,$(STORAGE_DURABILITY_PROOF) $(STORAGE_RECOVERY_PROOF) $(STORAGE_DIRTY_PROOF))),)
+$(error Storage durability, recovery and unsynced dirty proofs require separate builds)
 endif
 
 CC ?= gcc
@@ -42,6 +44,9 @@ USER_ASFLAGS += -DSB_STORAGE_DURABILITY_PROOF
 endif
 ifeq ($(STORAGE_RECOVERY_PROOF),1)
 USER_ASFLAGS += -DSB_STORAGE_RECOVERY_PROOF
+endif
+ifeq ($(STORAGE_DIRTY_PROOF),1)
+USER_ASFLAGS += -DSB_STORAGE_DIRTY_PROOF
 endif
 
 BOOT_OBJ := $(BUILD)/boot.o
@@ -98,8 +103,8 @@ CHILD_OBJ := $(BUILD)/user-child.o
 # Switching back to a normal build must remove the CI-only write path even
 # when objects already exist. Only update the stamp when the mode changes.
 $(BUILD)/storage-durability-mode: force-storage-config | $(BUILD)
-	@if test ! -f $@ || test "$$(cat $@)" != "$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF)"; then \
-		printf '%s\n' '$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF)' > $@; \
+	@if test ! -f $@ || test "$$(cat $@)" != "$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF)"; then \
+		printf '%s\n' '$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF)' > $@; \
 	fi
 
 $(KERNEL_OBJ): $(BUILD)/storage-durability-mode kernel/storage_durability.h
@@ -369,7 +374,13 @@ $(FAT32_RECOVERY_HOST_TEST): tests/fat32_recovery_host_test.c kernel/fs/fat32.c 
 host-fat32-recovery-test: $(FAT32_RECOVERY_HOST_TEST)
 	$(FAT32_RECOVERY_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test host-fat32-write-test host-fat32-extend-test host-fat32-create-test host-fat32-directory-growth-test host-fat32-mkdir-test host-fat32-recovery-test
+$(FAT32_DIRTY_HOST_TEST): tests/fat32_dirty_host_test.c kernel/fs/fat32.c kernel/fs/fat32.h kernel/fs/fat32_vfs.h kernel/vfs.c kernel/vfs.h kernel/vfs_object.c kernel/vfs_object.h kernel/vfs_namespace.c kernel/vfs_namespace.h kernel/block.c kernel/block.h kernel/block_cache.c kernel/block_cache.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/fat32_dirty_host_test.c kernel/fs/fat32.c kernel/vfs.c kernel/block.c kernel/block_cache.c -o $@
+.PHONY: host-fat32-dirty-test
+host-fat32-dirty-test: $(FAT32_DIRTY_HOST_TEST)
+	$(FAT32_DIRTY_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test host-fat32-write-test host-fat32-extend-test host-fat32-create-test host-fat32-directory-growth-test host-fat32-mkdir-test host-fat32-recovery-test host-fat32-dirty-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \

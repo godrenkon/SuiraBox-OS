@@ -375,6 +375,33 @@ static int fat_store(sb_fat32_t *fs, uint32_t cluster, uint32_t value) {
     return 1;
 }
 
+int sb_fat32_begin_write(sb_fat32_t *fs) {
+    if (fs == 0 || fs->mount == 0 || fs->mount->block_device == 0 || fs->reserved_sectors == 0u ||
+        fs->fat_count == 0u || fs->fat_size_sectors == 0u || fs->active_fat >= fs->fat_count)
+        return SB_VFS_OBJECT_INVALID;
+    if (fs->recovery_flags != 0u || fs->mount->block_device->write == 0) return SB_VFS_OBJECT_ACCESS;
+    if (fs->write_faulted) return SB_VFS_OBJECT_IO;
+    if (fs->dirty_marked) return SB_VFS_OBJECT_OK;
+    const uint32_t mask = SB_FAT32_CLEAN_SHUTDOWN | SB_FAT32_NO_HARD_ERROR;
+    const uint32_t first = fs->mirrored ? 0u : fs->active_fat;
+    const uint32_t end = fs->mirrored ? fs->fat_count : first + 1u;
+    for (uint32_t copy = first; copy < end; ++copy) {
+        uint8_t sector[SB_FAT32_SECTOR_BYTES];
+        const uint64_t lba = fs->reserved_sectors + (uint64_t)copy * fs->fat_size_sectors;
+        if (!read_sector(fs, lba, sector) || (le32(sector + 4u) & mask) != mask) goto fault;
+        store32(sector + 4u, le32(sector + 4u) & ~SB_FAT32_CLEAN_SHUTDOWN);
+        if (sb_vfs_write_sectors(fs->mount, lba, 1u, sector) != SB_VFS_OK) goto fault;
+    }
+    if (sb_vfs_sync(fs->mount) != SB_VFS_OK) goto fault;
+    fs->dirty_marked = 1u;
+    return SB_VFS_OBJECT_OK;
+fault:
+    /* A marker copy may already be cached or durable. Never allow data mutation
+     * after uncertain publication, and never roll evidence back to clean. */
+    fs->write_faulted = 1u;
+    return SB_VFS_OBJECT_IO;
+}
+
 static int invalidate_fsinfo(sb_fat32_t *fs) {
     /* The primary FSInfo is a hint, not an allocation authority. Backup FSInfo
      * is not maintained by FAT32's primary BPB pointer. */
@@ -446,6 +473,7 @@ static int extend_file(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
         allocated[found++] = c;
     }
     if (found != count) return SB_VFS_OBJECT_RANGE;
+    if (sb_fat32_begin_write(fs) != SB_VFS_OBJECT_OK) return SB_VFS_OBJECT_IO;
     /* Zero every newly allocated cluster before exposing any FAT link. */
     for (uint32_t i = 0u; i < count; ++i) {
         uint8_t zero[SB_FAT32_SECTOR_BYTES] = {0};
@@ -527,6 +555,7 @@ int sb_fat32_write_file(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
     if (!writable_chain_valid(fs, entry)) return SB_VFS_OBJECT_IO;
     if (offset + length > entry->file_size)
         return extend_file(fs, entry, offset, length, buffer, bytes_written);
+    if (sb_fat32_begin_write(fs) != SB_VFS_OBJECT_OK) return SB_VFS_OBJECT_IO;
 
     const uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
     uint32_t cluster = entry->first_cluster;
@@ -961,6 +990,7 @@ static int grow_directory_and_create(sb_fat32_vfs_t *adapter, uint32_t tail,
     entry.directory_sector = lba;
     sb_fat32_vfs_node_t *slot = cache_entry(adapter, &entry);
     if (slot == 0) return SB_VFS_OBJECT_RANGE;
+    if (sb_fat32_begin_write(fs) != SB_VFS_OBJECT_OK) goto release_slot;
     for (uint32_t s = 0u; s < fs->sectors_per_cluster; ++s) {
         if (s != 0u)
             for (uint32_t i = 0u; i < SB_FAT32_SECTOR_BYTES; ++i) sector[i] = 0u;
@@ -1053,6 +1083,7 @@ found:
     if (next_marker_lba != 0u) {
         uint8_t next_sector[SB_FAT32_SECTOR_BYTES];
         if (!read_sector(fs, next_marker_lba, next_sector)) return SB_VFS_OBJECT_IO;
+        if (sb_fat32_begin_write(fs) != SB_VFS_OBJECT_OK) return SB_VFS_OBJECT_IO;
         next_sector[0] = 0u;
         if (sb_vfs_write_sectors(fs->mount, next_marker_lba, 1u, next_sector) != SB_VFS_OK ||
             sb_vfs_sync(fs->mount) != SB_VFS_OK) return SB_VFS_OBJECT_IO;
@@ -1067,7 +1098,8 @@ found:
     entry.directory_sector = free_lba; entry.directory_offset = free_offset;
     sb_fat32_vfs_node_t *slot = cache_entry(adapter, &entry);
     if (slot == 0) return SB_VFS_OBJECT_RANGE;
-    if (sb_vfs_write_sectors(fs->mount, free_lba, 1u, sector) != SB_VFS_OK) {
+    if (sb_fat32_begin_write(fs) != SB_VFS_OBJECT_OK ||
+        sb_vfs_write_sectors(fs->mount, free_lba, 1u, sector) != SB_VFS_OK) {
         (void)sb_vfs_node_release(&slot->node);
         *slot = (sb_fat32_vfs_node_t){0};
         return SB_VFS_OBJECT_IO;
@@ -1094,6 +1126,7 @@ static int mkdir_in_cluster(sb_fat32_vfs_t *adapter, uint32_t parent,
     if (!cluster_to_lba(fs, child, &lba)) return SB_VFS_OBJECT_IO;
     uint8_t sector[SB_FAT32_SECTOR_BYTES] = {0};
     initialize_short_entry(sector, (const uint8_t *)".          ", SB_FAT32_ATTR_DIRECTORY, child);
+    if (sb_fat32_begin_write(fs) != SB_VFS_OBJECT_OK) return SB_VFS_OBJECT_IO;
     /* FAT32 encodes a root parent as cluster zero in the '..' entry. */
     initialize_short_entry(sector + 32u, (const uint8_t *)"..         ", SB_FAT32_ATTR_DIRECTORY,
                            parent == fs->root_cluster ? 0u : parent);

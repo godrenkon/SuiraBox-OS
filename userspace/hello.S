@@ -616,6 +616,25 @@ runtime_fat32_recovery_probe:
     cmp $runtime_recovery_message_len, %rax
     jne lifecycle_failed
 #endif
+#ifdef SB_STORAGE_DIRTY_PROOF
+runtime_fat32_dirty_probe:
+    lea runtime_dirty_path(%rip), %rdi
+    mov $runtime_dirty_path_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    /* Deliberately retain the unsynced file and stop at the crash checkpoint. */
+    lea runtime_dirty_message(%rip), %rdi
+    mov $runtime_dirty_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_dirty_message_len, %rax
+    jne lifecycle_failed
+runtime_dirty_stop:
+    jmp runtime_dirty_stop
+#endif
 #ifdef SB_STORAGE_DURABILITY_PROOF
 runtime_fat32_create_probe:
     xor %r14, %r14
@@ -1349,6 +1368,14 @@ runtime_recovery_directory_path:
 runtime_recovery_message:
     .ascii "Userspace: FAT32 recovery read-only rejection lifecycle OK\r\n"
 .set runtime_recovery_message_len, . - runtime_recovery_message
+#endif
+#ifdef SB_STORAGE_DIRTY_PROOF
+runtime_dirty_path:
+    .ascii "/disk/PENDING.TXT"
+.set runtime_dirty_path_len, . - runtime_dirty_path
+runtime_dirty_message:
+    .ascii "Userspace: FAT32 dirty marker durable before unsynced create checkpoint\r\n"
+.set runtime_dirty_message_len, . - runtime_dirty_message
 #endif
 pointer_message:
     .ascii "Userspace: validated user pointer copy OK\r\n"
