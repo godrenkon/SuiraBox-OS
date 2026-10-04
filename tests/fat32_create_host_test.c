@@ -176,9 +176,12 @@ int main(void) {
     }
     dirent(3u, 15u, "FINAL   BIN", 0x20u, 0u, 0u);
     memcpy(before, disk, sizeof(disk)); sb_block_cache_reset();
-    if (check(create("/disk/FULL.TXT", SB_VFS_ACCESS_ALL, &file) == SB_VFS_OBJECT_RANGE &&
-        !file.open && memcmp(disk, before, sizeof(disk)) == 0 && sb_block_cache_stats().dirty_writes == 0u,
-        "full directory rejected without extending its chain")) return 1;
+    if (check(create("/disk/FULL.TXT", SB_VFS_ACCESS_ALL, &file) == SB_VFS_OBJECT_OK &&
+        file.open && file.node->size == 0u && disk[512u + 20u] == 7u && disk[1024u + 20u] == 7u &&
+        memcmp(disk + 3u * 512u, before + 3u * 512u, 512u) == 0 &&
+        memcmp(disk + 6u * 512u, before + 6u * 512u, 512u) == 0 &&
+        sb_vfs_file_sync(&file) == SB_VFS_OBJECT_OK && sb_vfs_file_close(&file) == SB_VFS_OBJECT_OK,
+        "full directory grows while preserving every existing directory slot")) return 1;
     if (finish() || start()) return 1;
     put32(disk + 512u + 20u, 2u); sb_block_cache_reset();
     if (check(create("/disk/CYCLE.TXT", SB_VFS_ACCESS_ALL, &file) == SB_VFS_OBJECT_IO &&

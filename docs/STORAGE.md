@@ -113,6 +113,8 @@ existing files, including allocating a first cluster for an empty file. Extensio
 flushes data before mirrored FATs, then publishes directory size; FILE_SYNC is
 required for final directory durability. FILE_CREATE publishes an empty 8.3
 entry without allocation; its first write uses this same extension path.
+If the parent directory is full, creation adds one initialized directory cluster
+and flushes it before mirrored FAT publication, with rollback on FAT failure.
 
 GitHub Actions opts in with `make STORAGE_DURABILITY_PROOF=1`. The fixture is a
 64 MiB FAT32 image with one additional sector outside the BPB volume boundary.
@@ -132,6 +134,10 @@ FSInfo invalidation, FAT rollback and failed-rollback write quarantine.
 The creation host test exercises root/nested/deleted slots, duplicate protection,
 directory/node-cache exhaustion and ordered end-marker publication. QEMU creates
 NEWFILE.TXT, writes and syncs it, then the host compares its exact contents.
+The directory-growth host test models volatile/durable device buffers and checks
+data-before-FAT ordering, mirrored allocation, rollback and quarantine. CI fills
+the original root cluster, then verifies the appended directory cluster and all
+existing entries after QEMU exit, retaining the original directory snapshot.
 
 `make host-storage-durability-test` uses separate volatile and durable device
 buffers to detect a missing or incorrectly ordered barrier. It exercises

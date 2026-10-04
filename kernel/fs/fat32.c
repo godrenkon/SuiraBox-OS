@@ -883,12 +883,65 @@ static int directory_chain_valid(sb_fat32_t *fs, uint32_t cluster) {
     while (budget-- != 0u) {
         uint64_t lba;
         uint32_t next;
-        if (!cluster_to_lba(fs, cluster, &lba) || !fat_next_cluster(fs, cluster, &next)) return 0;
+        if (!cluster_to_lba(fs, cluster, &lba) || !fat_next_cluster(fs, cluster, &next) ||
+            !fat_copies_equal(fs, cluster, next)) return 0;
         if (next >= SB_FAT32_EOC_MIN) return 1;
         if (next < 2u || next == cluster) return 0;
         cluster = next;
     }
     return 0;
+}
+
+/* Full directories grow by one cluster per create. Initialize the entire new
+ * cluster, including its first empty-file entry, before any FAT link exposes it.
+ * FAT failures restore the old tail; failed rollback quarantines the mount. */
+static int grow_directory_and_create(sb_fat32_vfs_t *adapter, uint32_t tail,
+                                      const uint8_t encoded[11], sb_vfs_node_t **node_out) {
+    sb_fat32_t *fs = &adapter->fs;
+    uint32_t tail_value, allocated = 0u;
+    if (!fat_next_cluster(fs, tail, &tail_value) || tail_value < SB_FAT32_EOC_MIN ||
+        !fat_copies_equal(fs, tail, tail_value)) return SB_VFS_OBJECT_IO;
+    uint64_t limit = (fs->total_sectors - fs->first_data_sector) / fs->sectors_per_cluster + 2u;
+    const uint64_t fat_limit = (uint64_t)fs->fat_size_sectors * 128u;
+    if (limit > fat_limit) limit = fat_limit;
+    if (limit > 0x0FFFFFF7u) limit = 0x0FFFFFF7u;
+    for (uint32_t c = 2u; (uint64_t)c < limit; ++c) {
+        uint32_t value;
+        if (c == fs->root_cluster) continue;
+        if (!fat_next_cluster(fs, c, &value)) return SB_VFS_OBJECT_IO;
+        if (value != 0u) continue;
+        if (!fat_copies_equal(fs, c, 0u)) return SB_VFS_OBJECT_IO;
+        allocated = c;
+        break;
+    }
+    if (allocated == 0u) return SB_VFS_OBJECT_RANGE;
+    uint64_t lba;
+    if (!cluster_to_lba(fs, allocated, &lba)) return SB_VFS_OBJECT_IO;
+    uint8_t sector[SB_FAT32_SECTOR_BYTES] = {0};
+    for (uint32_t i = 0u; i < 11u; ++i) sector[i] = encoded[i];
+    sector[11] = 0x20u;
+    sb_fat32_dirent_t entry = {0};
+    parse_dirent(sector, &entry);
+    entry.directory_sector = lba;
+    sb_fat32_vfs_node_t *slot = cache_entry(adapter, &entry);
+    if (slot == 0) return SB_VFS_OBJECT_RANGE;
+    for (uint32_t s = 0u; s < fs->sectors_per_cluster; ++s) {
+        if (s != 0u)
+            for (uint32_t i = 0u; i < SB_FAT32_SECTOR_BYTES; ++i) sector[i] = 0u;
+        if (sb_vfs_write_sectors(fs->mount, lba + s, 1u, sector) != SB_VFS_OK) goto release_slot;
+    }
+    if (sb_vfs_sync(fs->mount) != SB_VFS_OK) goto release_slot;
+    if (!invalidate_fsinfo(fs) || !fat_store(fs, allocated, 0x0FFFFFFFu) ||
+        !fat_store(fs, tail, allocated) || sb_vfs_sync(fs->mount) != SB_VFS_OK) {
+        rollback_allocation(fs, tail, tail_value, &allocated, 1u);
+        goto release_slot;
+    }
+    *node_out = &slot->node;
+    return SB_VFS_OBJECT_OK;
+release_slot:
+    (void)sb_vfs_node_release(&slot->node);
+    *slot = (sb_fat32_vfs_node_t){0};
+    return SB_VFS_OBJECT_IO;
 }
 
 static int create_in_cluster(sb_fat32_vfs_t *adapter, uint32_t directory_cluster,
@@ -949,7 +1002,10 @@ static int create_in_cluster(sb_fat32_vfs_t *adapter, uint32_t directory_cluster
         if (next >= SB_FAT32_EOC_MIN) break;
         cluster = next;
     }
-    if (free_lba == 0u) return SB_VFS_OBJECT_RANGE;
+    if (free_lba == 0u) {
+        if (previous_lfn) return SB_VFS_OBJECT_RANGE;
+        return grow_directory_and_create(adapter, cluster, encoded, node_out);
+    }
 found:
     /* If the end marker crosses a sector/cluster boundary, make its successor
      * durable first. Hidden garbage beyond the old terminator must stay hidden. */
