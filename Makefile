@@ -14,6 +14,7 @@ MESSAGE_QUEUE_HOST_TEST := $(BUILD)/message-queue-host-test
 VFS_OBJECT_HOST_TEST := $(BUILD)/vfs-object-host-test
 VFS_NAMESPACE_HOST_TEST := $(BUILD)/vfs-namespace-host-test
 STORAGE_DURABILITY_HOST_TEST := $(BUILD)/storage-durability-host-test
+FAT32_WRITE_HOST_TEST := $(BUILD)/fat32-write-host-test
 STORAGE_DURABILITY_PROOF ?= 0
 
 CC ?= gcc
@@ -27,6 +28,9 @@ endif
 LDFLAGS := -nostdlib -z max-page-size=0x1000 -T linker.ld
 USER_LDFLAGS := -nostdlib -z max-page-size=0x1000 -T userspace/user.ld
 USER_ASFLAGS := -m64 -ffreestanding -fno-pie -Iinclude
+ifeq ($(STORAGE_DURABILITY_PROOF),1)
+USER_ASFLAGS += -DSB_STORAGE_DURABILITY_PROOF
+endif
 
 BOOT_OBJ := $(BUILD)/boot.o
 KERNEL_OBJ := $(BUILD)/kernel.o
@@ -87,6 +91,9 @@ $(BUILD)/storage-durability-mode: force-storage-config | $(BUILD)
 	fi
 
 $(KERNEL_OBJ): $(BUILD)/storage-durability-mode kernel/storage_durability.h
+$(USER_OBJ): $(BUILD)/storage-durability-mode
+
+.PHONY: host-fat32-write-test
 
 all: iso
 
@@ -315,7 +322,12 @@ $(STORAGE_DURABILITY_HOST_TEST): tests/storage_durability_host_test.c kernel/sto
 host-storage-durability-test: $(STORAGE_DURABILITY_HOST_TEST)
 	$(STORAGE_DURABILITY_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test
+$(FAT32_WRITE_HOST_TEST): tests/fat32_write_host_test.c kernel/fs/fat32.c kernel/fs/fat32.h kernel/fs/fat32_vfs.h kernel/vfs.c kernel/vfs.h kernel/vfs_object.c kernel/vfs_object.h kernel/vfs_namespace.c kernel/vfs_namespace.h kernel/block.c kernel/block.h kernel/block_cache.c kernel/block_cache.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/fat32_write_host_test.c kernel/fs/fat32.c kernel/vfs.c kernel/block.c kernel/block_cache.c -o $@
+host-fat32-write-test: $(FAT32_WRITE_HOST_TEST)
+	$(FAT32_WRITE_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test host-fat32-write-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \

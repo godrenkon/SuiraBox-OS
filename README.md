@@ -310,7 +310,9 @@ block cacheは固定16-entryのsector cacheで、device identity + LBAをkeyにr
 
 `FILE_SYNC` syscallから`sb_vfs_file_sync()` → FAT32 adapter → `sb_vfs_sync()` → `sb_block_flush()`へ接続済みです。block flushはsoftware cacheのdirty sectorを先に書き戻し、その後ATA `CACHE FLUSH`でdevice cacheをflushします。CI専用ビルドではFAT32領域外の署名付きsectorをdirtyにし、userspace FILE_SYNC後にQEMUを終了して、host側でdisk imageの全512 byteを検証します。通常ビルドにはこの書き込み経路を含めません。
 
-次はread-onlyのFAT32をwrite対応へ拡張し、data/FAT/directory metadataのwrite orderingとatomic update policyを定義します。現時点の検証はblock/device flush経路の証明であり、FAT32のatomic updateや電源断時のrecoveryの証明は今後の作業です。
+FAT32の既存ファイルは現在サイズ内の上書きに対応しました。`FILE_OPEN`でREAD/WRITEを選択でき、`FILE_WRITE`（ABI番号38）が検証済みuserspace bufferをVFSへ渡します。範囲外・read-only属性・破損chainは書き込み前に拒否し、途中のI/O失敗はshort writeとしてoffsetに反映します。CIはuserspace write→sync→close→reopenに加え、QEMU終了後のmtools読込とfsckを検証します。
+
+次はcluster allocation・file extension・directory size更新を実装し、data/FAT/directory metadataのwrite orderingとatomic update policyを定義します。FAT32のatomic updateや電源断時recoveryの証明は今後の作業です。
 
 ### Deliberately still partial
 
@@ -319,7 +321,7 @@ block cacheは固定16-entryのsector cacheで、device identity + LBAをkeyにr
 - **5-2**: IRQ preemption contextとcooperative kernel contextは分離済みだが、context ABI全体の整理は継続中
 - **6-7**: 複数processの並行実行は確認済みだが、一般的なmulti-thread runtimeは未完成
 - **7-9**: Roadmap上のlocal service MVPは完了。現実装はregistry 8枠・1 active client/service・64-byte messageで、multi-client・blocking receive・credential policyは将来拡張
-- **8-8**: userspace FILE_SYNC・block/VFS/device flush経路とfailure/retry contractは実装済み。writable FAT32 metadata ordering・atomic update・電源断時recoveryは未完成
+- **8-8**: FILE_WRITEによるFAT32既存ファイル上書き・FILE_SYNC・block/VFS/device flushとfailure/retry contractは実装済み。allocation/extensionのmetadata ordering・atomic update・電源断時recoveryは未完成
 
 ---
 

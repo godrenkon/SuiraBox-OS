@@ -21,6 +21,7 @@ jobs:
             grub-common \
             xorriso \
             mtools \
+            dosfstools \
             qemu-system-x86
 
       - name: Build ISO
@@ -43,6 +44,8 @@ jobs:
           printf 'SUIRABOX-RUNTIME-FAT32\n' > build/runtime.txt
           mformat -i build/runtime-fat32.img -F ::
           mcopy -i build/runtime-fat32.img build/runtime.txt ::RUNTIME.TXT
+          printf 'SUIRABOX-GUARD-UNCHANGED\n' > build/guard.txt
+          mcopy -i build/runtime-fat32.img build/guard.txt ::GUARD.TXT
           python3 tests/storage_image_check.py seed build/runtime-fat32.img
 
           timeout 20s qemu-system-x86_64 \
@@ -58,16 +61,27 @@ jobs:
 
           python3 tests/qemu_log_check.py qemu.log --storage-proof
           python3 tests/storage_image_check.py verify build/runtime-fat32.img
+          mcopy -i build/runtime-fat32.img ::RUNTIME.TXT build/runtime-persisted.txt
+          printf 'SUIRABOX-WRITTEN-FAT32\n' > build/runtime-expected.txt
+          cmp build/runtime-expected.txt build/runtime-persisted.txt
+          mcopy -i build/runtime-fat32.img ::GUARD.TXT build/guard-persisted.txt
+          cmp build/guard.txt build/guard-persisted.txt
+          fsck.fat -n build/runtime-fat32.img
 
       - name: Verify durability proof is opt-in
         run: |
-          make STORAGE_DURABILITY_PROOF=0 build/suirabox.elf
+          make STORAGE_DURABILITY_PROOF=0 build/suirabox.elf userspace
           if nm build/suirabox.elf | grep -q 'sb_storage_durability_stage'; then
             echo 'normal kernel still contains durability fixture'
             exit 1
           fi
-          make STORAGE_DURABILITY_PROOF=1 build/suirabox.elf
+          if nm build/user-hello.elf | grep -q 'runtime_fat32_write_probe'; then
+            echo 'normal userspace still contains file write fixture'
+            exit 1
+          fi
+          make STORAGE_DURABILITY_PROOF=1 build/suirabox.elf userspace
           nm build/suirabox.elf | grep -q 'sb_storage_durability_stage'
+          nm build/user-hello.elf | grep -q 'runtime_fat32_write_probe'
 
       - name: Upload kernel artifacts
         if: always()
