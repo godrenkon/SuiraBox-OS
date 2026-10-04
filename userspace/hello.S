@@ -563,12 +563,36 @@ runtime_directory_fillers:
     dec %r14
     jnz runtime_directory_fillers
 #endif
+#ifdef SB_STORAGE_CLEAN_PROOF
+    /* The second boot has the extra file published by clean unmount. */
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    je runtime_clean_directory_end
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpw $9, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    movabs $0x58542e4e41454c43, %rax
+    cmp %rax, SB_DIRECTORY_ENTRY_NAME_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpb $0x54, SB_DIRECTORY_ENTRY_NAME_OFFSET+8+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $runtime_clean_payload_len, SB_DIRECTORY_ENTRY_SIZE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    movq $1, runtime_clean_reboot(%rip)
+#endif
     mov %r12, %rdi
     lea directory_entry_buffer(%rip), %rsi
     mov $SB_SYS_DIRECTORY_READ, %rax
     int $SB_SYSCALL_VECTOR
     cmp $SB_SYS_ERROR_NOT_FOUND, %rax
     jne lifecycle_failed
+#ifdef SB_STORAGE_CLEAN_PROOF
+runtime_clean_directory_end:
+#endif
     mov %r12, %rdi
     mov $SB_SYS_HANDLE_CLOSE, %rax
     int $SB_SYSCALL_VECTOR
@@ -634,6 +658,123 @@ runtime_fat32_dirty_probe:
     jne lifecycle_failed
 runtime_dirty_stop:
     jmp runtime_dirty_stop
+#endif
+#ifdef SB_STORAGE_CLEAN_PROOF
+runtime_fat32_clean_probe:
+    mov $1, %rdi
+    mov $5, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_VOLUME_UNMOUNT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+    lea runtime_disk_directory_path(%rip), %rdi
+    mov $runtime_disk_directory_path_len, %rsi
+    mov $1, %rdx
+    mov $SB_SYS_VOLUME_UNMOUNT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_INVALID, %rax
+    jne lifecycle_failed
+    lea vfs_spawn_path(%rip), %rdi
+    mov $vfs_spawn_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_VOLUME_UNMOUNT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+    lea runtime_disk_directory_path(%rip), %rdi
+    mov $runtime_disk_directory_path_len, %rsi
+    mov $SB_SYS_DIRECTORY_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    lea runtime_disk_directory_path(%rip), %rdi
+    mov $runtime_disk_directory_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_VOLUME_UNMOUNT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_BUSY, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_clean_path(%rip), %rdi
+    mov $runtime_clean_path_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    cmpq $0, runtime_clean_reboot(%rip)
+    je runtime_clean_open
+    mov $SB_SYS_FILE_OPEN, %rax
+runtime_clean_open:
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    lea runtime_disk_directory_path(%rip), %rdi
+    mov $runtime_disk_directory_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_VOLUME_UNMOUNT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_BUSY, %rax
+    jne lifecycle_failed
+    cmpq $0, runtime_clean_reboot(%rip)
+    jne runtime_clean_read
+    mov %r12, %rdi
+    lea runtime_clean_payload(%rip), %rsi
+    mov $runtime_clean_payload_len, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_clean_payload_len, %rax
+    jne lifecycle_failed
+    /* No FILE_SYNC: clean unmount must persist the cached directory size. */
+    jmp runtime_clean_close
+runtime_clean_read:
+    mov %r12, %rdi
+    lea runtime_clean_buffer(%rip), %rsi
+    mov $runtime_clean_payload_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_clean_payload_len, %rax
+    jne lifecycle_failed
+    lea runtime_clean_buffer(%rip), %rsi
+    lea runtime_clean_payload(%rip), %rdi
+    mov $runtime_clean_payload_len, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+runtime_clean_close:
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_disk_directory_path(%rip), %rdi
+    mov $runtime_disk_directory_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_VOLUME_UNMOUNT, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_clean_path(%rip), %rdi
+    mov $runtime_clean_path_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+    lea runtime_clean_message(%rip), %rdi
+    mov $runtime_clean_message_len, %rsi
+    cmpq $0, runtime_clean_reboot(%rip)
+    je runtime_clean_log
+    lea runtime_clean_reboot_message(%rip), %rdi
+    mov $runtime_clean_reboot_message_len, %rsi
+runtime_clean_log:
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
 #endif
 #ifdef SB_STORAGE_DURABILITY_PROOF
 runtime_fat32_create_probe:
@@ -1376,6 +1517,27 @@ runtime_dirty_path:
 runtime_dirty_message:
     .ascii "Userspace: FAT32 dirty marker durable before unsynced create checkpoint\r\n"
 .set runtime_dirty_message_len, . - runtime_dirty_message
+#endif
+#ifdef SB_STORAGE_CLEAN_PROOF
+runtime_clean_path:
+    .ascii "/disk/CLEAN.TXT"
+.set runtime_clean_path_len, . - runtime_clean_path
+runtime_clean_payload:
+    .ascii "SUIRABOX CLEAN\n"
+.set runtime_clean_payload_len, . - runtime_clean_payload
+runtime_clean_message:
+    .ascii "Userspace: FAT32 clean unmount persisted unsynced file and detached volume\n"
+.set runtime_clean_message_len, . - runtime_clean_message
+runtime_clean_reboot_message:
+    .ascii "Userspace: FAT32 clean reboot writable file verified and volume detached\n"
+.set runtime_clean_reboot_message_len, . - runtime_clean_reboot_message
+.section .bss
+.balign 8
+runtime_clean_reboot:
+    .skip 8
+runtime_clean_buffer:
+    .skip 16
+.section .rodata
 #endif
 pointer_message:
     .ascii "Userspace: validated user pointer copy OK\r\n"

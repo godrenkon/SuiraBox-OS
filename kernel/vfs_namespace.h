@@ -45,6 +45,9 @@ int sb_vfs_namespace_mount(sb_vfs_namespace_t *namespace_state,
 int sb_vfs_namespace_unmount(sb_vfs_namespace_t *namespace_state,
                              const char *path,
                              uint64_t path_length);
+/* Requires a backend finalization callback; does not detach unsupported roots. */
+int sb_vfs_namespace_unmount_volume(sb_vfs_namespace_t *namespace_state,
+                                    const char *path, uint64_t path_length);
 
 /* Returns one acquired node reference on success. Caller must release it. */
 int sb_vfs_namespace_resolve(sb_vfs_namespace_t *namespace_state,
@@ -81,6 +84,7 @@ int sb_vfs_system_mount(const char *path,
                         uint64_t path_length,
                         sb_vfs_node_t *root);
 int sb_vfs_system_unmount(const char *path, uint64_t path_length);
+int sb_vfs_system_unmount_volume(const char *path, uint64_t path_length);
 int sb_vfs_system_resolve(const char *path,
                           uint64_t path_length,
                           sb_vfs_node_t **node_out);

@@ -224,14 +224,14 @@ static int vfs_adapter_test(sb_vfs_mount_t *mount) {
                 "nested FAT32 directory close failed")) return 0;
 
     if (!expect(sb_vfs_namespace_unmount(&namespace_state, "/fat", 4u) ==
-                SB_VFS_OBJECT_OK,
-                "FAT32 namespace unmount failed")) return 0;
-    if (!expect(sb_fat32_vfs_destroy(&adapter) == SB_VFS_OBJECT_ACCESS,
-                "adapter destroy ignored an open file reference")) return 0;
+                SB_VFS_OBJECT_BUSY,
+                "FAT32 unmount ignored an open file reference")) return 0;
     if (!expect(sb_vfs_file_close(&file) == SB_VFS_OBJECT_OK,
                 "FAT32 generic file close failed")) return 0;
     if (!expect(sb_vfs_file_sync(&file) == SB_VFS_OBJECT_CLOSED,
                 "closed FAT32 file accepted sync")) return 0;
+    if (!expect(sb_vfs_namespace_unmount(&namespace_state, "/fat", 4u) == SB_VFS_OBJECT_OK,
+                "FAT32 namespace unmount failed after close")) return 0;
     if (!expect(sb_fat32_vfs_destroy(&adapter) == SB_VFS_OBJECT_OK,
                 "FAT32 VFS adapter destroy failed")) return 0;
 

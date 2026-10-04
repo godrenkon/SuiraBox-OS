@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **8-8 fsync / atomic update semantics・8-9 storage recovery**。FILE_SYNC、FAT32ファイル/directory作成・追記・metadata orderingまでQEMU/host testで確認済みです。復旧が必要なvolumeのread-only mountと更新前のdirty状態記録を基盤として、次はclean shutdown、atomic update・crash recoveryへ進みます。
+> **Current focus:** **8-8 fsync / atomic update semantics・8-9 storage recovery**。FILE_SYNC、FAT32ファイル/directory作成・追記・metadata ordering、dirty記録と明示的なclean unmountまで実装しています。次はatomic update・crash recoveryと、OS全体のshutdown連携へ進みます。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -326,7 +326,9 @@ FAT32の既存ファイルは現在サイズ内の上書きに対応しました
 
 FAT32のFAT[1]に異常終了・過去のI/Oエラー・mirrored status不一致が記録されている場合、mountを読み取り専用にします。既存ファイルのread・列挙・read-handle syncは維持し、WRITE open・ファイル/directory作成・直接backend writeを拒否します。CIは3種類のvolumeをQEMUで起動し、拒否動作とディスク全体の不変を検証します。
 
-SuiraBox自身の最初の更新前にも、mirrored/active FATのdirty印をdevice flushまで保存します。このbarrierの失敗ではdata更新を開始せず、mountの書き込みを停止します。CIはsync前の空ファイル作成直後にQEMUを停止し、dirty印だけが保存されたことと同じディスクの再起動時のread-only動作を照合します。FILE_SYNC/CLOSE/mkdirでは印を解除しません。clean unmount未実装のため、更新したvolumeは次回mountでread-onlyになります。修復・journal・正常終了時のclean記録は次の段階で、atomic updateは未完成です。
+SuiraBox自身の最初の更新前にも、mirrored/active FATのdirty印をdevice flushまで保存します。このbarrierの失敗ではdata更新を開始せず、mountの書き込みを停止します。CIはsync前の空ファイル作成直後にQEMUを停止し、dirty印だけが保存されたことと同じディスクの再起動時のread-only動作を照合します。FILE_SYNC/CLOSE/mkdirでは印を解除しません。
+
+`VOLUME_UNMOUNT`（ABI番号41）はPID 1からの明示的なclean unmountです。使用中のfile/directory/node参照、別名mount、配下のmountがあればBUSYで拒否します。変更を止め、全data/metadataのflush後にmirrored/active FATへclean状態を保存し、最終flushが成功してからnamespaceから外します。解除失敗時は接続を読み取り用に残して書き込みを停止します。復旧用read-only volumeは状態を変えずに解除できます。CIはFILE_SYNCなしで書いたCLEAN.TXTの保存と、同じimageの再起動時のWRITE open・読み出しを検証します。OS全体のshutdown/poweroff、repair・journal・atomic updateは未完成です。
 
 - **3-7**: sleep/wakeは動作するが、一般timeout semantics全体は未完成
 - **4-7**: user/kernel stackは動作するが、guard page・overflow policy・可変stack policyは未完成
@@ -334,7 +336,7 @@ SuiraBox自身の最初の更新前にも、mirrored/active FATのdirty印をdev
 - **6-7**: 複数processの並行実行は確認済みだが、一般的なmulti-thread runtimeは未完成
 - **7-9**: Roadmap上のlocal service MVPは完了。現実装はregistry 8枠・1 active client/service・64-byte messageで、multi-client・blocking receive・credential policyは将来拡張
 - **8-8**: FAT32ファイル/directory作成・directory自動拡張・上書き・追記・cluster allocation・data/FAT/directory ordering・FILE_SYNCとfailure/retry contractは実装済み。atomic update・電源断時recoveryは未完成
-- **8-9**: FAT[1] statusに基づくread-only mountと更新前dirty記録は実装済み。clean shutdown・破損chainの検査/修復・journal recoveryは未完成
+- **8-9**: FAT[1] statusに基づくread-only mount・更新前dirty記録・明示的なclean unmountは実装済み。OS全体のshutdown・破損chainの検査/修復・journal recoveryは未完成
 
 ---
 

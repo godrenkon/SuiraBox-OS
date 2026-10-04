@@ -197,10 +197,10 @@ writable; this is a filesystem policy, not a device-wide write lock.
 
 This is a recovery entry condition, not a complete integrity check or automatic
 repair. It does not scan chains for lost/cross-linked clusters and does not
-implement transactions. SuiraBox now persists dirty status before its first
-mutation in a mount session, but does not yet implement clean unmount. A clean
-marker is not an integrity proof and ordered marking does not make interrupted
-writes atomic. Clean shutdown, repair and journal recovery remain future work.
+implement transactions. SuiraBox persists dirty status before its first mutation
+and supports explicit clean unmount. A clean marker is not an integrity proof
+and ordered marking does not make interrupted writes atomic. System shutdown,
+repair and journal recovery remain future work.
 
 `make host-fat32-recovery-test` covers both status bits, mirrored disagreement,
 reserved-nibble differences, active-FAT selection, status-read failures, clean
@@ -228,11 +228,10 @@ it is never restored to clean. No data-sector mutation starts after a failed
 marker. Reserved inode/handle slots are released on failed creation. Metadata
 ordering, rollback and later data-sync failures retain their existing contracts.
 
-FILE_SYNC, CLOSE and successful mkdir leave the dirty bit clear. There is no
-clean-unmount protocol yet, so any volume mutated by SuiraBox mounts read-only on
-the next boot until external offline repair establishes a clean state. This
-conservative intermediate behavior is intentional; sync durability is distinct
-from clean shutdown. Prior hard-error bits are preserved; persisting new hard-error
+FILE_SYNC, CLOSE and successful mkdir leave the dirty bit clear. Without a
+successful explicit clean unmount, a volume mutated by SuiraBox mounts read-only
+on the next boot. Sync durability is distinct from clean unmount. Prior hard-error
+bits are preserved; persisting new hard-error
 evidence remains future work. Raw block-device writes bypass this filesystem policy.
 
 `make host-fat32-dirty-test` uses volatile/durable buffers to prove the marker
@@ -250,6 +249,50 @@ with a file backend, not a complete physical power-loss model or journal proof.
 The normal durability image remains dirty. CI repairs only a disposable image
 copy with offline fsck, checks it again and compares nested file content; the
 original image and its recovery evidence remain preserved as artifacts.
+
+## Explicit clean unmount
+
+VOLUME_UNMOUNT (ABI 41) finalizes an exact normalized mount path, currently only
+for bootstrap init (PID 1), the owner of the global namespace. Other processes
+receive RIGHTS before path access. A backend root has an optional `unmount`
+callback. The storage facade refuses providers without this callback; ordinary
+kernel namespace detach remains available for other providers. Nested mounts
+prevent removal of their parent. All refusals keep the mount attached.
+
+FAT32 requires exactly its adapter and one namespace reference on the root,
+and only adapter references on every cached node. File/directory handles,
+borrowed nodes, another namespace alias, or nested mounts return BUSY before
+any disk I/O or mutation sealing. Current syscalls serialize filesystem changes;
+this reference check will need locking if concurrent kernel writers are added.
+
+After preflight, finalization seals mutation and flushes all cached data/FAT/
+directory changes through the device barrier. Only then does it verify every
+required FAT[1] status still has dirty/no-hard-error state, set just the clean bit
+in mirrored copies (or only active FAT), and complete a second device barrier.
+Success disables the old root for reuse and releases its namespace reference.
+A fresh adapter can mount the clean volume writable. Handles must be closed;
+FILE_SYNC is optional because finalization flushes the whole backing device.
+
+A data/status/flush error returns IO, keeps the namespace attached for reads,
+and quarantines subsequent mutation/finalization. No clean bit is accepted
+before data durability. A later clean-marker failure may leave partially clean
+copies or uncertain final status; data was already durable, and the old adapter
+cannot write again. No clean-bit rollback is attempted. Previously quarantined
+volumes cannot be certified clean. Recovery-required and never-mutated volumes
+detach without disk I/O, preserving all recovery evidence. Raw device writes and
+forceful namespace destroy/adapter destroy bypass finalization; destruction
+still does not sync or mark clean. No implicit cleanup/poweroff is provided.
+
+`make host-fat32-unmount-test` covers volatile/durable ordering, unsynced data
+and entries, busy references/aliases/nested mounts, active FAT, status/data/
+barrier faults, stale roots, writable fresh mounts and recovery evidence.
+Opt-in STORAGE_CLEAN_PROOF writes CLEAN.TXT without FILE_SYNC, checks BUSY,
+closes handles and unmounts. The image checker compares every byte against
+the seed plus exactly one new file, mirrored allocation and FSInfo invalidation.
+QEMU then boots the same image, opens that file with WRITE rights, reads its
+exact contents and unmounts without modifying the image. Normal-build proof
+removal and whole-image SHA-256 preservation are checked. This uses file-backed
+VM disks and does not prove physical power-loss atomicity or hardware poweroff.
 
 ## Exclusive directory creation
 
