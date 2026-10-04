@@ -40,6 +40,7 @@ def main() -> None:
             "Userspace: FILE_WRITE rights/pointer/range rejection OK",
             "File: FILE_WRITE copied userspace data to VFS",
             "Userspace: FAT32 write FILE_SYNC completed",
+            "Userspace: FAT32 extend/sync/reopen lifecycle OK",
             "Userspace: FAT32 write/sync/reopen lifecycle OK",
         ])
 

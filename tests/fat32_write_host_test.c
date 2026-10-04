@@ -110,10 +110,9 @@ int main(void) {
                 "writable and read-only handles opened")) return 1;
     if (require(sb_vfs_file_write(&reader, payload, 1u, &written) == SB_VFS_OBJECT_ACCESS &&
                 reader.offset == 0u && written == 0u, "read-only handle rejected")) return 1;
-    if (require(sb_vfs_file_seek(&file, FILE_BYTES - 1u) == SB_VFS_OBJECT_OK &&
-                sb_vfs_file_write(&file, payload, 2u, &written) == SB_VFS_OBJECT_RANGE &&
-                written == 0u && file.offset == FILE_BYTES - 1u &&
-                sb_block_cache_stats().dirty_writes == 0u, "extension rejected before mutation")) return 1;
+    if (require(sb_vfs_file_seek(&file, FILE_BYTES + 1u) == SB_VFS_OBJECT_RANGE &&
+                file.offset == 0u && sb_block_cache_stats().dirty_writes == 0u,
+                "seeking a hole is rejected before mutation")) return 1;
     if (require(sb_vfs_file_seek(&file, 480u) == SB_VFS_OBJECT_OK &&
                 sb_vfs_file_write(&file, payload, sizeof(payload), &written) == SB_VFS_OBJECT_OK &&
                 written == sizeof(payload) && file.offset == 2080u && node->size == FILE_BYTES &&

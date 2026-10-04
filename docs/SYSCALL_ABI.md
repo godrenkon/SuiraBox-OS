@@ -159,11 +159,11 @@ Process teardown closes all remaining handles before destroying the user address
 
 A VFS node represents the resource; an open `sb_vfs_file_t` owns independent offset/access state and a node reference. `SB_SYS_FILE_OPEN` resolves an absolute path with READ (`1`), WRITE (`2`), or both (`3`), and grants the corresponding handle rights plus QUERY. Unknown/zero access is invalid. Boot modules and FAT read-only entries reject WRITE opens. QEMU proves `/boot/user-child` and `/disk/RUNTIME.TXT`.
 
-`SB_SYS_FILE_WRITE` requires a live FILE handle with WRITE. Requests over 256 bytes return LIMIT. The complete source is copied from readable userspace before file data or offset changes; an invalid source returns FAULT. Zero length returns 0 after handle/rights validation without inspecting the pointer. A successful short write advances the offset by accepted bytes only; callers retry the remainder. Fixed-size FAT32 overwrites reject any request past EOF with LIMIT before mutation.
+`SB_SYS_FILE_WRITE` requires a live FILE handle with WRITE. Requests over 256 bytes return LIMIT. The complete source is copied from readable userspace before file data or offset changes; an invalid source returns FAULT. Zero length returns 0 after handle/rights validation without inspecting the pointer. A successful short write advances the offset by accepted bytes only; callers retry the remainder. FAT32 writes may extend EOF; seeking a hole, insufficient allocation space or size overflow returns LIMIT before mutation.
 
 DIRECTORY handles use READ|QUERY. `SB_SYS_DIRECTORY_READ` copies a stable public 80-byte entry and reports EOF as `SB_SYS_ERROR_NOT_FOUND` without advancing the cursor. QEMU verifies a rejected read-only userspace output pointer does not consume the first FAT32 directory entry.
 
-`SB_SYS_FILE_SYNC` requires QUERY and reaches `sb_vfs_file_sync()`, FAT32 mount sync, dirty block-cache writeback and the device flush barrier. WRITE success alone does not promise durability, and CLOSE does not implicitly sync. FAT32 currently supports fixed-size overwrites; allocation, extension and atomic replacement remain future work.
+`SB_SYS_FILE_SYNC` requires QUERY and reaches `sb_vfs_file_sync()`, FAT32 mount sync, dirty block-cache writeback and the device flush barrier. WRITE success alone does not promise durability, and CLOSE does not implicitly sync. FAT32 supports overwrite and extension of existing files. Extension flushes data, then mirrored FATs, before accepting directory size; FILE_SYNC persists that final metadata. Extension errors leave offset/size unchanged but may modify overlapping existing bytes. Failed FAT rollback quarantines writes and file sync until repair/remount. Creation and atomic replacement remain future work.
 
 ## PIPE handles
 
@@ -206,7 +206,7 @@ The current event core intentionally supports one registered waiter and is singl
 
 The current system namespace exposes `/boot` for registered Multiboot modules and `/disk` for the FAT32 runtime disk when present.
 
-FAT32 supports 8.3 lookup, directory iteration, nested subdirectories, reads and fixed-size regular-file overwrites on writable devices. LFN, file creation and extension are not implemented.
+FAT32 supports 8.3 lookup, directory iteration, nested subdirectories, reads, regular-file overwrites and extension on writable devices. Extension allocates at most eight clusters per backend request; the syscall's 256-byte limit remains unchanged. Seeking beyond EOF is rejected. LFN and file creation are not implemented.
 
 The canonical block layer includes a fixed write-back sector cache. Full-sector writes become dirty cache entries, reads observe dirty data immediately, explicit flush/device unregister/replacement performs writeback, and a failed writeback preserves dirty state for retry. `sb_block_flush()` and `sb_vfs_sync()` provide the current synchronization boundary.
 
