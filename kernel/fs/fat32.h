@@ -32,6 +32,7 @@ typedef struct {
     uint8_t write_faulted;
     /* Mount-time FAT[1] status; nonzero permits reads but denies mutation. */
     uint8_t recovery_flags;
+    uint8_t dirty_marked;
 } sb_fat32_t;
 
 typedef struct {
@@ -51,6 +52,9 @@ typedef enum {
 } sb_fat32_dir_result_t;
 
 int sb_fat32_mount(sb_vfs_mount_t *mount, sb_fat32_t *fs);
+/* Persist the dirty marker before the first mutation in this mount session.
+ * A failed marker read/write/barrier quarantines writes. Sync does not clear it. */
+int sb_fat32_begin_write(sb_fat32_t *fs);
 
 /* Returns the index-th visible 8.3 directory entry from directory_cluster.
  * Deleted entries, LFN slots, volume labels, and FAT dot entries are skipped. */

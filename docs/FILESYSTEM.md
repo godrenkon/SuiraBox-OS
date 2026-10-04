@@ -197,11 +197,10 @@ writable; this is a filesystem policy, not a device-wide write lock.
 
 This is a recovery entry condition, not a complete integrity check or automatic
 repair. It does not scan chains for lost/cross-linked clusters and does not
-implement transactions. SuiraBox's current writers do not yet persist the dirty
-bit before their own mutations or clear it through a clean-unmount protocol.
-Consequently a clean marker is not evidence that an interrupted SuiraBox write
-was atomic, and this gate detects only status already recorded on disk. Ordered
-dirty-marking, clean shutdown, repair and crash recovery remain future work.
+implement transactions. SuiraBox now persists dirty status before its first
+mutation in a mount session, but does not yet implement clean unmount. A clean
+marker is not an integrity proof and ordered marking does not make interrupted
+writes atomic. Clean shutdown, repair and journal recovery remain future work.
 
 `make host-fat32-recovery-test` covers both status bits, mirrored disagreement,
 reserved-nibble differences, active-FAT selection, status-read failures, clean
@@ -211,6 +210,46 @@ writable QEMU disks with dirty, hard-error and inconsistent-status fixtures, and
 requires existing reads/sync/enumeration followed by WRITE-open/FILE_CREATE/mkdir
 rejection. SHA-256 comparison after each boot requires every image byte to remain
 unchanged, including recovery evidence. Normal-build fixture removal is checked.
+
+## Dirty marker before mutation
+
+Before accepting the first regular-file overwrite/extension, FILE_CREATE or
+DIRECTORY_CREATE mutation, `sb_fat32_begin_write()` clears FAT[1]'s clean-shutdown
+bit in every mirrored FAT (or only the selected active FAT). It preserves all
+other bits and bytes, writes through the canonical cache, and completes the
+device barrier before file data, allocation or directory publication can begin.
+The mounted session remains writable after this successful barrier; subsequent
+mutations reuse its durable marker. Invalid paths, duplicate names, zero-length
+writes and preflight resource failures do not initiate marking.
+
+A marker read/write/barrier error returns IO with zero file-write progress and
+quarantines further mutation. A partial marker may already be cached or durable;
+it is never restored to clean. No data-sector mutation starts after a failed
+marker. Reserved inode/handle slots are released on failed creation. Metadata
+ordering, rollback and later data-sync failures retain their existing contracts.
+
+FILE_SYNC, CLOSE and successful mkdir leave the dirty bit clear. There is no
+clean-unmount protocol yet, so any volume mutated by SuiraBox mounts read-only on
+the next boot until external offline repair establishes a clean state. This
+conservative intermediate behavior is intentional; sync durability is distinct
+from clean shutdown. Prior hard-error bits are preserved; persisting new hard-error
+evidence remains future work. Raw block-device writes bypass this filesystem policy.
+
+`make host-fat32-dirty-test` uses volatile/durable buffers to prove the marker
+barrier precedes actual data/metadata writeback, tests overwrite/extension/create/
+mkdir/active-FAT paths, one marker per session, marker faults, inode cleanup,
+zero/rejected requests and cache-loss/remount read-only behavior. Existing fault
+tests explicitly prepare a dirty session and reset their baseline/counters before
+testing later data/FAT/publication phases. CI's opt-in STORAGE_DIRTY_PROOF creates
+PENDING.TXT without sync and stops at a checkpoint. After QEMU is terminated,
+whole-image hashing requires exactly the mirrored dirty-bit changes and no
+published PENDING entry. Rebooting that same disk with the recovery proof must
+deny mutations and preserve every image byte. This is a software-cache-loss test
+with a file backend, not a complete physical power-loss model or journal proof.
+
+The normal durability image remains dirty. CI repairs only a disposable image
+copy with offline fsck, checks it again and compares nested file content; the
+original image and its recovery evidence remain preserved as artifacts.
 
 ## Exclusive directory creation
 

@@ -97,11 +97,15 @@ static int start(void) {
     memcpy(original, disk, sizeof(disk));
     sb_block_cache_reset(); flushes = 0u; ordering_error = 0;
     fail_read = fail_write = -1; fail_barrier = fail_barrier_again = 0u;
-    return check(sb_vfs_mount(&device, &mount) == SB_VFS_OK &&
+    if (check(sb_vfs_mount(&device, &mount) == SB_VFS_OK &&
         sb_fat32_vfs_init(&adapter, &mount) == SB_VFS_OBJECT_OK &&
         sb_vfs_node_lookup(sb_fat32_vfs_root(&adapter), "DATA.BIN", 8u, &node) == SB_VFS_OBJECT_OK &&
         sb_vfs_file_open(node, SB_VFS_ACCESS_ALL, &file) == SB_VFS_OBJECT_OK &&
-        sb_vfs_file_seek(&file, 900u) == SB_VFS_OBJECT_OK, "fixture opens");
+        sb_vfs_file_seek(&file, 900u) == SB_VFS_OBJECT_OK, "fixture opens")) return 1;
+    /* Isolate extension faults after dirty marking has completed. */
+    if (check(sb_fat32_begin_write(&adapter.fs) == SB_VFS_OBJECT_OK, "dirty session prepared")) return 1;
+    memcpy(original, disk, sizeof(disk)); sb_block_cache_reset(); flushes = 0u;
+    return 0;
 }
 static int finish(void) {
     return check(sb_vfs_file_close(&file) == SB_VFS_OBJECT_OK &&
@@ -232,6 +236,12 @@ int main(void) {
         "overwrite crossing EOF preserves prefix and extends correctly")) return 1;
     if (finish() || start()) return 1;
     disk[40] = 0x81u; put32(disk + 3u * 512u + 12u, 0u);
+    /* Fresh clean active-FAT fixture: extension support is checked before any
+     * mutation, independently of the recovery gate. */
+    for (uint32_t copy = 0u; copy < 2u; ++copy) {
+        uint8_t *status = disk + (3u + copy) * 512u + 4u;
+        put32(status, get32(status) | SB_FAT32_CLEAN_SHUTDOWN);
+    }
     sb_block_cache_reset();
     sb_fat32_t active;
     sb_fat32_dirent_t entry;

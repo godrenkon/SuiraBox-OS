@@ -74,7 +74,13 @@ jobs:
           printf 'SUIRABOX-WORLD-DATA\n' > build/world-expected.txt
           cmp build/world-expected.txt build/world-persisted.txt
           python3 tests/fat32_mkdir_image_check.py build/runtime-fat32.img build/root-directory-seed.bin
-          fsck.fat -n build/runtime-fat32.img
+          # Dirty-session evidence stays on the original. Validate offline
+          # repair and fsck on a disposable copy of this CI file-backed disk.
+          cp build/runtime-fat32.img build/runtime-fsck.img
+          fsck.fat -a build/runtime-fsck.img || test $? -eq 1
+          fsck.fat -n build/runtime-fsck.img
+          mcopy -i build/runtime-fsck.img ::SAVES/WORLDS/LEVEL.DAT build/world-fsck.txt
+          cmp build/world-expected.txt build/world-fsck.txt
 
       - name: Verify durability proof is opt-in
         run: |
@@ -123,6 +129,35 @@ jobs:
             exit 1
           fi
 
+      - name: Prove pre-mutation dirty marker survives unsynced stop and reboot
+        run: |
+          set -o pipefail
+          make BUILD=build/dirty STORAGE_DURABILITY_PROOF=0 STORAGE_DIRTY_PROOF=1
+          nm build/dirty/user-hello.elf | grep -q 'runtime_fat32_dirty_probe'
+          truncate -s 64M build/dirty/runtime.img
+          mformat -i build/dirty/runtime.img -F ::
+          mcopy -i build/dirty/runtime.img build/runtime.txt ::RUNTIME.TXT
+          python3 tests/fat32_dirty_image_check.py prepare build/dirty/runtime.img build/dirty/expected.sha256
+          timeout 20s qemu-system-x86_64 \
+            -m 256M -boot d \
+            -drive file=build/dirty/runtime.img,format=raw,if=ide,index=0,media=disk,cache=writeback \
+            -cdrom build/dirty/suirabox.iso \
+            -serial stdio -display none -no-reboot -no-shutdown \
+            2>&1 | tee qemu-dirty-checkpoint.log || test ${PIPESTATUS[0]} -eq 124
+          grep -q 'Userspace: FAT32 dirty marker durable before unsynced create checkpoint' qemu-dirty-checkpoint.log
+          if grep -qE 'Exception:|FAILED|recovery required' qemu-dirty-checkpoint.log; then exit 1; fi
+          python3 tests/fat32_dirty_image_check.py verify build/dirty/runtime.img build/dirty/expected.sha256
+          timeout 20s qemu-system-x86_64 \
+            -m 256M -boot d \
+            -drive file=build/dirty/runtime.img,format=raw,if=ide,index=0,media=disk,cache=writeback \
+            -cdrom build/recovery/suirabox.iso \
+            -serial stdio -display none -no-reboot -no-shutdown \
+            2>&1 | tee qemu-dirty-reboot.log || test ${PIPESTATUS[0]} -eq 124
+          python3 tests/qemu_log_check.py qemu-dirty-reboot.log --recovery-proof
+          python3 tests/fat32_recovery_image_check.py verify build/dirty/runtime.img build/dirty/expected.sha256
+          make BUILD=build/dirty STORAGE_DURABILITY_PROOF=0 STORAGE_DIRTY_PROOF=0 userspace
+          if nm build/dirty/user-hello.elf | grep -q 'runtime_fat32_dirty_probe'; then exit 1; fi
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -140,6 +175,9 @@ jobs:
             build/recovery/*.img
             build/recovery/*.sha256
             qemu-recovery-*.log
+            build/dirty/runtime.img
+            build/dirty/expected.sha256
+            qemu-dirty-*.log
 
   ipc-proof:
     needs: kernel

@@ -92,7 +92,13 @@ static int start(int full) {
     memcpy(initial, disk, sizeof(disk)); memcpy(durable, disk, sizeof(disk));
     sb_block_cache_reset(); barriers = fail_barrier = fail_again = 0u;
     fail_read = fail_write = -1; ordering_error = 0;
-    return attach();
+    if (attach()) return 1;
+    /* Dedicated dirty-session tests cover the first barrier; these target the
+     * later data/FAT/publication phases. */
+    if (device.write != 0 &&
+        check(sb_fat32_begin_write(&adapter.fs) == SB_VFS_OBJECT_OK, "dirty session prepared")) return 1;
+    memcpy(initial, disk, sizeof(disk)); sb_block_cache_reset(); barriers = 0u;
+    return 0;
 }
 static int finish(void) {
     sb_vfs_namespace_destroy(&ns);
