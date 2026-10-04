@@ -312,7 +312,7 @@ block cacheは固定16-entryのsector cacheで、device identity + LBAをkeyにr
 
 FAT32の既存ファイルは現在サイズ内の上書きに対応しました。`FILE_OPEN`でREAD/WRITEを選択でき、`FILE_WRITE`（ABI番号38）が検証済みuserspace bufferをVFSへ渡します。範囲外・read-only属性・破損chainは書き込み前に拒否し、途中のI/O失敗はshort writeとしてoffsetに反映します。CIはuserspace write→sync→close→reopenに加え、QEMU終了後のmtools読込とfsckを検証します。
 
-次はcluster allocation・file extension・directory size更新を実装し、data/FAT/directory metadataのwrite orderingとatomic update policyを定義します。FAT32のatomic updateや電源断時recoveryの証明は今後の作業です。
+既存ファイルの追記・拡張、空ファイルへの最初のcluster確保も実装しました。data flush → mirrored FAT flush → directory size更新の順序を守り、FAT更新失敗時は巻き戻し、巻き戻し失敗時はmountの書き込みを停止します。QEMUでは768 byteを追記してcluster境界を越え、再openと終了後の正確な内容・guard file・fsckを検証します。次は新規ファイル作成とatomic update・電源断時recoveryです。
 
 ### Deliberately still partial
 
@@ -321,7 +321,7 @@ FAT32の既存ファイルは現在サイズ内の上書きに対応しました
 - **5-2**: IRQ preemption contextとcooperative kernel contextは分離済みだが、context ABI全体の整理は継続中
 - **6-7**: 複数processの並行実行は確認済みだが、一般的なmulti-thread runtimeは未完成
 - **7-9**: Roadmap上のlocal service MVPは完了。現実装はregistry 8枠・1 active client/service・64-byte messageで、multi-client・blocking receive・credential policyは将来拡張
-- **8-8**: FILE_WRITEによるFAT32既存ファイル上書き・FILE_SYNC・block/VFS/device flushとfailure/retry contractは実装済み。allocation/extensionのmetadata ordering・atomic update・電源断時recoveryは未完成
+- **8-8**: FAT32上書き・追記・cluster allocation・data/FAT/directory ordering・FILE_SYNCとfailure/retry contractは実装済み。新規ファイル作成・atomic update・電源断時recoveryは未完成
 
 ---
 

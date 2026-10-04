@@ -62,7 +62,7 @@ jobs:
           python3 tests/qemu_log_check.py qemu.log --storage-proof
           python3 tests/storage_image_check.py verify build/runtime-fat32.img
           mcopy -i build/runtime-fat32.img ::RUNTIME.TXT build/runtime-persisted.txt
-          printf 'SUIRABOX-WRITTEN-FAT32\n' > build/runtime-expected.txt
+          python3 -c 'from pathlib import Path; Path("build/runtime-expected.txt").write_bytes(b"SUIRABOX-WRITTEN-FAT32\n" + b"SUIRABOX-APPEND\n" * 48)'
           cmp build/runtime-expected.txt build/runtime-persisted.txt
           mcopy -i build/runtime-fat32.img ::GUARD.TXT build/guard-persisted.txt
           cmp build/guard.txt build/guard-persisted.txt

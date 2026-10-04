@@ -108,9 +108,10 @@ that the backend has no volatile write cache requiring an explicit barrier.
 ATA PIO provides the `CACHE FLUSH` command as its device barrier.
 
 `FILE_SYNC` follows FILE handle -> VFS file -> FAT32 adapter -> mount sync ->
-block writeback -> device barrier. FAT32 now supports overwriting existing file
-data within its current size; creation, allocation and metadata updates remain
-future work.
+block writeback -> device barrier. FAT32 supports overwriting and extending
+existing files, including allocating a first cluster for an empty file. Extension
+flushes data before mirrored FATs, then publishes directory size; FILE_SYNC is
+required for final directory durability. Creation remains future work.
 
 GitHub Actions opts in with `make STORAGE_DURABILITY_PROOF=1`. The fixture is a
 64 MiB FAT32 image with one additional sector outside the BPB volume boundary.
@@ -120,11 +121,13 @@ verifies every byte of that sector from the reopened image. Normal builds omit
 the staging path and userspace write probe; changing the build mode rebuilds the kernel and userspace through a mode
 stamp. The image and QEMU log are retained as CI artifacts.
 
-The CI userspace probe also overwrites `/disk/RUNTIME.TXT`, syncs, closes and
+The CI userspace probe also overwrites and appends 768 bytes to `/disk/RUNTIME.TXT`, syncs, closes and
 reopens it. After QEMU exit, mtools extracts the file for exact content/size
 comparison and verifies a separate guard file; `fsck.fat -n` checks filesystem
 consistency. Host tests exercise fragmented/nested files, sector/cluster
 boundaries, read-only permissions, malformed chains and short I/O progress.
+`host-fat32-extend-test` adds allocation, backend-observed metadata ordering,
+FSInfo invalidation, FAT rollback and failed-rollback write quarantine.
 
 `make host-storage-durability-test` uses separate volatile and durable device
 buffers to detect a missing or incorrectly ordered barrier. It exercises
@@ -132,4 +135,4 @@ writeback failure, barrier failure, retries with a clean software cache, and
 failed unregister. The image checker rejects unchanged seeds and partial writes.
 The QEMU image check proves the integrated write/flush path with a file backend;
 it does not simulate physical power loss or prove filesystem atomicity. Those
-require writable FAT32 ordering and crash/recovery tests in a later stage.
+require crash/recovery transactions and power-loss tests in a later stage.

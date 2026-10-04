@@ -335,15 +335,8 @@ runtime_fat32_write_probe:
     repe cmpsb
     jne lifecycle_failed
     mov %r12, %rdi
-    mov $runtime_write_payload_len, %rsi
+    mov $(runtime_write_payload_len + 1), %rsi
     mov $SB_SYS_FILE_SEEK, %rax
-    int $SB_SYSCALL_VECTOR
-    test %rax, %rax
-    jne lifecycle_failed
-    mov %r12, %rdi
-    lea runtime_write_payload(%rip), %rsi
-    mov $1, %rdx
-    mov $SB_SYS_FILE_WRITE, %rax
     int $SB_SYSCALL_VECTOR
     cmp $SB_SYS_ERROR_LIMIT, %rax
     jne lifecycle_failed
@@ -387,6 +380,17 @@ runtime_fat32_write_probe:
     int $SB_SYSCALL_VECTOR
     cmp $runtime_write_payload_len, %rax
     jne lifecycle_failed
+    mov $3, %r14
+runtime_append_loop:
+    mov %r12, %rdi
+    lea runtime_append_payload(%rip), %rsi
+    mov $runtime_append_payload_len, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_append_payload_len, %rax
+    jne lifecycle_failed
+    dec %r14
+    jnz runtime_append_loop
     mov %r12, %rdi
     mov $SB_SYS_FILE_SYNC, %rax
     int $SB_SYSCALL_VECTOR
@@ -422,6 +426,35 @@ runtime_fat32_write_probe:
     lea runtime_write_payload(%rip), %rsi
     mov $runtime_write_payload_len, %rcx
     repe cmpsb
+    jne lifecycle_failed
+    mov $3, %r14
+runtime_append_read_loop:
+    mov %r12, %rdi
+    lea runtime_write_buffer(%rip), %rsi
+    mov $runtime_append_payload_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_append_payload_len, %rax
+    jne lifecycle_failed
+    lea runtime_write_buffer(%rip), %rdi
+    lea runtime_append_payload(%rip), %rsi
+    mov $runtime_append_payload_len, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+    dec %r14
+    jnz runtime_append_read_loop
+    mov %r12, %rdi
+    lea runtime_write_buffer(%rip), %rsi
+    mov $1, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_append_message(%rip), %rdi
+    mov $runtime_append_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_append_message_len, %rax
     jne lifecycle_failed
     mov %r12, %rdi
     mov $SB_SYS_HANDLE_CLOSE, %rax
@@ -860,6 +893,14 @@ runtime_guard_name:
 runtime_write_payload:
     .ascii "SUIRABOX-WRITTEN-FAT32\n"
 .set runtime_write_payload_len, . - runtime_write_payload
+runtime_append_payload:
+    .rept 16
+    .ascii "SUIRABOX-APPEND\n"
+    .endr
+.set runtime_append_payload_len, . - runtime_append_payload
+runtime_append_message:
+    .ascii "Userspace: FAT32 extend/sync/reopen lifecycle OK\r\n"
+.set runtime_append_message_len, . - runtime_append_message
 runtime_write_rejected_message:
     .ascii "Userspace: FILE_WRITE rights/pointer/range rejection OK\r\n"
 .set runtime_write_rejected_message_len, . - runtime_write_rejected_message
@@ -931,7 +972,7 @@ runtime_disk_directory_path:
 .section .data
 #ifdef SB_STORAGE_DURABILITY_PROOF
 runtime_write_buffer:
-    .zero 32
+    .zero 256
 #endif
 .align 8
 abi_info_buffer:

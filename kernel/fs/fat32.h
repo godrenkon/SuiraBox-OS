@@ -21,6 +21,10 @@ typedef struct {
     uint32_t root_cluster;
     uint32_t first_data_sector;
     uint32_t total_sectors;
+    uint32_t fsinfo_sector;
+    uint8_t active_fat;
+    uint8_t mirrored;
+    uint8_t write_faulted;
 } sb_fat32_t;
 
 typedef struct {
@@ -28,6 +32,8 @@ typedef struct {
     uint8_t attributes;
     uint32_t first_cluster;
     uint32_t file_size;
+    uint64_t directory_sector;
+    uint16_t directory_offset;
 } sb_fat32_dirent_t;
 
 typedef enum {
@@ -58,15 +64,15 @@ int sb_fat32_read_root_entry(sb_fat32_t *fs,
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
                        uint32_t offset, uint32_t length, void *buffer);
 
-/* Overwrite within the existing size, without changing FAT/directory metadata.
- * RANGE rejects the whole request before mutation. A later I/O failure returns
- * OK with short progress; failure before any progress returns IO. Durability
- * requires a separate file/mount sync. */
-int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
+/* Overwrite or extend an existing file, without holes. Extension allocates at
+ * most 8 clusters per request and orders data -> FAT -> directory publication.
+ * FILE_SYNC is still required for directory durability. Failed FAT rollback
+ * quarantines writes on the mount; this is not a power-loss transaction. */
+int sb_fat32_write_file(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
                         uint32_t offset, uint32_t length, const void *buffer,
                         uint64_t *bytes_written);
 
-/* Generic VFS adapter with bounded overwrites on writable devices. Storage is
+/* Generic VFS adapter with bounded allocation on writable devices. Storage is
  * caller-owned and does not depend on the bootstrap heap. 8.3 subdirectories
  * are traversable. */
 struct sb_fat32_vfs;
