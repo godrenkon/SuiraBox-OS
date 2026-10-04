@@ -42,7 +42,7 @@ The current on-disk filesystem supports FAT32 reads, exclusive creation, overwri
 - update mirrored FATs and the physical directory slot with ordered flushes
 - create empty regular files in existing directory slots, then allocate on write
 
-Long filenames, directory creation, timestamps, general permissions, journaling, and advanced caching are later milestones. FAT read-only attributes and read-only block devices reject write access. Reads honor the BPB active FAT; creation and extension currently require mirrored FATs.
+Long filenames, timestamps, general permissions, journaling, and advanced caching are later milestones. FAT read-only attributes and read-only block devices reject write access. Reads honor the BPB active FAT; creation and extension currently require mirrored FATs.
 
 ## Why read-only first
 
@@ -174,6 +174,44 @@ a matching new link in both FATs, the new entry in the added cluster, zeroed
 slack, and byte-for-byte preservation of the original cluster except RUNTIME's
 expected size update. Corrupted mirrors, existing entries and slack fail the
 checker. The original baseline is retained as an artifact alongside the image.
+
+## Exclusive directory creation
+
+DIRECTORY_CREATE (ABI 40) returns a READ|QUERY directory handle. VFS providers
+advertise a separate MKDIR capability and borrowed-node callback, so read-only
+providers and directories cannot create children. The namespace shares file
+creation's parent resolution, path normalization, duplicate protection and mount
+root protection. Parent directories must already exist; there is no mkdir-p mode.
+
+The FAT32 backend preflights the name, duplicate aliases, parent chain, mirrored
+FATs and node-cache capacity. It allocates one child cluster, initializes `.` to
+the child and `..` to its parent (zero for a root parent), and zeros every remaining
+byte of every sector. Child data is flushed before its mirrored FAT EOC and
+invalidated primary FSInfo hints are flushed. Only then is the parent's short
+directory entry published using the existing slot/end-marker/growth machinery.
+The parent entry has attribute DIRECTORY and size zero, and is flushed before
+returning. Dot entries remain hidden from lookup/iteration; lexical path handling
+continues in the namespace. Created directories accept nested directories/files.
+
+Before parent publication, failed I/O frees the child allocation with a rollback
+barrier. A failed parent-growth rollback instead retains the child allocation,
+because reachability may already be uncertain. Once the parent entry is accepted,
+a failed publication flush quarantines the mount rather than freeing referenced
+storage. The syscall returns IO with no handle; the directory may then be visible,
+and repair/remount is required before further writes. This is an explicit error
+contract, not a promise that every failed mkdir leaves no name. There is no delete
+or on-disk journal yet, so power loss can still leave orphaned allocations or
+partially updated FAT copies.
+
+`make host-fat32-mkdir-test` checks multi-sector initialization, root/nested dot
+parents, iteration, nested file persistence after remount, full-parent growth,
+duplicate/path/read-only/no-space rejection, injected data/FAT/FSInfo/barrier
+failures, rollback, and publication quarantine. QEMU checks reserved flags,
+invalid pointers, handle exhaustion, missing/read-only parents and duplicate
+creation, then creates SAVES/WORLDS/LEVEL.DAT and verifies enumeration and reopened
+contents. After exit, mtools and the image checker validate exact content, mirrored
+EOCs, non-overlapping allocations, dot parents and zeroed directory slack; fsck
+checks the resulting image. Corruption tests exercise the image checker itself.
 
 Creation is not a power-loss transaction. Atomic replacement and recovery
 remain future work. User data and cache data must remain distinguishable, and

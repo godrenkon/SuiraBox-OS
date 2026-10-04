@@ -283,14 +283,12 @@ int sb_vfs_namespace_open_file(sb_vfs_namespace_t *namespace_state,
     return open_result;
 }
 
-int sb_vfs_namespace_create_file(sb_vfs_namespace_t *namespace_state,
-                                 const char *path, uint64_t path_length,
-                                 uint32_t access, sb_vfs_file_t *file_out) {
-    if (file_out != 0) *file_out = (sb_vfs_file_t){0};
-    if (namespace_state == 0 || file_out == 0 || path == 0 || path_length == 0u ||
-        path_length > SB_VFS_PATH_MAX || path[path_length - 1u] == '/' ||
-        (access & ~SB_VFS_ACCESS_ALL) != 0u) return SB_VFS_OBJECT_INVALID;
-    if ((access & SB_VFS_ACCESS_WRITE) == 0u) return SB_VFS_OBJECT_ACCESS;
+static int namespace_create(sb_vfs_namespace_t *namespace_state,
+                              const char *path, uint64_t path_length,
+                              int is_directory, sb_vfs_node_t **node_out) {
+    *node_out = 0;
+    if (namespace_state == 0 || path == 0 || path_length == 0u ||
+        path_length > SB_VFS_PATH_MAX || path[path_length - 1u] == '/') return SB_VFS_OBJECT_INVALID;
     uint64_t raw_start = path_length;
     while (raw_start != 0u && path[raw_start - 1u] != '/') --raw_start;
     const uint64_t raw_length = path_length - raw_start;
@@ -314,10 +312,38 @@ int sb_vfs_namespace_create_file(sb_vfs_namespace_t *namespace_state,
     sb_vfs_node_t *parent = 0, *node = 0;
     result = sb_vfs_namespace_resolve(namespace_state, normalized, parent_length, &parent);
     if (result != SB_VFS_OBJECT_OK) return result;
-    result = sb_vfs_node_create(parent, normalized + start, length - start, &node);
+    result = is_directory
+        ? sb_vfs_node_mkdir(parent, normalized + start, length - start, &node)
+        : sb_vfs_node_create(parent, normalized + start, length - start, &node);
     (void)sb_vfs_node_release(parent);
     if (result != SB_VFS_OBJECT_OK) return result;
+    *node_out = node;
+    return SB_VFS_OBJECT_OK;
+}
+
+int sb_vfs_namespace_create_file(sb_vfs_namespace_t *namespace_state,
+                                 const char *path, uint64_t path_length,
+                                 uint32_t access, sb_vfs_file_t *file_out) {
+    if (file_out != 0) *file_out = (sb_vfs_file_t){0};
+    if (file_out == 0 || (access & ~SB_VFS_ACCESS_ALL) != 0u) return SB_VFS_OBJECT_INVALID;
+    if ((access & SB_VFS_ACCESS_WRITE) == 0u) return SB_VFS_OBJECT_ACCESS;
+    sb_vfs_node_t *node = 0;
+    int result = namespace_create(namespace_state, path, path_length, 0, &node);
+    if (result != SB_VFS_OBJECT_OK) return result;
     result = sb_vfs_file_open(node, access, file_out);
+    (void)sb_vfs_node_release(node);
+    return result;
+}
+
+int sb_vfs_namespace_create_directory(sb_vfs_namespace_t *namespace_state,
+                                      const char *path, uint64_t path_length,
+                                      sb_vfs_directory_t *directory_out) {
+    if (directory_out != 0) *directory_out = (sb_vfs_directory_t){0};
+    if (directory_out == 0) return SB_VFS_OBJECT_INVALID;
+    sb_vfs_node_t *node = 0;
+    int result = namespace_create(namespace_state, path, path_length, 1, &node);
+    if (result != SB_VFS_OBJECT_OK) return result;
+    result = sb_vfs_directory_open(node, directory_out);
     (void)sb_vfs_node_release(node);
     return result;
 }
@@ -400,6 +426,12 @@ int sb_vfs_system_open_directory(const char *path,
                                            path,
                                            path_length,
                                            directory_out);
+}
+
+int sb_vfs_system_create_directory(const char *path, uint64_t path_length,
+                                   sb_vfs_directory_t *directory_out) {
+    ensure_system_namespace();
+    return sb_vfs_namespace_create_directory(&system_namespace, path, path_length, directory_out);
 }
 
 uint32_t sb_vfs_system_mount_count(void) {

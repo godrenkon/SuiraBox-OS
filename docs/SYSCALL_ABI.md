@@ -49,7 +49,7 @@ Current errors:
 
 ## Version 1 syscall table
 
-The current public maximum syscall number is **39**.
+The current public maximum syscall number is **40**.
 
 | Number | Name | Arguments | Result |
 | ---: | --- | --- | --- |
@@ -93,12 +93,13 @@ The current public maximum syscall number is **39**.
 | 37 | `SB_SYS_FILE_SYNC` | `rdi=file` | 0 after backing-store/device flush |
 | 38 | `SB_SYS_FILE_WRITE` | `rdi=file`, `rsi=readable buffer`, `rdx=length` | bytes accepted; may be short |
 | 39 | `SB_SYS_FILE_CREATE` | `rdi=absolute path`, `rsi=path length`, `rdx=READ/WRITE access` | new FILE handle; exclusive creation |
+| 40 | `SB_SYS_DIRECTORY_CREATE` | `rdi=absolute path`, `rsi=path length`, `rdx=0` | new DIRECTORY handle; exclusive durable creation |
 
 Syscall 4 and syscall 13 are retained for ABI-v1 compatibility. New code should prefer the versioned spawn request and generic VFS path interfaces.
 
 ## ABI info routing
 
-The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 39.
+The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 40.
 
 ## Userspace pointer rules
 
@@ -166,6 +167,19 @@ A VFS node represents the resource; an open `sb_vfs_file_t` owns independent off
 
 DIRECTORY handles use READ|QUERY. `SB_SYS_DIRECTORY_READ` copies a stable public 80-byte entry and reports EOF as `SB_SYS_ERROR_NOT_FOUND` without advancing the cursor. QEMU verifies a rejected read-only userspace output pointer does not consume the first FAT32 directory entry.
 
+`SB_SYS_DIRECTORY_CREATE` creates one directory in an existing parent and returns
+a DIRECTORY handle with READ|QUERY at cursor zero. Reserved flags (`rdx`) must be
+zero. Paths use the same normalization and ASCII 8.3 restrictions as FILE_CREATE;
+trailing slash and terminal dot components are rejected. A pre-existing file,
+directory, or mount root returns EXISTS. Missing parents are not created.
+The full path is copied and heap/handle capacity reserved before mutation.
+Read-only parents/providers return RIGHTS. Child contents, allocation, and parent
+entry are flushed before success. Physical `.`/`..` entries are hidden by
+DIRECTORY_READ. Early I/O failures roll back allocation and allow retry; an
+uncertain parent-publication barrier or failed rollback returns IO and quarantines
+mount writes. In that case the name may exist despite the failed syscall and its
+valid allocation is retained for repair. Creation is not power-loss atomic.
+
 `SB_SYS_FILE_SYNC` requires QUERY and reaches `sb_vfs_file_sync()`, FAT32 mount sync, dirty block-cache writeback and the device flush barrier. WRITE success alone does not promise durability, and CLOSE does not implicitly sync. FAT32 supports overwrite and extension of existing files. Extension flushes data, then mirrored FATs, before accepting directory size; FILE_SYNC persists that final metadata. Extension errors leave offset/size unchanged but may modify overlapping existing bytes. Failed FAT rollback quarantines writes and file sync until repair/remount. Atomic replacement remains future work.
 
 ## PIPE handles
@@ -209,7 +223,7 @@ The current event core intentionally supports one registered waiter and is singl
 
 The current system namespace exposes `/boot` for registered Multiboot modules and `/disk` for the FAT32 runtime disk when present.
 
-FAT32 supports 8.3 lookup, directory iteration, nested subdirectories, reads, exclusive file creation with automatic parent-directory growth, regular-file overwrites and extension on writable devices. File extension allocates at most eight clusters per backend request; directory growth adds one cluster per create. The syscall's 256-byte I/O limit remains unchanged. Seeking beyond EOF is rejected. LFN and directory creation are not implemented.
+FAT32 supports 8.3 lookup, directory iteration, nested subdirectories, reads, exclusive file/directory creation with automatic parent-directory growth, regular-file overwrites and extension on writable devices. File extension allocates at most eight clusters per backend request; directory growth adds one cluster per create, and each new directory owns one initialized cluster. The syscall's 256-byte I/O limit remains unchanged. Seeking beyond EOF is rejected. LFN is not implemented.
 
 The canonical block layer includes a fixed write-back sector cache. Full-sector writes become dirty cache entries, reads observe dirty data immediately, explicit flush/device unregister/replacement performs writeback, and a failed writeback preserves dirty state for retry. `sb_block_flush()` and `sb_vfs_sync()` provide the current synchronization boundary.
 

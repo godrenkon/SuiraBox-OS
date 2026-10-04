@@ -67,6 +67,10 @@ int sb_vfs_namespace_open_directory(sb_vfs_namespace_t *namespace_state,
                                     const char *path,
                                     uint64_t path_length,
                                     sb_vfs_directory_t *directory_out);
+/* Exclusive directory creation in an existing parent. */
+int sb_vfs_namespace_create_directory(sb_vfs_namespace_t *namespace_state,
+                                      const char *path, uint64_t path_length,
+                                      sb_vfs_directory_t *directory_out);
 
 /* Kernel-wide namespace facade. It is intentionally a thin wrapper over the
  * same namespace implementation used by tests, so path/mount semantics cannot
@@ -89,6 +93,8 @@ int sb_vfs_system_create_file(const char *path, uint64_t path_length,
 int sb_vfs_system_open_directory(const char *path,
                                  uint64_t path_length,
                                  sb_vfs_directory_t *directory_out);
+int sb_vfs_system_create_directory(const char *path, uint64_t path_length,
+                                   sb_vfs_directory_t *directory_out);
 uint32_t sb_vfs_system_mount_count(void);
 
 #endif /* SB_VFS_NAMESPACE_H */

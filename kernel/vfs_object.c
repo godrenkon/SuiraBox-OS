@@ -113,8 +113,8 @@ int sb_vfs_node_lookup(sb_vfs_node_t *directory,
     return SB_VFS_OBJECT_OK;
 }
 
-int sb_vfs_node_create(sb_vfs_node_t *directory, const char *name,
-                       uint64_t name_length, sb_vfs_node_t **node_out) {
+static int node_create(sb_vfs_node_t *directory, const char *name,
+                        uint64_t name_length, sb_vfs_node_t **node_out, int is_directory) {
     if (node_out != 0) *node_out = 0;
     if (directory == 0 || name == 0 || node_out == 0 ||
         directory->type != SB_VFS_NODE_DIRECTORY || directory->ref_count == 0u ||
@@ -122,15 +122,28 @@ int sb_vfs_node_create(sb_vfs_node_t *directory, const char *name,
         return SB_VFS_OBJECT_INVALID;
     for (uint64_t i = 0u; i < name_length; ++i)
         if (name[i] == '\0' || name[i] == '/') return SB_VFS_OBJECT_INVALID;
-    if ((directory->capabilities & SB_VFS_CAP_CREATE) == 0u ||
-        directory->ops == 0 || directory->ops->create == 0) return SB_VFS_OBJECT_ACCESS;
+    const uint32_t capability = is_directory ? SB_VFS_CAP_MKDIR : SB_VFS_CAP_CREATE;
+    if ((directory->capabilities & capability) == 0u || directory->ops == 0)
+        return SB_VFS_OBJECT_ACCESS;
+    sb_vfs_node_lookup_fn callback = is_directory ? directory->ops->mkdir : directory->ops->create;
+    if (callback == 0) return SB_VFS_OBJECT_ACCESS;
     sb_vfs_node_t *node = 0;
-    const int result = directory->ops->create(directory, name, name_length, &node);
+    const int result = callback(directory, name, name_length, &node);
     if (result != SB_VFS_OBJECT_OK) return result;
-    if (node == 0 || node->type != SB_VFS_NODE_REGULAR ||
+    if (node == 0 || node->type != (is_directory ? SB_VFS_NODE_DIRECTORY : SB_VFS_NODE_REGULAR) ||
         sb_vfs_node_acquire(node) != SB_VFS_OBJECT_OK) return SB_VFS_OBJECT_IO;
     *node_out = node;
     return SB_VFS_OBJECT_OK;
+}
+
+int sb_vfs_node_create(sb_vfs_node_t *directory, const char *name,
+                       uint64_t name_length, sb_vfs_node_t **node_out) {
+    return node_create(directory, name, name_length, node_out, 0);
+}
+
+int sb_vfs_node_mkdir(sb_vfs_node_t *directory, const char *name,
+                      uint64_t name_length, sb_vfs_node_t **node_out) {
+    return node_create(directory, name, name_length, node_out, 1);
 }
 
 int sb_vfs_file_open(sb_vfs_node_t *node,

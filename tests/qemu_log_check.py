@@ -47,6 +47,7 @@ def main() -> None:
             "Userspace: runtime FAT32 directory enumeration OK",
             "Userspace: FAT32 create/write/sync/reopen lifecycle OK",
             "Userspace: FAT32 full-directory growth lifecycle OK",
+            "Userspace: FAT32 mkdir/nested-file/sync/reopen lifecycle OK",
         ])
 
     if "Exception:" in log:

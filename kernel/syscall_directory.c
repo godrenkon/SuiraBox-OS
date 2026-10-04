@@ -25,7 +25,7 @@ _Static_assert(SB_DIRECTORY_ENTRY_TYPE_DEVICE == SB_VFS_NODE_DEVICE,
                "directory device type mismatch");
 _Static_assert(sizeof(sb_directory_entry_t) == SB_DIRECTORY_ENTRY_SIZE,
                "directory entry ABI size mismatch");
-_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_FILE_CREATE,
+_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_DIRECTORY_CREATE,
                "public syscall max-number table is stale");
 
 static int directory_open_logged;
@@ -319,6 +319,43 @@ static sb_irq_frame_t *file_create(sb_irq_frame_t *frame) {
     return frame;
 }
 
+static sb_irq_frame_t *directory_create(sb_irq_frame_t *frame) {
+    sb_process_t *process = directory_current_process();
+    const uint64_t length = frame->rsi;
+    if (process == 0 || frame->rdi == 0u || length == 0u || frame->rdx != 0u) {
+        frame->rax = directory_error(SB_SYS_ERROR_INVALID); return frame;
+    }
+    if (length > SB_SYS_PATH_MAX) { frame->rax = directory_error(SB_SYS_ERROR_LIMIT); return frame; }
+    char path[SB_SYS_PATH_MAX + 1u];
+    if (user_copy_from(process, path, frame->rdi, length) != 0) {
+        frame->rax = directory_error(SB_SYS_ERROR_FAULT); return frame;
+    }
+    for (uint64_t i = 0u; i < length; ++i)
+        if (path[i] == '\0') { frame->rax = directory_error(SB_SYS_ERROR_INVALID); return frame; }
+    path[length] = '\0';
+    if (path[0] != '/') { frame->rax = directory_error(SB_SYS_ERROR_INVALID); return frame; }
+    if (directory_path_uses_boot_provider(path, length)) {
+        const int result = sb_vfs_boot_module_mount_system();
+        if (result != SB_VFS_OBJECT_OK) { frame->rax = directory_vfs_error(result); return frame; }
+    }
+    sb_vfs_directory_t *directory = kheap_alloc(sizeof(*directory));
+    if (directory == 0) { frame->rax = directory_error(SB_SYS_ERROR_LIMIT); return frame; }
+    *directory = (sb_vfs_directory_t){0};
+    sb_handle_t handle;
+    const int reserved = sb_handle_allocate(&process->handles, SB_HANDLE_TYPE_DIRECTORY,
+        SB_HANDLE_RIGHT_READ | SB_HANDLE_RIGHT_QUERY, directory, directory_handle_close, &handle);
+    if (reserved != SB_HANDLE_OK) {
+        kheap_free(directory); frame->rax = directory_handle_error(reserved); return frame;
+    }
+    const int result = sb_vfs_system_create_directory(path, length, directory);
+    if (result != SB_VFS_OBJECT_OK) {
+        (void)sb_handle_close(&process->handles, handle);
+        frame->rax = directory_vfs_error(result); return frame;
+    }
+    frame->rax = handle;
+    return frame;
+}
+
 static sb_irq_frame_t *file_sync(sb_irq_frame_t *frame) {
     sb_process_t *process = directory_current_process();
     if (process == 0) {
@@ -389,6 +426,7 @@ sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame) {
     if (frame->rax == SB_SYS_FILE_SYNC) return file_sync(frame);
     if (frame->rax == SB_SYS_FILE_WRITE) return file_write(frame);
     if (frame->rax == SB_SYS_FILE_CREATE) return file_create(frame);
+    if (frame->rax == SB_SYS_DIRECTORY_CREATE) return directory_create(frame);
     if (frame->rax >= SB_SYS_PIPE_CREATE && frame->rax <= SB_SYS_PIPE_WRITE)
         return sb_syscall_dispatch_pipe(frame);
     if (frame->rax >= SB_SYS_EVENT_CREATE && frame->rax <= SB_SYS_EVENT_RESET)

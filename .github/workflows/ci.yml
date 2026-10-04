@@ -70,7 +70,10 @@ jobs:
           mcopy -i build/runtime-fat32.img ::NEWFILE.TXT build/created-persisted.txt
           printf 'SUIRABOX-CREATED-FAT32\n' > build/created-expected.txt
           cmp build/created-expected.txt build/created-persisted.txt
-          python3 tests/fat32_directory_growth_image_check.py verify build/runtime-fat32.img build/root-directory-seed.bin
+          mcopy -i build/runtime-fat32.img ::SAVES/WORLDS/LEVEL.DAT build/world-persisted.txt
+          printf 'SUIRABOX-WORLD-DATA\n' > build/world-expected.txt
+          cmp build/world-expected.txt build/world-persisted.txt
+          python3 tests/fat32_mkdir_image_check.py build/runtime-fat32.img build/root-directory-seed.bin
           fsck.fat -n build/runtime-fat32.img
 
       - name: Verify durability proof is opt-in
