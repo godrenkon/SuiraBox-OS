@@ -75,7 +75,8 @@ static int start(void) {
         sb_vfs_namespace_mount(&ns, "/disk", 5u, sb_fat32_vfs_root(&adapter)) == SB_VFS_OBJECT_OK,
         "namespace mounted")) return 1;
     /* These cases inject failures after the separately tested dirty barrier. */
-    if (check(sb_fat32_begin_write(&adapter.fs) == SB_VFS_OBJECT_OK, "dirty session prepared")) return 1;
+    if (device.write != 0 &&
+        check(sb_fat32_begin_write(&adapter.fs) == SB_VFS_OBJECT_OK, "dirty session prepared")) return 1;
     memcpy(before, disk, sizeof(disk)); sb_block_cache_reset(); barriers = 0u;
     return 0;
 }

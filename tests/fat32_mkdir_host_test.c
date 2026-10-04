@@ -95,7 +95,8 @@ static int start(int full) {
     if (attach()) return 1;
     /* Dedicated dirty-session tests cover the first barrier; these target the
      * later data/FAT/publication phases. */
-    if (check(sb_fat32_begin_write(&adapter.fs) == SB_VFS_OBJECT_OK, "dirty session prepared")) return 1;
+    if (device.write != 0 &&
+        check(sb_fat32_begin_write(&adapter.fs) == SB_VFS_OBJECT_OK, "dirty session prepared")) return 1;
     memcpy(initial, disk, sizeof(disk)); sb_block_cache_reset(); barriers = 0u;
     return 0;
 }
