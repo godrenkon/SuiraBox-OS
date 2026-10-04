@@ -24,10 +24,12 @@ jobs:
             qemu-system-x86
 
       - name: Build ISO
-        run: make
+        run: make STORAGE_DURABILITY_PROOF=1
 
       - name: Validate image and host tests
-        run: make check
+        run: |
+          make check STORAGE_DURABILITY_PROOF=1
+          python3 -m unittest discover -s tests -p 'storage_image_check_test.py'
 
       - name: Inspect kernel layout
         run: |
@@ -41,11 +43,12 @@ jobs:
           printf 'SUIRABOX-RUNTIME-FAT32\n' > build/runtime.txt
           mformat -i build/runtime-fat32.img -F ::
           mcopy -i build/runtime-fat32.img build/runtime.txt ::RUNTIME.TXT
+          python3 tests/storage_image_check.py seed build/runtime-fat32.img
 
           timeout 20s qemu-system-x86_64 \
             -m 256M \
             -boot d \
-            -drive file=build/runtime-fat32.img,format=raw,if=ide,index=0,media=disk \
+            -drive file=build/runtime-fat32.img,format=raw,if=ide,index=0,media=disk,cache=writeback \
             -cdrom build/suirabox.iso \
             -serial stdio \
             -display none \
@@ -53,7 +56,8 @@ jobs:
             -no-shutdown \
             2>&1 | tee qemu.log || test ${PIPESTATUS[0]} -eq 124
 
-          python3 tests/qemu_log_check.py qemu.log
+          python3 tests/qemu_log_check.py qemu.log --storage-proof
+          python3 tests/storage_image_check.py verify build/runtime-fat32.img
 
       - name: Upload kernel artifacts
         if: always()
@@ -66,6 +70,7 @@ jobs:
             build/suirabox.elf
             build/user-hello.elf
             build/user-child.elf
+            build/runtime-fat32.img
             qemu.log
 
   ipc-proof:

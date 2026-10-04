@@ -27,6 +27,16 @@ def main() -> None:
     path = Path(sys.argv[1] if len(sys.argv) > 1 else "qemu.log")
     log = path.read_text(errors="replace")
 
+    if "--storage-proof" in sys.argv[2:]:
+        if "Storage: durability fixture FAILED" in log:
+            fail("storage durability fixture staging failed")
+        require_ordered(log, "storage-durability", [
+            "Storage: FAT32 system mount /disk ready",
+            "Storage: durability fixture staged dirty",
+            "File: FILE_SYNC flushed VFS backing store",
+            "Userspace: runtime FAT32 FILE_SYNC lifecycle OK",
+        ])
+
     if "Exception:" in log:
         fail("unexpected kernel/user exception detected")
 

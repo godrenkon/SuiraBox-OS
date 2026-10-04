@@ -28,6 +28,7 @@ The first kernel interface is intentionally small:
 - sector count
 - read sectors
 - write sectors
+- optional device cache flush
 - device name
 
 The current prototype uses 512-byte sectors as the baseline interface. Filesystem-specific behavior does not belong in the block layer.
@@ -95,3 +96,33 @@ Deleting an instance must not implicitly delete unrelated user files. Backups an
 Storage optimizations are benchmark-driven. Potential future work includes request batching, asynchronous I/O, cache policy tuning, direct I/O paths, and device-specific optimizations.
 
 No optimization is considered successful without reproducible measurements and regression checks.
+
+## Durability boundary and current proof
+
+`sb_block_flush(device)` writes dirty software-cache entries before invoking
+the driver's `flush` callback. A writeback failure skips the device barrier and
+keeps the dirty entry retryable. A device-barrier failure propagates to VFS;
+retry must invoke the barrier even when software entries are already clean.
+Unregister retains the device on either failure. A null flush callback declares
+that the backend has no volatile write cache requiring an explicit barrier.
+ATA PIO provides the `CACHE FLUSH` command as its device barrier.
+
+`FILE_SYNC` follows FILE handle -> VFS file -> FAT32 adapter -> mount sync ->
+block writeback -> device barrier. FAT32 remains read-only: the current proof
+does not add file creation, cluster allocation, or metadata updates.
+
+GitHub Actions opts in with `make STORAGE_DURABILITY_PROOF=1`. The fixture is a
+64 MiB FAT32 image with one additional sector outside the BPB volume boundary.
+The kernel checks exact geometry, boot signature and every byte of the seed
+before staging a dirty sector. After userspace FILE_SYNC and QEMU exit, the host
+verifies every byte of that sector from the reopened image. Normal builds omit
+the staging path; changing the build mode rebuilds the kernel through a mode
+stamp. The image and QEMU log are retained as CI artifacts.
+
+`make host-storage-durability-test` uses separate volatile and durable device
+buffers to detect a missing or incorrectly ordered barrier. It exercises
+writeback failure, barrier failure, retries with a clean software cache, and
+failed unregister. The image checker rejects unchanged seeds and partial writes.
+The QEMU image check proves the integrated write/flush path with a file backend;
+it does not simulate physical power loss or prove filesystem atomicity. Those
+require writable FAT32 ordering and crash/recovery tests in a later stage.
