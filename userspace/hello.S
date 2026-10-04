@@ -248,6 +248,194 @@ _start:
     cmp $runtime_disk_message_len, %rax
     jne lifecycle_failed
 
+#ifdef SB_STORAGE_DURABILITY_PROOF
+runtime_fat32_write_probe:
+    /* All mutation is CI-only and requires the exact original fixture bytes. */
+    mov %r12, %rdi
+    lea runtime_write_payload(%rip), %rsi
+    mov $runtime_write_payload_len, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_STALE, %rax
+    jne lifecycle_failed
+    lea vfs_spawn_path(%rip), %rdi
+    mov $vfs_spawn_path_len, %rsi
+    mov $(SB_FILE_ACCESS_READ | SB_FILE_ACCESS_WRITE), %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+    lea runtime_disk_path(%rip), %rdi
+    mov $runtime_disk_path_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_write_payload(%rip), %rsi
+    mov $runtime_write_payload_len, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_disk_path(%rip), %rdi
+    mov $runtime_disk_path_len, %rsi
+    mov $SB_FILE_ACCESS_WRITE, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_write_buffer(%rip), %rsi
+    mov $1, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_disk_path(%rip), %rdi
+    mov $runtime_disk_path_len, %rsi
+    mov $(SB_FILE_ACCESS_READ | SB_FILE_ACCESS_WRITE), %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea handle_info_buffer(%rip), %rsi
+    mov $SB_SYS_HANDLE_INFO, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpq $(SB_HANDLE_ABI_RIGHT_READ | SB_HANDLE_ABI_RIGHT_WRITE | SB_HANDLE_ABI_RIGHT_QUERY), SB_HANDLE_INFO_RIGHTS_OFFSET+handle_info_buffer(%rip)
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea runtime_write_buffer(%rip), %rsi
+    mov $runtime_write_payload_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_write_payload_len, %rax
+    jne lifecycle_failed
+    cld
+    lea runtime_write_buffer(%rip), %rdi
+    lea runtime_write_seed(%rip), %rsi
+    mov $runtime_write_payload_len, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $runtime_write_payload_len, %rsi
+    mov $SB_SYS_FILE_SEEK, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea runtime_write_payload(%rip), %rsi
+    mov $1, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_LIMIT, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    xor %rsi, %rsi
+    mov $SB_SYS_FILE_SEEK, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    xor %rsi, %rsi
+    mov $1, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea runtime_write_payload(%rip), %rsi
+    mov $(SB_SYS_FILE_IO_MAX + 1), %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_LIMIT, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    xor %rsi, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_write_rejected_message(%rip), %rdi
+    mov $runtime_write_rejected_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_write_rejected_message_len, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea runtime_write_payload(%rip), %rsi
+    mov $runtime_write_payload_len, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_write_payload_len, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_FILE_SYNC, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_write_synced_message(%rip), %rdi
+    mov $runtime_write_synced_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_write_synced_message_len, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_disk_path(%rip), %rdi
+    mov $runtime_disk_path_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_write_buffer(%rip), %rsi
+    mov $runtime_write_payload_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_write_payload_len, %rax
+    jne lifecycle_failed
+    lea runtime_write_buffer(%rip), %rdi
+    lea runtime_write_payload(%rip), %rsi
+    mov $runtime_write_payload_len, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    lea runtime_write_message(%rip), %rdi
+    mov $runtime_write_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_write_message_len, %rax
+    jne lifecycle_failed
+#endif
+
     lea runtime_disk_directory_path(%rip), %rdi
     mov $runtime_disk_directory_path_len, %rsi
     mov $SB_SYS_DIRECTORY_OPEN, %rax
@@ -303,6 +491,24 @@ _start:
     jne lifecycle_failed
     cmpb $0x54, SB_DIRECTORY_ENTRY_NAME_OFFSET+10+directory_entry_buffer(%rip)
     jne lifecycle_failed
+#ifdef SB_STORAGE_DURABILITY_PROOF
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_REGULAR, SB_DIRECTORY_ENTRY_TYPE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpw $9, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cld
+    lea SB_DIRECTORY_ENTRY_NAME_OFFSET+directory_entry_buffer(%rip), %rdi
+    lea runtime_guard_name(%rip), %rsi
+    mov $9, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+#endif
     mov %r12, %rdi
     lea directory_entry_buffer(%rip), %rsi
     mov $SB_SYS_DIRECTORY_READ, %rax
@@ -646,6 +852,24 @@ event_signaler_failed:
 .size event_signaler_thread, .-event_signaler_thread
 
 .section .rodata
+#ifdef SB_STORAGE_DURABILITY_PROOF
+runtime_write_seed:
+    .ascii "SUIRABOX-RUNTIME-FAT32\n"
+runtime_guard_name:
+    .ascii "GUARD.TXT"
+runtime_write_payload:
+    .ascii "SUIRABOX-WRITTEN-FAT32\n"
+.set runtime_write_payload_len, . - runtime_write_payload
+runtime_write_rejected_message:
+    .ascii "Userspace: FILE_WRITE rights/pointer/range rejection OK\r\n"
+.set runtime_write_rejected_message_len, . - runtime_write_rejected_message
+runtime_write_synced_message:
+    .ascii "Userspace: FAT32 write FILE_SYNC completed\r\n"
+.set runtime_write_synced_message_len, . - runtime_write_synced_message
+runtime_write_message:
+    .ascii "Userspace: FAT32 write/sync/reopen lifecycle OK\r\n"
+.set runtime_write_message_len, . - runtime_write_message
+#endif
 pointer_message:
     .ascii "Userspace: validated user pointer copy OK\r\n"
 .set pointer_message_len, . - pointer_message
@@ -705,6 +929,10 @@ runtime_disk_directory_path:
 .set runtime_disk_directory_path_len, . - runtime_disk_directory_path
 
 .section .data
+#ifdef SB_STORAGE_DURABILITY_PROOF
+runtime_write_buffer:
+    .zero 32
+#endif
 .align 8
 abi_info_buffer:
     .quad 0

@@ -25,7 +25,7 @@ _Static_assert(SB_DIRECTORY_ENTRY_TYPE_DEVICE == SB_VFS_NODE_DEVICE,
                "directory device type mismatch");
 _Static_assert(sizeof(sb_directory_entry_t) == SB_DIRECTORY_ENTRY_SIZE,
                "directory entry ABI size mismatch");
-_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_FILE_SYNC,
+_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_FILE_WRITE,
                "public syscall max-number table is stale");
 
 static int directory_open_logged;
@@ -35,6 +35,7 @@ static int writable_pointer_logged;
 static int readonly_pointer_logged;
 static int thread_create_logged;
 static int file_sync_logged;
+static int file_write_logged;
 
 static uint64_t directory_error(int64_t code) { return (uint64_t)code; }
 
@@ -233,6 +234,47 @@ static sb_irq_frame_t *directory_read(sb_irq_frame_t *frame) {
 }
 
 
+static sb_irq_frame_t *file_write(sb_irq_frame_t *frame) {
+    sb_process_t *process = directory_current_process();
+    if (process == 0) {
+        frame->rax = directory_error(SB_SYS_ERROR_INVALID);
+        return frame;
+    }
+    sb_vfs_file_t *file = 0;
+    const int lookup_result = sb_handle_lookup(&process->handles,
+                                               (sb_handle_t)frame->rdi,
+                                               SB_HANDLE_TYPE_FILE,
+                                               SB_HANDLE_RIGHT_WRITE,
+                                               (void **)&file);
+    if (lookup_result != SB_HANDLE_OK || file == 0) {
+        frame->rax = directory_handle_error(lookup_result);
+        return frame;
+    }
+    if (frame->rdx > SB_SYS_FILE_IO_MAX) {
+        frame->rax = directory_error(SB_SYS_ERROR_LIMIT);
+        return frame;
+    }
+    if (frame->rdx == 0u) { frame->rax = 0u; return frame; }
+    uint8_t buffer[SB_SYS_FILE_IO_MAX];
+    /* Copy the entire readable source before touching file data or offset. */
+    if (user_copy_from(process, buffer, frame->rsi, frame->rdx) != 0) {
+        frame->rax = directory_error(SB_SYS_ERROR_FAULT);
+        return frame;
+    }
+    uint64_t written = 0u;
+    const int result = sb_vfs_file_write(file, buffer, frame->rdx, &written);
+    if (result != SB_VFS_OBJECT_OK) {
+        frame->rax = directory_vfs_error(result);
+        return frame;
+    }
+    frame->rax = written;
+    if (written != 0u && !file_write_logged) {
+        file_write_logged = 1;
+        directory_debug("File: FILE_WRITE copied userspace data to VFS\r\n");
+    }
+    return frame;
+}
+
 static sb_irq_frame_t *file_sync(sb_irq_frame_t *frame) {
     sb_process_t *process = directory_current_process();
     if (process == 0) {
@@ -301,6 +343,7 @@ sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame) {
     if (frame->rax == SB_SYS_DIRECTORY_OPEN) return directory_open(frame);
     if (frame->rax == SB_SYS_DIRECTORY_READ) return directory_read(frame);
     if (frame->rax == SB_SYS_FILE_SYNC) return file_sync(frame);
+    if (frame->rax == SB_SYS_FILE_WRITE) return file_write(frame);
     if (frame->rax >= SB_SYS_PIPE_CREATE && frame->rax <= SB_SYS_PIPE_WRITE)
         return sb_syscall_dispatch_pipe(frame);
     if (frame->rax >= SB_SYS_EVENT_CREATE && frame->rax <= SB_SYS_EVENT_RESET)

@@ -15,6 +15,9 @@
 #define SB_VALIDATION_CHILD_TID 20001u
 #define SB_DEFAULT_USER_PRIORITY 128u
 
+_Static_assert(SB_FILE_ACCESS_WRITE == SB_VFS_ACCESS_WRITE,
+               "kernel/public file write access mismatch");
+
 _Static_assert(offsetof(sb_irq_frame_t, r10) == 5u * sizeof(uint64_t),
                "syscall ABI r10 frame offset changed");
 _Static_assert(offsetof(sb_irq_frame_t, r8) == 7u * sizeof(uint64_t),
@@ -436,7 +439,7 @@ static sb_irq_frame_t *syscall_file_open(sb_irq_frame_t *frame,
         frame->rax = syscall_error(SB_SYS_ERROR_LIMIT);
         return frame;
     }
-    if (access != SB_FILE_ACCESS_READ) {
+    if (access == 0u || (access & ~((uint64_t)SB_FILE_ACCESS_ALL)) != 0u) {
         frame->rax = syscall_error(SB_SYS_ERROR_INVALID);
         return frame;
     }
@@ -474,7 +477,7 @@ static sb_irq_frame_t *syscall_file_open(sb_irq_frame_t *frame,
 
     const int open_result = sb_vfs_system_open_file(path,
                                                     length,
-                                                    SB_VFS_ACCESS_READ,
+                                                    (uint32_t)access,
                                                     file);
     if (open_result != SB_VFS_OBJECT_OK) {
         kheap_free(file);
@@ -485,8 +488,9 @@ static sb_irq_frame_t *syscall_file_open(sb_irq_frame_t *frame,
     sb_handle_t handle = SB_HANDLE_INVALID;
     const int handle_result = sb_handle_allocate(&process->handles,
                                                  SB_HANDLE_TYPE_FILE,
-                                                 SB_HANDLE_RIGHT_READ |
-                                                     SB_HANDLE_RIGHT_QUERY,
+                                                 SB_HANDLE_RIGHT_QUERY |
+                                                     ((access & SB_FILE_ACCESS_READ) ? SB_HANDLE_RIGHT_READ : 0u) |
+                                                     ((access & SB_FILE_ACCESS_WRITE) ? SB_HANDLE_RIGHT_WRITE : 0u),
                                                  file,
                                                  sb_vfs_file_handle_close,
                                                  &handle);

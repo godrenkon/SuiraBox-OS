@@ -44,10 +44,12 @@ Current errors:
 | `-8` | `SB_SYS_ERROR_WOULD_BLOCK` | nonblocking operation cannot make progress yet |
 | `-9` | `SB_SYS_ERROR_CLOSED` | peer/end of an IPC object is closed |
 | `-10` | `SB_SYS_ERROR_TIMEOUT` | timed blocking wait reached its deadline |
+| `-11` | `SB_SYS_ERROR_EXISTS` | named object already exists |
+| `-12` | `SB_SYS_ERROR_BUSY` | service already has an active client |
 
 ## Version 1 syscall table
 
-The current public maximum syscall number is **25**.
+The current public maximum syscall number is **38**.
 
 | Number | Name | Arguments | Result |
 | ---: | --- | --- | --- |
@@ -77,12 +79,25 @@ The current public maximum syscall number is **25**.
 | 23 | `SB_SYS_EVENT_WAIT` | `rdi=event`, `rsi=timeout_ticks` | 0, `WOULD_BLOCK`, or `TIMEOUT` |
 | 24 | `SB_SYS_EVENT_SIGNAL` | `rdi=event` | 0 |
 | 25 | `SB_SYS_EVENT_RESET` | `rdi=event` | 0 |
+| 26 | `SB_SYS_THREAD_CREATE` | `rdi=user_entry` | new thread ID |
+| 27 | `SB_SYS_MESSAGE_QUEUE_CREATE` | none | MESSAGE_QUEUE handle |
+| 28 | `SB_SYS_MESSAGE_QUEUE_SEND` | `rdi=queue`, `rsi=readable buffer`, `rdx=length` | bytes sent |
+| 29 | `SB_SYS_MESSAGE_QUEUE_RECEIVE` | `rdi=queue`, `rsi=writable buffer`, `rdx=capacity` | bytes received |
+| 30 | `SB_SYS_SHARED_MEMORY_CREATE` | `rdi=size_bytes` | SHARED_MEMORY handle |
+| 31 | `SB_SYS_SHARED_MEMORY_MAP` | `rdi=memory`, `rsi=user_address`, `rdx=access` | mapped user address |
+| 32 | `SB_SYS_SHARED_MEMORY_UNMAP` | `rdi=user_address` | 0 |
+| 33 | `SB_SYS_SERVICE_REGISTER` | `rdi=name`, `rsi=name_length` | server SERVICE handle |
+| 34 | `SB_SYS_SERVICE_CONNECT` | `rdi=name`, `rsi=name_length` | client SERVICE handle |
+| 35 | `SB_SYS_SERVICE_SEND` | `rdi=service`, `rsi=readable buffer`, `rdx=length` | bytes sent |
+| 36 | `SB_SYS_SERVICE_RECEIVE` | `rdi=service`, `rsi=writable buffer`, `rdx=capacity` | bytes received |
+| 37 | `SB_SYS_FILE_SYNC` | `rdi=file` | 0 after backing-store/device flush |
+| 38 | `SB_SYS_FILE_WRITE` | `rdi=file`, `rsi=readable buffer`, `rdx=length` | bytes accepted; may be short |
 
 Syscall 4 and syscall 13 are retained for ABI-v1 compatibility. New code should prefer the versioned spawn request and generic VFS path interfaces.
 
 ## ABI info routing
 
-The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 25.
+The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 38.
 
 ## Userspace pointer rules
 
@@ -142,11 +157,13 @@ Process teardown closes all remaining handles before destroying the user address
 
 ## FILE and DIRECTORY handles
 
-A VFS node represents the resource; an open `sb_vfs_file_t` owns independent offset/access state and a node reference. FILE handles currently use READ|QUERY for the read-only paths proven in CI. `SB_SYS_FILE_OPEN` resolves an absolute path through the system namespace. QEMU proves both `/boot/user-child` and `/disk/RUNTIME.TXT`.
+A VFS node represents the resource; an open `sb_vfs_file_t` owns independent offset/access state and a node reference. `SB_SYS_FILE_OPEN` resolves an absolute path with READ (`1`), WRITE (`2`), or both (`3`), and grants the corresponding handle rights plus QUERY. Unknown/zero access is invalid. Boot modules and FAT read-only entries reject WRITE opens. QEMU proves `/boot/user-child` and `/disk/RUNTIME.TXT`.
+
+`SB_SYS_FILE_WRITE` requires a live FILE handle with WRITE. Requests over 256 bytes return LIMIT. The complete source is copied from readable userspace before file data or offset changes; an invalid source returns FAULT. Zero length returns 0 after handle/rights validation without inspecting the pointer. A successful short write advances the offset by accepted bytes only; callers retry the remainder. Fixed-size FAT32 overwrites reject any request past EOF with LIMIT before mutation.
 
 DIRECTORY handles use READ|QUERY. `SB_SYS_DIRECTORY_READ` copies a stable public 80-byte entry and reports EOF as `SB_SYS_ERROR_NOT_FOUND` without advancing the cursor. QEMU verifies a rejected read-only userspace output pointer does not consume the first FAT32 directory entry.
 
-The VFS object layer exposes `sb_vfs_file_sync()`. Writable backends may provide a node-level sync callback; the block/VFS layer also exposes explicit device/mount flush operations. The current FAT32 runtime mount remains read-only, so userspace fsync and atomic update semantics are not yet complete.
+`SB_SYS_FILE_SYNC` requires QUERY and reaches `sb_vfs_file_sync()`, FAT32 mount sync, dirty block-cache writeback and the device flush barrier. WRITE success alone does not promise durability, and CLOSE does not implicitly sync. FAT32 currently supports fixed-size overwrites; allocation, extension and atomic replacement remain future work.
 
 ## PIPE handles
 
@@ -187,9 +204,9 @@ The current event core intentionally supports one registered waiter and is singl
 
 ## Current filesystem/VFS proof
 
-The current system namespace exposes `/boot` for registered Multiboot modules and `/disk` for the read-only FAT32 runtime disk when present.
+The current system namespace exposes `/boot` for registered Multiboot modules and `/disk` for the FAT32 runtime disk when present.
 
-FAT32 currently supports 8.3 lookup, directory iteration, nested subdirectories, and read-only regular-file access. LFN/write support is not implied by the current ABI.
+FAT32 supports 8.3 lookup, directory iteration, nested subdirectories, reads and fixed-size regular-file overwrites on writable devices. LFN, file creation and extension are not implemented.
 
 The canonical block layer includes a fixed write-back sector cache. Full-sector writes become dirty cache entries, reads observe dirty data immediately, explicit flush/device unregister/replacement performs writeback, and a failed writeback preserves dirty state for retry. `sb_block_flush()` and `sb_vfs_sync()` provide the current synchronization boundary.
 

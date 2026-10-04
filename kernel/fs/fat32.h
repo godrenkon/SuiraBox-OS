@@ -6,6 +6,7 @@
 #include "vfs_object.h"
 
 #define SB_FAT32_ATTR_DIRECTORY 0x10u
+#define SB_FAT32_ATTR_READ_ONLY 0x01u
 #define SB_FAT32_ATTR_VOLUME_ID 0x08u
 #define SB_FAT32_ATTR_LONG_NAME 0x0Fu
 #define SB_FAT32_VFS_NODE_CACHE 32u
@@ -57,8 +58,17 @@ int sb_fat32_read_root_entry(sb_fat32_t *fs,
 int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
                        uint32_t offset, uint32_t length, void *buffer);
 
-/* Generic read-only VFS adapter. Storage is caller-owned so the adapter does
- * not depend on the bootstrap heap. 8.3 subdirectories are traversable. */
+/* Overwrite within the existing size, without changing FAT/directory metadata.
+ * RANGE rejects the whole request before mutation. A later I/O failure returns
+ * OK with short progress; failure before any progress returns IO. Durability
+ * requires a separate file/mount sync. */
+int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
+                        uint32_t offset, uint32_t length, const void *buffer,
+                        uint64_t *bytes_written);
+
+/* Generic VFS adapter with bounded overwrites on writable devices. Storage is
+ * caller-owned and does not depend on the bootstrap heap. 8.3 subdirectories
+ * are traversable. */
 struct sb_fat32_vfs;
 typedef struct sb_fat32_vfs sb_fat32_vfs_t;
 

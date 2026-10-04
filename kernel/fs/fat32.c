@@ -293,6 +293,79 @@ int sb_fat32_read_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
     return 1;
 }
 
+/* Validate the complete size-implied chain before mutating data. Requiring EOC
+ * at its last cluster also rejects multi-cluster cycles without an allocation.
+ * Allocation, extension and metadata changes are deliberately not supported. */
+static int writable_chain_valid(sb_fat32_t *fs, const sb_fat32_dirent_t *entry) {
+    const uint64_t cluster_size = (uint64_t)fs->bytes_per_sector * fs->sectors_per_cluster;
+    const uint64_t clusters = ((uint64_t)entry->file_size + cluster_size - 1u) / cluster_size;
+    const uint64_t capacity = (fs->total_sectors - fs->first_data_sector) / fs->sectors_per_cluster;
+    if (clusters == 0u || clusters > capacity) return 0;
+    uint32_t cluster = entry->first_cluster;
+    for (uint64_t i = 0u; i < clusters; ++i) {
+        uint64_t lba;
+        uint32_t next;
+        if (cluster == fs->root_cluster || !cluster_to_lba(fs, cluster, &lba) ||
+            !fat_next_cluster(fs, cluster, &next)) return 0;
+        if (i + 1u == clusters) return next >= SB_FAT32_EOC_MIN;
+        if (next < 2u || next >= SB_FAT32_EOC_MIN || next == cluster) return 0;
+        cluster = next;
+    }
+    return 0;
+}
+
+int sb_fat32_write_file(sb_fat32_t *fs, const sb_fat32_dirent_t *entry,
+                        uint32_t offset, uint32_t length, const void *buffer,
+                        uint64_t *bytes_written) {
+    if (bytes_written != 0) *bytes_written = 0u;
+    if (fs == 0 || entry == 0 || buffer == 0 || bytes_written == 0 ||
+        fs->mount == 0 || fs->mount->block_device == 0 ||
+        fs->bytes_per_sector != SB_FAT32_SECTOR_BYTES ||
+        fs->sectors_per_cluster == 0u || fs->first_data_sector >= fs->total_sectors ||
+        (entry->attributes & (SB_FAT32_ATTR_DIRECTORY | SB_FAT32_ATTR_VOLUME_ID)) != 0u)
+        return SB_VFS_OBJECT_INVALID;
+    if (fs->mount->block_device->write == 0 ||
+        (entry->attributes & SB_FAT32_ATTR_READ_ONLY) != 0u) return SB_VFS_OBJECT_ACCESS;
+    if (offset > entry->file_size || length > entry->file_size - offset)
+        return SB_VFS_OBJECT_RANGE;
+    if (length == 0u) return SB_VFS_OBJECT_OK;
+    if (!writable_chain_valid(fs, entry)) return SB_VFS_OBJECT_IO;
+
+    const uint32_t cluster_size = fs->bytes_per_sector * fs->sectors_per_cluster;
+    uint32_t cluster = entry->first_cluster;
+    while (offset >= cluster_size) {
+        uint32_t next;
+        if (!fat_next_cluster(fs, cluster, &next)) return SB_VFS_OBJECT_IO;
+        cluster = next;
+        offset -= cluster_size;
+    }
+    const uint8_t *src = (const uint8_t *)buffer;
+    uint32_t remaining = length;
+    while (remaining > 0u) {
+        uint8_t sector[SB_FAT32_SECTOR_BYTES];
+        uint64_t lba;
+        if (!cluster_to_lba(fs, cluster, &lba)) break;
+        lba += offset / fs->bytes_per_sector;
+        const uint32_t in_sector = offset % fs->bytes_per_sector;
+        uint32_t count = fs->bytes_per_sector - in_sector;
+        if (count > remaining) count = remaining;
+        if (count != fs->bytes_per_sector && !read_sector(fs, lba, sector)) break;
+        for (uint32_t i = 0u; i < count; ++i) sector[in_sector + i] = src[i];
+        if (sb_vfs_write_sectors(fs->mount, lba, 1u, sector) != SB_VFS_OK) break;
+        *bytes_written += count;
+        src += count;
+        remaining -= count;
+        offset += count;
+        if (remaining != 0u && offset >= cluster_size) {
+            uint32_t next;
+            if (!fat_next_cluster(fs, cluster, &next)) break;
+            cluster = next;
+            offset = 0u;
+        }
+    }
+    return *bytes_written != 0u ? SB_VFS_OBJECT_OK : SB_VFS_OBJECT_IO;
+}
+
 /* FAT32 -> generic VFS adapter. The adapter is deliberately caller-owned so
  * it does not depend on the current one-live-allocation bootstrap heap. */
 static uint64_t vfs_name_length(const char name[13]) {
@@ -365,6 +438,21 @@ static int fat32_vfs_file_read(sb_vfs_node_t *node,
 }
 
 
+static int fat32_vfs_file_write(sb_vfs_node_t *node, uint64_t offset,
+                                const void *buffer, uint64_t length,
+                                uint64_t *bytes_written) {
+    if (bytes_written != 0) *bytes_written = 0u;
+    if (node == 0 || node->private_data == 0 || buffer == 0 || bytes_written == 0)
+        return SB_VFS_OBJECT_INVALID;
+    if (offset > UINT32_MAX || length > UINT32_MAX) return SB_VFS_OBJECT_RANGE;
+    sb_fat32_vfs_node_t *slot = (sb_fat32_vfs_node_t *)node->private_data;
+    if (slot->in_use == 0u || slot->owner == 0 || slot->owner->mounted == 0u ||
+        node != &slot->node || node->size != slot->entry.file_size)
+        return SB_VFS_OBJECT_IO;
+    return sb_fat32_write_file(&slot->owner->fs, &slot->entry, (uint32_t)offset,
+                               (uint32_t)length, buffer, bytes_written);
+}
+
 static int fat32_vfs_file_sync(sb_vfs_node_t *node) {
     if (node == 0 || node->private_data == 0) return SB_VFS_OBJECT_INVALID;
 
@@ -382,6 +470,7 @@ static int fat32_vfs_file_sync(sb_vfs_node_t *node) {
 
 static const sb_vfs_node_ops_t fat32_file_ops = {
     .read = fat32_vfs_file_read,
+    .write = fat32_vfs_file_write,
     .sync = fat32_vfs_file_sync,
 };
 
@@ -424,13 +513,16 @@ static sb_fat32_vfs_node_t *cache_entry(sb_fat32_vfs_t *adapter,
         *slot = (sb_fat32_vfs_node_t){0};
         slot->entry = *entry;
         slot->owner = adapter;
+        const uint32_t file_capabilities = SB_VFS_CAP_READ | SB_VFS_CAP_SYNC |
+            ((adapter->fs.mount->block_device->write != 0 &&
+              (entry->attributes & SB_FAT32_ATTR_READ_ONLY) == 0u) ? SB_VFS_CAP_WRITE : 0u);
         const int result = sb_vfs_node_init(&slot->node,
                                             is_directory
                                                 ? SB_VFS_NODE_DIRECTORY
                                                 : SB_VFS_NODE_REGULAR,
                                             is_directory
                                                 ? (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR)
-                                                : (SB_VFS_CAP_READ | SB_VFS_CAP_SYNC),
+                                                : file_capabilities,
                                             is_directory ? 0u : entry->file_size,
                                             is_directory
                                                 ? &fat32_subdir_ops

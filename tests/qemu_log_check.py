@@ -36,6 +36,12 @@ def main() -> None:
             "File: FILE_SYNC flushed VFS backing store",
             "Userspace: runtime FAT32 FILE_SYNC lifecycle OK",
         ])
+        require_ordered(log, "fat32-write/sync/reopen", [
+            "Userspace: FILE_WRITE rights/pointer/range rejection OK",
+            "File: FILE_WRITE copied userspace data to VFS",
+            "Userspace: FAT32 write FILE_SYNC completed",
+            "Userspace: FAT32 write/sync/reopen lifecycle OK",
+        ])
 
     if "Exception:" in log:
         fail("unexpected kernel/user exception detected")
