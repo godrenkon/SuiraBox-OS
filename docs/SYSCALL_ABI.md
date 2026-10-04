@@ -204,9 +204,9 @@ The current event core intentionally supports one registered waiter and is singl
 
 ## Current filesystem/VFS proof
 
-The current system namespace exposes `/boot` for registered Multiboot modules and `/disk` for the read-only FAT32 runtime disk when present.
+The current system namespace exposes `/boot` for registered Multiboot modules and `/disk` for the FAT32 runtime disk when present.
 
-FAT32 currently supports 8.3 lookup, directory iteration, nested subdirectories, and read-only regular-file access. LFN/write support is not implied by the current ABI.
+FAT32 supports 8.3 lookup, directory iteration, nested subdirectories, reads and fixed-size regular-file overwrites on writable devices. LFN, file creation and extension are not implemented.
 
 The canonical block layer includes a fixed write-back sector cache. Full-sector writes become dirty cache entries, reads observe dirty data immediately, explicit flush/device unregister/replacement performs writeback, and a failed writeback preserves dirty state for retry. `sb_block_flush()` and `sb_vfs_sync()` provide the current synchronization boundary.
 

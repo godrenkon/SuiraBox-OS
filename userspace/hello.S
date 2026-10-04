@@ -491,6 +491,24 @@ runtime_fat32_write_probe:
     jne lifecycle_failed
     cmpb $0x54, SB_DIRECTORY_ENTRY_NAME_OFFSET+10+directory_entry_buffer(%rip)
     jne lifecycle_failed
+#ifdef SB_STORAGE_DURABILITY_PROOF
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_REGULAR, SB_DIRECTORY_ENTRY_TYPE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpw $9, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cld
+    lea SB_DIRECTORY_ENTRY_NAME_OFFSET+directory_entry_buffer(%rip), %rdi
+    lea runtime_guard_name(%rip), %rsi
+    mov $9, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+#endif
     mov %r12, %rdi
     lea directory_entry_buffer(%rip), %rsi
     mov $SB_SYS_DIRECTORY_READ, %rax
@@ -837,6 +855,8 @@ event_signaler_failed:
 #ifdef SB_STORAGE_DURABILITY_PROOF
 runtime_write_seed:
     .ascii "SUIRABOX-RUNTIME-FAT32\n"
+runtime_guard_name:
+    .ascii "GUARD.TXT"
 runtime_write_payload:
     .ascii "SUIRABOX-WRITTEN-FAT32\n"
 .set runtime_write_payload_len, . - runtime_write_payload
