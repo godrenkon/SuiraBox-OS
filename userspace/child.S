@@ -17,6 +17,15 @@ _start:
     jbe child_failed
     mov %rax, %r15
 
+    /* Children cannot detach the init-owned global storage namespace. */
+    lea child_disk_mount(%rip), %rdi
+    mov $5, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_VOLUME_UNMOUNT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne child_failed
+
     /* The first legacy child owns the dedicated cross-process service proof. */
     cmp $2, %r15
     je service_server
@@ -337,6 +346,8 @@ child_failed:
 .size _start, .-_start
 
 .section .rodata
+child_disk_mount:
+    .ascii "/disk"
 service_name:
     .ascii "svc.echo"
 .set service_name_len, . - service_name

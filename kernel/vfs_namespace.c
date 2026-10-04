@@ -160,9 +160,9 @@ int sb_vfs_namespace_mount(sb_vfs_namespace_t *namespace_state,
     return SB_VFS_OBJECT_OK;
 }
 
-int sb_vfs_namespace_unmount(sb_vfs_namespace_t *namespace_state,
+static int namespace_unmount(sb_vfs_namespace_t *namespace_state,
                              const char *path,
-                             uint64_t path_length) {
+                             uint64_t path_length, int require_finalizer) {
     if (namespace_state == 0) return SB_VFS_OBJECT_INVALID;
 
     char normalized[SB_VFS_PATH_MAX + 1u];
@@ -183,12 +183,37 @@ int sb_vfs_namespace_unmount(sb_vfs_namespace_t *namespace_state,
             continue;
         }
 
-        if (mount->root != 0) (void)sb_vfs_node_release(mount->root);
+        /* Removing a parent must not orphan a nested mount. */
+        for (uint32_t j = 0u; j < SB_VFS_NAMESPACE_MAX_MOUNTS; ++j) {
+            const sb_vfs_mount_point_t *child = &namespace_state->mounts[j];
+            if (child->in_use == 0u || child == mount || child->path_length <= normalized_length) continue;
+            if (paths_equal(child->path, normalized_length, normalized, normalized_length) &&
+                (normalized_length == 1u || child->path[normalized_length] == '/'))
+                return SB_VFS_OBJECT_BUSY;
+        }
+        if (mount->root == 0 || mount->root->ops == 0) return SB_VFS_OBJECT_INVALID;
+        if (mount->root->ops->unmount != 0) {
+            const int result = mount->root->ops->unmount(mount->root);
+            if (result != SB_VFS_OBJECT_OK) return result;
+        } else if (require_finalizer) {
+            return SB_VFS_OBJECT_NOT_SUPPORTED;
+        }
+        (void)sb_vfs_node_release(mount->root);
         zero_mount(mount);
         if (namespace_state->mount_count > 0u) --namespace_state->mount_count;
         return SB_VFS_OBJECT_OK;
     }
     return SB_VFS_OBJECT_NOT_FOUND;
+}
+
+int sb_vfs_namespace_unmount(sb_vfs_namespace_t *namespace_state,
+                              const char *path, uint64_t path_length) {
+    return namespace_unmount(namespace_state, path, path_length, 0);
+}
+
+int sb_vfs_namespace_unmount_volume(sb_vfs_namespace_t *namespace_state,
+                                     const char *path, uint64_t path_length) {
+    return namespace_unmount(namespace_state, path, path_length, 1);
 }
 
 static int mount_matches(const sb_vfs_mount_point_t *mount,
@@ -393,6 +418,11 @@ int sb_vfs_system_mount(const char *path,
 int sb_vfs_system_unmount(const char *path, uint64_t path_length) {
     ensure_system_namespace();
     return sb_vfs_namespace_unmount(&system_namespace, path, path_length);
+}
+
+int sb_vfs_system_unmount_volume(const char *path, uint64_t path_length) {
+    ensure_system_namespace();
+    return sb_vfs_namespace_unmount_volume(&system_namespace, path, path_length);
 }
 
 int sb_vfs_system_resolve(const char *path,

@@ -33,6 +33,8 @@ typedef struct {
     /* Mount-time FAT[1] status; nonzero permits reads but denies mutation. */
     uint8_t recovery_flags;
     uint8_t dirty_marked;
+    /* Finalization seals mutation even if a clean-marker write/flush fails. */
+    uint8_t quiesced;
 } sb_fat32_t;
 
 typedef struct {

@@ -34,6 +34,7 @@ typedef enum {
     SB_VFS_OBJECT_RANGE = -6,
     SB_VFS_OBJECT_NOT_FOUND = -7,
     SB_VFS_OBJECT_EXISTS = -8,
+    SB_VFS_OBJECT_BUSY = -9,
 } sb_vfs_object_result_t;
 
 struct sb_vfs_node;
@@ -81,6 +82,9 @@ typedef struct {
     sb_vfs_node_lookup_fn create;
     /* Exclusive directory creation; returns a borrowed live node. */
     sb_vfs_node_lookup_fn mkdir;
+    /* Finalize a mounted root before its namespace reference is released.
+     * Failure leaves the mount attached. Caller holds no temporary root ref. */
+    sb_vfs_node_sync_fn unmount;
 } sb_vfs_node_ops_t;
 
 struct sb_vfs_node {

@@ -52,6 +52,20 @@ def main() -> None:
 
     if "Exception:" in log:
         fail("unexpected kernel/user exception detected")
+    if "--clean-proof" in sys.argv[2:] or "--clean-reboot-proof" in sys.argv[2:]:
+        if "recovery required" in log or "FAILED" in log:
+            fail("clean-unmount proof encountered a recovery mount or failed lifecycle")
+        marker = (
+            "Userspace: FAT32 clean reboot writable file verified and volume detached"
+            if "--clean-reboot-proof" in sys.argv[2:] else
+            "Userspace: FAT32 clean unmount persisted unsynced file and detached volume"
+        )
+        require_ordered(log, "fat32-clean-unmount", [
+            "Storage: FAT32 system mount /disk ready",
+            "Userspace: runtime FAT32 directory enumeration OK",
+            "Storage: VOLUME_UNMOUNT finalized backing volume",
+            marker,
+        ])
     if "--recovery-proof" in sys.argv[2:]:
         require_ordered(log, "fat32-recovery-read-only", [
             "Storage: FAT32 recovery required; mounted read-only",

@@ -381,6 +381,7 @@ int sb_fat32_begin_write(sb_fat32_t *fs) {
         return SB_VFS_OBJECT_INVALID;
     if (fs->recovery_flags != 0u || fs->mount->block_device->write == 0) return SB_VFS_OBJECT_ACCESS;
     if (fs->write_faulted) return SB_VFS_OBJECT_IO;
+    if (fs->quiesced) return SB_VFS_OBJECT_ACCESS;
     if (fs->dirty_marked) return SB_VFS_OBJECT_OK;
     const uint32_t mask = SB_FAT32_CLEAN_SHUTDOWN | SB_FAT32_NO_HARD_ERROR;
     const uint32_t first = fs->mirrored ? 0u : fs->active_fat;
@@ -549,6 +550,7 @@ int sb_fat32_write_file(sb_fat32_t *fs, sb_fat32_dirent_t *entry,
     if (fs->recovery_flags != 0u || fs->mount->block_device->write == 0 ||
         (entry->attributes & SB_FAT32_ATTR_READ_ONLY) != 0u) return SB_VFS_OBJECT_ACCESS;
     if (fs->write_faulted) return SB_VFS_OBJECT_IO;
+    if (fs->quiesced) return SB_VFS_OBJECT_ACCESS;
     if (offset > entry->file_size || length > UINT32_MAX - offset)
         return SB_VFS_OBJECT_RANGE;
     if (length == 0u) return SB_VFS_OBJECT_OK;
@@ -743,7 +745,7 @@ static sb_fat32_vfs_node_t *cache_entry(sb_fat32_vfs_t *adapter,
         slot->entry = *entry;
         slot->owner = adapter;
         const uint32_t file_capabilities = SB_VFS_CAP_READ | SB_VFS_CAP_SYNC |
-            ((adapter->fs.recovery_flags == 0u && adapter->fs.mount->block_device->write != 0 &&
+            ((adapter->fs.recovery_flags == 0u && !adapter->fs.quiesced && adapter->fs.mount->block_device->write != 0 &&
               (entry->attributes & SB_FAT32_ATTR_READ_ONLY) == 0u) ? SB_VFS_CAP_WRITE : 0u);
         const int result = sb_vfs_node_init(&slot->node,
                                             is_directory
@@ -751,7 +753,7 @@ static sb_fat32_vfs_node_t *cache_entry(sb_fat32_vfs_t *adapter,
                                                 : SB_VFS_NODE_REGULAR,
                                             is_directory
                                                 ? (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR |
-                                                   ((adapter->fs.recovery_flags == 0u && adapter->fs.mirrored && adapter->fs.mount->block_device->write != 0 &&
+                                                   ((adapter->fs.recovery_flags == 0u && !adapter->fs.quiesced && adapter->fs.mirrored && adapter->fs.mount->block_device->write != 0 &&
                                                      (entry->attributes & SB_FAT32_ATTR_READ_ONLY) == 0u) ? (SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR) : 0u))
                                                 : file_capabilities,
                                             is_directory ? 0u : entry->file_size,
@@ -1019,6 +1021,7 @@ static int create_in_cluster(sb_fat32_vfs_t *adapter, uint32_t directory_cluster
     uint8_t encoded[11];
     if (!encode_83(name, name_length, encoded)) return SB_VFS_OBJECT_INVALID;
     if (fs->write_faulted) return SB_VFS_OBJECT_IO;
+    if (fs->quiesced) return SB_VFS_OBJECT_ACCESS;
     if (fs->recovery_flags != 0u || !fs->mirrored || fs->mount->block_device->write == 0) return SB_VFS_OBJECT_ACCESS;
     int cache_available = 0;
     for (uint32_t i = 0u; i < SB_FAT32_VFS_NODE_CACHE; ++i)
@@ -1186,11 +1189,62 @@ static int fat32_directory_mkdir(sb_vfs_node_t *directory, const char *name,
     return fat32_directory_create_kind(directory, name, name_length, node_out, 1);
 }
 
+static int fat32_root_unmount(sb_vfs_node_t *root) {
+    if (root == 0 || root->private_data == 0) return SB_VFS_OBJECT_INVALID;
+    sb_fat32_vfs_t *adapter = root->private_data;
+    if (!adapter->mounted || root != &adapter->root) return SB_VFS_OBJECT_INVALID;
+    /* Exactly the adapter and this namespace own the root. Cached nodes have
+     * one adapter reference; file/directory handles and aliases add references. */
+    if (root->ref_count != 2u) return SB_VFS_OBJECT_BUSY;
+    for (uint32_t i = 0u; i < SB_FAT32_VFS_NODE_CACHE; ++i)
+        if (adapter->nodes[i].in_use && adapter->nodes[i].node.ref_count != 1u)
+            return SB_VFS_OBJECT_BUSY;
+    sb_fat32_t *fs = &adapter->fs;
+    if (fs->write_faulted) return SB_VFS_OBJECT_IO;
+    fs->quiesced = 1u;
+    root->capabilities &= ~(SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR);
+    for (uint32_t i = 0u; i < SB_FAT32_VFS_NODE_CACHE; ++i)
+        adapter->nodes[i].node.capabilities &= ~(SB_VFS_CAP_WRITE | SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR);
+    /* Read-only recovery mounts must preserve all evidence, without any I/O.
+     * A session that never mutated the volume also needs no clean marker. */
+    if (fs->recovery_flags == 0u && fs->dirty_marked) {
+        if (sb_vfs_sync(fs->mount) != SB_VFS_OK) goto fault;
+        const uint32_t first = fs->mirrored ? 0u : fs->active_fat;
+        const uint32_t end = fs->mirrored ? fs->fat_count : first + 1u;
+        const uint32_t mask = SB_FAT32_CLEAN_SHUTDOWN | SB_FAT32_NO_HARD_ERROR;
+        /* Validate every status copy before accepting any clean marker. */
+        for (uint32_t copy = first; copy < end; ++copy) {
+            uint8_t sector[SB_FAT32_SECTOR_BYTES];
+            const uint64_t lba = fs->reserved_sectors + (uint64_t)copy * fs->fat_size_sectors;
+            if (!read_sector(fs, lba, sector) || (le32(sector + 4u) & mask) != SB_FAT32_NO_HARD_ERROR) goto fault;
+        }
+        for (uint32_t copy = first; copy < end; ++copy) {
+            uint8_t sector[SB_FAT32_SECTOR_BYTES];
+            const uint64_t lba = fs->reserved_sectors + (uint64_t)copy * fs->fat_size_sectors;
+            if (!read_sector(fs, lba, sector)) goto fault;
+            store32(sector + 4u, le32(sector + 4u) | SB_FAT32_CLEAN_SHUTDOWN);
+            if (sb_vfs_write_sectors(fs->mount, lba, 1u, sector) != SB_VFS_OK) goto fault;
+        }
+        if (sb_vfs_sync(fs->mount) != SB_VFS_OK) goto fault;
+        fs->dirty_marked = 0u;
+    }
+    /* Make retained borrowed roots unusable for a stale remount. Destruction
+     * still releases the adapter's own references, without further disk I/O. */
+    root->capabilities = 0u;
+    return SB_VFS_OBJECT_OK;
+fault:
+    /* Clean bits may be partially written, but all data was flushed first.
+     * Keep the namespace attached for reads and forbid any later mutation. */
+    fs->write_faulted = 1u;
+    return SB_VFS_OBJECT_IO;
+}
+
 static const sb_vfs_node_ops_t fat32_root_ops = {
     .lookup = fat32_root_lookup,
     .readdir = fat32_root_readdir,
     .create = fat32_directory_create,
     .mkdir = fat32_directory_mkdir,
+    .unmount = fat32_root_unmount,
 };
 
 int sb_fat32_vfs_init(sb_fat32_vfs_t *adapter, sb_vfs_mount_t *mount) {
@@ -1239,7 +1293,8 @@ int sb_fat32_vfs_destroy(sb_fat32_vfs_t *adapter) {
 }
 
 sb_vfs_node_t *sb_fat32_vfs_root(sb_fat32_vfs_t *adapter) {
-    if (adapter == 0 || adapter->mounted == 0u || adapter->root.ref_count == 0u) {
+    if (adapter == 0 || adapter->mounted == 0u || adapter->root.ref_count == 0u ||
+        (adapter->root.capabilities & SB_VFS_CAP_LOOKUP) == 0u) {
         return 0;
     }
     return &adapter->root;

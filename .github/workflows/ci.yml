@@ -158,6 +158,44 @@ jobs:
           make BUILD=build/dirty STORAGE_DURABILITY_PROOF=0 STORAGE_DIRTY_PROOF=0 userspace
           if nm build/dirty/user-hello.elf | grep -q 'runtime_fat32_dirty_probe'; then exit 1; fi
 
+      - name: Prove clean unmount persists unsynced data and permits writable reboot
+        run: |
+          set -o pipefail
+          make BUILD=build/clean STORAGE_DURABILITY_PROOF=0 STORAGE_CLEAN_PROOF=1
+          nm build/clean/user-hello.elf | grep -q 'runtime_fat32_clean_probe'
+          truncate -s 64M build/clean/runtime.img
+          mformat -i build/clean/runtime.img -F ::
+          mcopy -i build/clean/runtime.img build/runtime.txt ::RUNTIME.TXT
+          cp build/clean/runtime.img build/clean/seed.img
+          timeout 20s qemu-system-x86_64 \
+            -m 256M -boot d \
+            -drive file=build/clean/runtime.img,format=raw,if=ide,index=0,media=disk,cache=writeback \
+            -cdrom build/clean/suirabox.iso \
+            -serial stdio -display none -no-reboot -no-shutdown \
+            2>&1 | tee qemu-clean-unmount.log || test ${PIPESTATUS[0]} -eq 124
+          python3 tests/qemu_log_check.py qemu-clean-unmount.log --clean-proof
+          python3 tests/fat32_clean_image_check.py build/clean/runtime.img build/clean/seed.img
+          # FAT32 allocation deliberately invalidates FSInfo free-count hints.
+          # Let fsck refresh those hints only in a disposable inspection copy.
+          cp build/clean/runtime.img build/clean/fsck.img
+          fsck.fat -a build/clean/fsck.img || test $? -eq 1
+          fsck.fat -n build/clean/fsck.img
+          mcopy -i build/clean/runtime.img ::CLEAN.TXT build/clean/persisted.txt
+          printf 'SUIRABOX CLEAN\n' > build/clean/expected.txt
+          cmp build/clean/persisted.txt build/clean/expected.txt
+          sha256sum build/clean/runtime.img > build/clean/after-unmount.sha256
+          timeout 20s qemu-system-x86_64 \
+            -m 256M -boot d \
+            -drive file=build/clean/runtime.img,format=raw,if=ide,index=0,media=disk,cache=writeback \
+            -cdrom build/clean/suirabox.iso \
+            -serial stdio -display none -no-reboot -no-shutdown \
+            2>&1 | tee qemu-clean-reboot.log || test ${PIPESTATUS[0]} -eq 124
+          python3 tests/qemu_log_check.py qemu-clean-reboot.log --clean-reboot-proof
+          python3 tests/fat32_clean_image_check.py build/clean/runtime.img build/clean/seed.img
+          sha256sum -c build/clean/after-unmount.sha256
+          make BUILD=build/clean STORAGE_DURABILITY_PROOF=0 STORAGE_CLEAN_PROOF=0 userspace
+          if nm build/clean/user-hello.elf | grep -q 'runtime_fat32_clean_probe'; then exit 1; fi
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -178,6 +216,10 @@ jobs:
             build/dirty/runtime.img
             build/dirty/expected.sha256
             qemu-dirty-*.log
+            build/clean/runtime.img
+            build/clean/seed.img
+            build/clean/after-unmount.sha256
+            qemu-clean-*.log
 
   ipc-proof:
     needs: kernel

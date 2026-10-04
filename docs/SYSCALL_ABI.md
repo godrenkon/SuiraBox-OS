@@ -45,11 +45,11 @@ Current errors:
 | `-9` | `SB_SYS_ERROR_CLOSED` | peer/end of an IPC object is closed |
 | `-10` | `SB_SYS_ERROR_TIMEOUT` | timed blocking wait reached its deadline |
 | `-11` | `SB_SYS_ERROR_EXISTS` | named object already exists |
-| `-12` | `SB_SYS_ERROR_BUSY` | service already has an active client |
+| `-12` | `SB_SYS_ERROR_BUSY` | active service client or volume references/nested mounts |
 
 ## Version 1 syscall table
 
-The current public maximum syscall number is **40**.
+The current public maximum syscall number is **41**.
 
 | Number | Name | Arguments | Result |
 | ---: | --- | --- | --- |
@@ -94,12 +94,13 @@ The current public maximum syscall number is **40**.
 | 38 | `SB_SYS_FILE_WRITE` | `rdi=file`, `rsi=readable buffer`, `rdx=length` | bytes accepted; may be short |
 | 39 | `SB_SYS_FILE_CREATE` | `rdi=absolute path`, `rsi=path length`, `rdx=READ/WRITE access` | new FILE handle; exclusive creation |
 | 40 | `SB_SYS_DIRECTORY_CREATE` | `rdi=absolute path`, `rsi=path length`, `rdx=0` | new DIRECTORY handle; exclusive durable creation |
+| 41 | `SB_SYS_VOLUME_UNMOUNT` | `rdi=exact mount path`, `rsi=path length`, `rdx=0` | 0 after finalization and namespace detach; PID 1 only |
 
 Syscall 4 and syscall 13 are retained for ABI-v1 compatibility. New code should prefer the versioned spawn request and generic VFS path interfaces.
 
 ## ABI info routing
 
-The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 40.
+The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 41.
 
 ## Userspace pointer rules
 
@@ -174,9 +175,30 @@ available. Sync does not clear the status or repair the filesystem. This gate
 records dirty status before SuiraBox's first mutation in a mount session.
 Failure to persist the marker returns IO and quarantines further writes; FILE_WRITE
 reports zero accepted bytes. FILE_SYNC, CLOSE and successful DIRECTORY_CREATE do
-not clear the marker, so the next mount requires recovery until clean-unmount
-support or external repair establishes a clean state. Atomic recovery and clean
-shutdown remain future work. No ABI numbers or public layouts change.
+not clear the marker. Explicit VOLUME_UNMOUNT can establish clean status after
+all accepted changes are durable; otherwise the next mount requires recovery.
+Atomic recovery and system shutdown remain future work. Existing numbers and
+public layouts remain compatible; VOLUME_UNMOUNT is appended as number 41.
+
+`SB_SYS_VOLUME_UNMOUNT` currently permits only bootstrap init (PID 1), the owner
+of the global mount namespace; children receive RIGHTS before pointer access.
+For init, reserved `rdx` must be zero, pointer/length must be nonzero, length must
+be at most 255, and the whole absolute path is copied before finalization.
+Bad mapping returns FAULT, excessive length LIMIT, invalid path/flags INVALID.
+Path normalization is allowed, but only an exact mount point is removed: a file
+path or missing mount returns NOT_FOUND. Providers without a finalizer, including
+the /boot module provider, return INVALID and remain mounted.
+
+FAT32 returns BUSY while any file/directory/borrowed node or mount alias remains;
+nested mounts also return BUSY. No data is flushed or sealed on a BUSY refusal.
+After handles close, it seals writes, flushes data/metadata, saves clean status
+and flushes again before removing the mount. FILE_SYNC is not required first.
+I/O failure returns IO and leaves the namespace readable, with mutation and
+further finalization quarantined. A successful detach makes subsequent opens
+under that mount NOT_FOUND unless another mounted parent supplies the path.
+Read-only recovery mounts detach without disk I/O or status repair. The call
+does not power off, remount or implicitly close handles. Kernel forceful reset
+and object destruction are distinct from this explicit operation.
 
 `SB_SYS_DIRECTORY_CREATE` creates one directory in an existing parent and returns
 a DIRECTORY handle with READ|QUERY at cursor zero. Reserved flags (`rdx`) must be

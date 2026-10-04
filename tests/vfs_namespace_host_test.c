@@ -273,6 +273,13 @@ int main(void) {
     if (sb_vfs_namespace_unmount(&namespace_state, "/missing", 8u) !=
         SB_VFS_OBJECT_NOT_FOUND) return 29;
 
+    /* Storage finalization never silently detaches a provider without a hook. */
+    if (sb_vfs_namespace_unmount_volume(&namespace_state, "/", 1u) != SB_VFS_OBJECT_NOT_SUPPORTED ||
+        namespace_state.mount_count != 1u || root_node.ref_count != 2u) return 32;
+    if (sb_vfs_namespace_mount(&namespace_state, "/nested", 7u, &mounted_mc_node) != SB_VFS_OBJECT_OK ||
+        sb_vfs_namespace_unmount(&namespace_state, "/", 1u) != SB_VFS_OBJECT_BUSY ||
+        sb_vfs_namespace_unmount(&namespace_state, "/nested", 7u) != SB_VFS_OBJECT_OK) return 33;
+
     sb_vfs_namespace_destroy(&namespace_state);
     if (root_node.ref_count != 1u || namespace_state.mount_count != 0u) return 30;
 

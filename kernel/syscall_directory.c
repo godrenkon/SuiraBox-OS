@@ -25,7 +25,7 @@ _Static_assert(SB_DIRECTORY_ENTRY_TYPE_DEVICE == SB_VFS_NODE_DEVICE,
                "directory device type mismatch");
 _Static_assert(sizeof(sb_directory_entry_t) == SB_DIRECTORY_ENTRY_SIZE,
                "directory entry ABI size mismatch");
-_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_DIRECTORY_CREATE,
+_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_VOLUME_UNMOUNT,
                "public syscall max-number table is stale");
 
 static int directory_open_logged;
@@ -55,6 +55,7 @@ static uint64_t directory_vfs_error(int result) {
         case SB_VFS_OBJECT_NOT_FOUND: return directory_error(SB_SYS_ERROR_NOT_FOUND);
         case SB_VFS_OBJECT_RANGE: return directory_error(SB_SYS_ERROR_LIMIT);
         case SB_VFS_OBJECT_EXISTS: return directory_error(SB_SYS_ERROR_EXISTS);
+        case SB_VFS_OBJECT_BUSY: return directory_error(SB_SYS_ERROR_BUSY);
         default: return directory_error(SB_SYS_ERROR_INVALID);
     }
 }
@@ -356,6 +357,30 @@ static sb_irq_frame_t *directory_create(sb_irq_frame_t *frame) {
     return frame;
 }
 
+static sb_irq_frame_t *volume_unmount(sb_irq_frame_t *frame) {
+    sb_process_t *process = directory_current_process();
+    if (process == 0) { frame->rax = directory_error(SB_SYS_ERROR_INVALID); return frame; }
+    /* Bootstrap init is the current owner of the global mount namespace.
+     * Per-process mount authority is a future credential/capability feature. */
+    if (process->pid != 1u) { frame->rax = directory_error(SB_SYS_ERROR_RIGHTS); return frame; }
+    const uint64_t length = frame->rsi;
+    if (frame->rdi == 0u || length == 0u || frame->rdx != 0u) {
+        frame->rax = directory_error(SB_SYS_ERROR_INVALID); return frame;
+    }
+    if (length > SB_SYS_PATH_MAX) { frame->rax = directory_error(SB_SYS_ERROR_LIMIT); return frame; }
+    char path[SB_SYS_PATH_MAX + 1u];
+    if (user_copy_from(process, path, frame->rdi, length) != 0) {
+        frame->rax = directory_error(SB_SYS_ERROR_FAULT); return frame;
+    }
+    for (uint64_t i = 0u; i < length; ++i)
+        if (path[i] == '\0') { frame->rax = directory_error(SB_SYS_ERROR_INVALID); return frame; }
+    path[length] = '\0';
+    const int result = sb_vfs_system_unmount_volume(path, length);
+    frame->rax = result == SB_VFS_OBJECT_OK ? 0u : directory_vfs_error(result);
+    if (result == SB_VFS_OBJECT_OK) directory_debug("Storage: VOLUME_UNMOUNT finalized backing volume\r\n");
+    return frame;
+}
+
 static sb_irq_frame_t *file_sync(sb_irq_frame_t *frame) {
     sb_process_t *process = directory_current_process();
     if (process == 0) {
@@ -427,6 +452,7 @@ sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame) {
     if (frame->rax == SB_SYS_FILE_WRITE) return file_write(frame);
     if (frame->rax == SB_SYS_FILE_CREATE) return file_create(frame);
     if (frame->rax == SB_SYS_DIRECTORY_CREATE) return directory_create(frame);
+    if (frame->rax == SB_SYS_VOLUME_UNMOUNT) return volume_unmount(frame);
     if (frame->rax >= SB_SYS_PIPE_CREATE && frame->rax <= SB_SYS_PIPE_WRITE)
         return sb_syscall_dispatch_pipe(frame);
     if (frame->rax >= SB_SYS_EVENT_CREATE && frame->rax <= SB_SYS_EVENT_RESET)

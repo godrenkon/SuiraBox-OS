@@ -160,8 +160,8 @@ Neither mount nor read-handle sync clears this evidence or performs repair.
 This policy does not lock direct block-device writes. SuiraBox persists FAT[1]'s
 dirty marker before its first filesystem mutation, with a device barrier before
 data or metadata publication. Marking failure quarantines writes; the marker is
-not rolled back. FILE_SYNC/CLOSE/mkdir leave the volume dirty, and clean-unmount
-support remains future work, so the next mount conservatively requires recovery.
+not rolled back. FILE_SYNC/CLOSE/mkdir leave the volume dirty; without an explicit
+successful VOLUME_UNMOUNT, the next mount conservatively requires recovery.
 This ordering does not make updates atomic or implement a repair journal.
 
 CI adds three QEMU boots with writable disk backends and recorded dirty,
@@ -178,3 +178,23 @@ changed on disk. The same image is then rebooted read-only, with mutation refusa
 and whole-image preservation checks. The dirty/recovery/durability proof modes
 are mutually exclusive. Normal durability data is fsck-checked on an offline
 repaired disposable copy; the primary dirty image is retained without repair.
+
+VOLUME_UNMOUNT (41) gives PID 1 an explicit storage finalization operation.
+FAT32 refuses active node/handle references or mount aliases before I/O; nested
+mounts also block removal. It seals further filesystem writes, flushes all
+accepted changes, then sets only FAT[1]'s clean bit in required copies and flushes
+again before detaching. Active-FAT mode preserves inactive status. Failures keep
+the namespace readable and prohibit mutation or a later clean certification.
+The final marker may be uncertain after an I/O failure, but no clean write
+precedes completed data durability. Existing recovery status is never repaired
+by this operation; read-only/never-mutated sessions detach without disk I/O.
+Destruction alone still does not finalize storage, and raw block writes bypass
+this protocol. OS-wide shutdown/poweroff and crash transactions remain future work.
+
+The host unmount test injects data writeback, first barrier, status read/write
+and final barrier faults using separate volatile/durable buffers. CI adds two
+STORAGE_CLEAN_PROOF QEMU boots: unsynced file creation/write/close followed by
+clean unmount, then writable reopen/read on the same image. Exact image and
+SHA-256 checks preserve clean status, prior data and the new payload. This proof
+mode is also mutually exclusive with the other three. FSInfo free-count hints
+remain unknown after allocation; fsck refreshes them only on a disposable copy.
