@@ -153,7 +153,7 @@ int main(void) {
         if (fault == 0u) fail_barrier = 1u;
         if (fault == 1u) fail_write = 4;
         if (fault == 2u) fail_barrier = 2u;
-        if (fault == 3u) fail_read = 5;
+        if (fault == 3u) { sb_block_cache_reset(); fail_read = 5; }
         const int result = sb_vfs_file_write(&file, payload, sizeof(payload), &written);
         if (result != SB_VFS_OBJECT_IO || written != 0u || file.offset != 900u || node->size != 900u ||
             adapter.fs.write_faulted || !unchanged_metadata()) {
