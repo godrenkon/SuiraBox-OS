@@ -17,6 +17,9 @@
 #include "arch/x86_64/interrupts.h"
 #include "arch/x86_64/gdt.h"
 #include "framebuffer.h"
+#ifdef SB_STORAGE_DURABILITY_PROOF
+#include "storage_durability.h"
+#endif
 
 extern void sb_syscall_int80_stub(void);
 extern int sb_storage_selftest(void);
@@ -226,6 +229,11 @@ void kmain(uint64_t multiboot_magic, uint64_t multiboot_info) {
         serial_write("Storage: ATA primary master registered\r\n");
         if (mount_runtime_fat32()) {
             serial_write("Storage: FAT32 system mount /disk ready\r\n");
+#ifdef SB_STORAGE_DURABILITY_PROOF
+            serial_write(sb_storage_durability_stage(sb_ata_pio_device()) ?
+                "Storage: durability fixture staged dirty\r\n" :
+                "Storage: durability fixture FAILED\r\n");
+#endif
         } else {
             serial_write("Storage: ATA device has no mountable FAT32 filesystem\r\n");
         }

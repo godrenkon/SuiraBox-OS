@@ -1,4 +1,5 @@
 BUILD := build
+.DEFAULT_GOAL := all
 ISO := $(BUILD)/suirabox.iso
 KERNEL := $(BUILD)/suirabox.elf
 USER_ELF := $(BUILD)/user-hello.elf
@@ -12,12 +13,17 @@ EVENT_HOST_TEST := $(BUILD)/event-host-test
 MESSAGE_QUEUE_HOST_TEST := $(BUILD)/message-queue-host-test
 VFS_OBJECT_HOST_TEST := $(BUILD)/vfs-object-host-test
 VFS_NAMESPACE_HOST_TEST := $(BUILD)/vfs-namespace-host-test
+STORAGE_DURABILITY_HOST_TEST := $(BUILD)/storage-durability-host-test
+STORAGE_DURABILITY_PROOF ?= 0
 
 CC ?= gcc
 AS ?= as
 LD ?= ld
 
 CFLAGS := -ffreestanding -fno-stack-protector -fno-pie -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -Wall -Wextra -Werror -O2 -Iinclude
+ifeq ($(STORAGE_DURABILITY_PROOF),1)
+CFLAGS += -DSB_STORAGE_DURABILITY_PROOF
+endif
 LDFLAGS := -nostdlib -z max-page-size=0x1000 -T linker.ld
 USER_LDFLAGS := -nostdlib -z max-page-size=0x1000 -T userspace/user.ld
 USER_ASFLAGS := -m64 -ffreestanding -fno-pie -Iinclude
@@ -71,7 +77,16 @@ MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
 CHILD_OBJ := $(BUILD)/user-child.o
 
-.PHONY: all clean iso userspace check host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test
+.PHONY: all clean iso userspace check host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test force-storage-config
+
+# Switching back to a normal build must remove the CI-only write path even
+# when objects already exist. Only update the stamp when the mode changes.
+$(BUILD)/storage-durability-mode: force-storage-config | $(BUILD)
+	@if test ! -f $@ || test "$$(cat $@)" != "$(STORAGE_DURABILITY_PROOF)"; then \
+		printf '%s\n' '$(STORAGE_DURABILITY_PROOF)' > $@; \
+	fi
+
+$(KERNEL_OBJ): $(BUILD)/storage-durability-mode kernel/storage_durability.h
 
 all: iso
 
@@ -232,6 +247,13 @@ userspace: $(USER_ELF) $(CHILD_ELF)
 
 KERNEL_OBJECTS := $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(BLOCK_CACHE_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_NAMESPACE_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PIPE_OBJ) $(EVENT_OBJ) $(MESSAGE_QUEUE_OBJ) $(SHARED_MEMORY_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_DIR_OBJ) $(SYSCALL_PIPE_OBJ) $(SYSCALL_EVENT_OBJ) $(SYSCALL_MESSAGE_QUEUE_OBJ) $(SYSCALL_SHARED_MEMORY_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
+ifeq ($(STORAGE_DURABILITY_PROOF),1)
+KERNEL_OBJECTS += $(BUILD)/storage_durability.o
+endif
+
+$(BUILD)/storage_durability.o: kernel/storage_durability.c kernel/storage_durability.h kernel/block.h $(BUILD)/storage-durability-mode | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
 $(KERNEL): $(KERNEL_OBJECTS) linker.ld
 	$(LD) $(LDFLAGS) -o $@ $(KERNEL_OBJECTS)
 
@@ -288,7 +310,12 @@ $(VFS_NAMESPACE_HOST_TEST): tests/vfs_namespace_host_test.c kernel/vfs_namespace
 host-vfs-namespace-test: $(VFS_NAMESPACE_HOST_TEST)
 	$(VFS_NAMESPACE_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test
+$(STORAGE_DURABILITY_HOST_TEST): tests/storage_durability_host_test.c kernel/storage_durability.c kernel/storage_durability.h kernel/block.c kernel/block.h kernel/block_cache.c kernel/block_cache.h kernel/vfs.c kernel/vfs.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -DSB_STORAGE_DURABILITY_PROOF -Ikernel tests/storage_durability_host_test.c kernel/storage_durability.c kernel/block.c kernel/block_cache.c kernel/vfs.c -o $@
+host-storage-durability-test: $(STORAGE_DURABILITY_HOST_TEST)
+	$(STORAGE_DURABILITY_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \
