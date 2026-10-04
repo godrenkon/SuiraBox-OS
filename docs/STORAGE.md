@@ -151,3 +151,20 @@ failed unregister. The image checker rejects unchanged seeds and partial writes.
 The QEMU image check proves the integrated write/flush path with a file backend;
 it does not simulate physical power loss or prove filesystem atomicity. Those
 require crash/recovery transactions and power-loss tests in a later stage.
+
+FAT32 now checks reserved FAT[1] status at mount. An unclean-shutdown bit, prior
+hard-I/O-error bit, or disagreement between mirrored status copies makes the
+filesystem read-only while preserving existing reads and enumeration. Required
+status-sector I/O failures reject mount. BPB active-FAT selection is respected.
+Neither mount nor read-handle sync clears this evidence or performs repair.
+This policy does not lock direct block-device writes. SuiraBox does not yet mark
+its own transactions dirty before mutation, so this is only the recovery-entry
+foundation; it does not detect every interrupted SuiraBox write or prove atomicity.
+
+CI adds three QEMU boots with writable disk backends and recorded dirty,
+hard-error and mirror-disagreement status. A separate recovery userspace build
+checks mutation refusal after existing reads/sync/enumeration, and SHA-256 checks
+require the entire disk image to remain unchanged. Host tests cover status reads,
+active selection and backend/VFS denial; corruption tests verify the image checker.
+`STORAGE_RECOVERY_PROOF=1` is opt-in, mutually exclusive with the mutating durability
+proof, and switching it off removes the userspace recovery fixture.

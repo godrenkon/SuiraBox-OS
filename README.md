@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **8-8 fsync / atomic update semantics**。Syscall/IPC 7-1〜7-9は、generation handle、PIPE、EVENT wait/timeout、MESSAGE QUEUE、SHARED MEMORY、named local service transportまでQEMU/host testと独立IPC proofで確認済みです。次は既存のVFS/block flush境界をuserspace FILE_SYNCへ公開し、writable filesystemのmetadata orderingとatomic update contractへ進みます。
+> **Current focus:** **8-8 fsync / atomic update semantics・8-9 storage recovery**。FILE_SYNC、FAT32ファイル/directory作成・追記・metadata orderingまでQEMU/host testで確認済みです。復旧が必要なvolumeのread-only mountを基盤として、次は更新前のdirty状態記録、clean shutdown、atomic update・crash recoveryへ進みます。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -158,7 +158,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [x] **8-6** 初期filesystem実装
 - [x] **8-7** cache / writeback
 - [*] **8-8** fsync / atomic update semantics
-- [ ] **8-9** storage recovery
+- [*] **8-9** storage recovery
 
 ## 9. Network Stack
 
@@ -322,12 +322,17 @@ FAT32の既存ファイルは現在サイズ内の上書きに対応しました
 
 ### Deliberately still partial
 
+**8-9: storage recovery の入口**
+
+FAT32のFAT[1]に異常終了・過去のI/Oエラー・mirrored status不一致が記録されている場合、mountを読み取り専用にします。既存ファイルのread・列挙・read-handle syncは維持し、WRITE open・ファイル/directory作成・直接backend writeを拒否します。CIは3種類のvolumeをQEMUで起動し、拒否動作とディスク全体の不変を検証します。修復・journal・SuiraBox自身の更新前dirty記録は未実装で、clean印だけでは電源断に対する安全性を保証しません。
+
 - **3-7**: sleep/wakeは動作するが、一般timeout semantics全体は未完成
 - **4-7**: user/kernel stackは動作するが、guard page・overflow policy・可変stack policyは未完成
 - **5-2**: IRQ preemption contextとcooperative kernel contextは分離済みだが、context ABI全体の整理は継続中
 - **6-7**: 複数processの並行実行は確認済みだが、一般的なmulti-thread runtimeは未完成
 - **7-9**: Roadmap上のlocal service MVPは完了。現実装はregistry 8枠・1 active client/service・64-byte messageで、multi-client・blocking receive・credential policyは将来拡張
 - **8-8**: FAT32ファイル/directory作成・directory自動拡張・上書き・追記・cluster allocation・data/FAT/directory ordering・FILE_SYNCとfailure/retry contractは実装済み。atomic update・電源断時recoveryは未完成
+- **8-9**: 既存FAT[1] statusに基づくread-only mountは実装済み。更新前dirty記録・clean shutdown・破損chainの検査/修復・journal recoveryは未完成
 
 ---
 

@@ -586,6 +586,36 @@ runtime_directory_fillers:
     int $SB_SYSCALL_VECTOR
     cmp $runtime_directory_message_len, %rax
     jne lifecycle_failed
+#ifdef SB_STORAGE_RECOVERY_PROOF
+runtime_fat32_recovery_probe:
+    lea runtime_disk_path(%rip), %rdi
+    mov $runtime_disk_path_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+    lea runtime_recovery_file_path(%rip), %rdi
+    mov $runtime_recovery_file_path_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+    lea runtime_recovery_directory_path(%rip), %rdi
+    mov $runtime_recovery_directory_path_len, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+    lea runtime_recovery_message(%rip), %rdi
+    mov $runtime_recovery_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_recovery_message_len, %rax
+    jne lifecycle_failed
+#endif
 #ifdef SB_STORAGE_DURABILITY_PROOF
 runtime_fat32_create_probe:
     xor %r14, %r14
@@ -1308,6 +1338,17 @@ runtime_write_synced_message:
 runtime_write_message:
     .ascii "Userspace: FAT32 write/sync/reopen lifecycle OK\r\n"
 .set runtime_write_message_len, . - runtime_write_message
+#endif
+#ifdef SB_STORAGE_RECOVERY_PROOF
+runtime_recovery_file_path:
+    .ascii "/disk/RECOVER.TXT"
+.set runtime_recovery_file_path_len, . - runtime_recovery_file_path
+runtime_recovery_directory_path:
+    .ascii "/disk/RECOVER"
+.set runtime_recovery_directory_path_len, . - runtime_recovery_directory_path
+runtime_recovery_message:
+    .ascii "Userspace: FAT32 recovery read-only rejection lifecycle OK\r\n"
+.set runtime_recovery_message_len, . - runtime_recovery_message
 #endif
 pointer_message:
     .ascii "Userspace: validated user pointer copy OK\r\n"

@@ -96,6 +96,33 @@ jobs:
           nm build/user-hello.elf | grep -q 'runtime_fat32_write_probe'
           nm build/user-hello.elf | grep -q 'runtime_fat32_create_probe'
 
+      - name: Boot recovery-required FAT32 volumes read-only
+        run: |
+          set -o pipefail
+          make BUILD=build/recovery STORAGE_DURABILITY_PROOF=0 STORAGE_RECOVERY_PROOF=1
+          nm build/recovery/user-hello.elf | grep -q 'runtime_fat32_recovery_probe'
+          for mode in dirty hard-error status-mismatch; do
+            image="build/recovery/$mode.img"
+            snapshot="build/recovery/$mode.sha256"
+            truncate -s 64M "$image"
+            mformat -i "$image" -F ::
+            mcopy -i "$image" build/runtime.txt ::RUNTIME.TXT
+            python3 tests/fat32_recovery_image_check.py seed "$image" "$snapshot" "$mode"
+            timeout 20s qemu-system-x86_64 \
+              -m 256M -boot d \
+              -drive file="$image",format=raw,if=ide,index=0,media=disk,cache=writeback \
+              -cdrom build/recovery/suirabox.iso \
+              -serial stdio -display none -no-reboot -no-shutdown \
+              2>&1 | tee "qemu-recovery-$mode.log" || test ${PIPESTATUS[0]} -eq 124
+            python3 tests/qemu_log_check.py "qemu-recovery-$mode.log" --recovery-proof
+            python3 tests/fat32_recovery_image_check.py verify "$image" "$snapshot"
+          done
+          make BUILD=build/recovery STORAGE_DURABILITY_PROOF=0 STORAGE_RECOVERY_PROOF=0 userspace
+          if nm build/recovery/user-hello.elf | grep -q 'runtime_fat32_recovery_probe'; then
+            echo 'normal userspace still contains recovery rejection fixture'
+            exit 1
+          fi
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -110,6 +137,9 @@ jobs:
             build/runtime-fat32.img
             build/root-directory-seed.bin
             qemu.log
+            build/recovery/*.img
+            build/recovery/*.sha256
+            qemu-recovery-*.log
 
   ipc-proof:
     needs: kernel

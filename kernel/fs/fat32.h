@@ -10,6 +10,11 @@
 #define SB_FAT32_ATTR_VOLUME_ID 0x08u
 #define SB_FAT32_ATTR_LONG_NAME 0x0Fu
 #define SB_FAT32_VFS_NODE_CACHE 32u
+#define SB_FAT32_CLEAN_SHUTDOWN 0x08000000u
+#define SB_FAT32_NO_HARD_ERROR  0x04000000u
+#define SB_FAT32_RECOVERY_UNCLEAN         (1u << 0)
+#define SB_FAT32_RECOVERY_HARD_ERROR      (1u << 1)
+#define SB_FAT32_RECOVERY_STATUS_MISMATCH (1u << 2)
 
 typedef struct {
     sb_vfs_mount_t *mount;
@@ -25,6 +30,8 @@ typedef struct {
     uint8_t active_fat;
     uint8_t mirrored;
     uint8_t write_faulted;
+    /* Mount-time FAT[1] status; nonzero permits reads but denies mutation. */
+    uint8_t recovery_flags;
 } sb_fat32_t;
 
 typedef struct {

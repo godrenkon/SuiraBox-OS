@@ -167,6 +167,13 @@ A VFS node represents the resource; an open `sb_vfs_file_t` owns independent off
 
 DIRECTORY handles use READ|QUERY. `SB_SYS_DIRECTORY_READ` copies a stable public 80-byte entry and reports EOF as `SB_SYS_ERROR_NOT_FOUND` without advancing the cursor. QEMU verifies a rejected read-only userspace output pointer does not consume the first FAT32 directory entry.
 
+When FAT32 mounts with recorded unclean-shutdown, hard-error or inconsistent
+mirrored status, writable FILE_OPEN, FILE_CREATE and DIRECTORY_CREATE return
+RIGHTS. Existing reads, directory enumeration and read-handle FILE_SYNC remain
+available. Sync does not clear the status or repair the filesystem. This gate
+does not yet record dirty status for SuiraBox's own writes; atomic recovery and
+clean shutdown remain future work. No ABI numbers or public layouts change.
+
 `SB_SYS_DIRECTORY_CREATE` creates one directory in an existing parent and returns
 a DIRECTORY handle with READ|QUERY at cursor zero. Reserved flags (`rdx`) must be
 zero. Paths use the same normalization and ASCII 8.3 restrictions as FILE_CREATE;
