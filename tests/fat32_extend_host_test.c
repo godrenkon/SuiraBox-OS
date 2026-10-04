@@ -154,7 +154,14 @@ int main(void) {
         if (fault == 1u) fail_write = 4;
         if (fault == 2u) fail_barrier = 2u;
         if (fault == 3u) fail_read = 5;
-        if (check(sb_vfs_file_write(&file, payload, sizeof(payload), &written) == SB_VFS_OBJECT_IO &&
+        const int result = sb_vfs_file_write(&file, payload, sizeof(payload), &written);
+        if (result != SB_VFS_OBJECT_IO || written != 0u || file.offset != 900u || node->size != 900u ||
+            adapter.fs.write_faulted || !unchanged_metadata()) {
+            fprintf(stderr, "fault=%u result=%d bytes=%llu offset=%llu size=%llu quarantined=%u flushes=%u metadata=%d\n",
+                fault, result, (unsigned long long)written, (unsigned long long)file.offset,
+                (unsigned long long)node->size, adapter.fs.write_faulted, flushes, unchanged_metadata());
+        }
+        if (check(result == SB_VFS_OBJECT_IO &&
             written == 0u && file.offset == 900u && node->size == 900u && !adapter.fs.write_faulted &&
             unchanged_metadata(), "failed extension restores old FAT and directory")) return 1;
         if (check(sb_vfs_file_write(&file, payload, sizeof(payload), &written) == SB_VFS_OBJECT_OK &&
