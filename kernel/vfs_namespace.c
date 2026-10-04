@@ -325,7 +325,9 @@ int sb_vfs_namespace_create_file(sb_vfs_namespace_t *namespace_state,
                                  const char *path, uint64_t path_length,
                                  uint32_t access, sb_vfs_file_t *file_out) {
     if (file_out != 0) *file_out = (sb_vfs_file_t){0};
-    if (file_out == 0 || (access & ~SB_VFS_ACCESS_ALL) != 0u) return SB_VFS_OBJECT_INVALID;
+    if (namespace_state == 0 || file_out == 0 || path == 0 || path_length == 0u ||
+        path_length > SB_VFS_PATH_MAX || path[path_length - 1u] == '/' ||
+        (access & ~SB_VFS_ACCESS_ALL) != 0u) return SB_VFS_OBJECT_INVALID;
     if ((access & SB_VFS_ACCESS_WRITE) == 0u) return SB_VFS_OBJECT_ACCESS;
     sb_vfs_node_t *node = 0;
     int result = namespace_create(namespace_state, path, path_length, 0, &node);

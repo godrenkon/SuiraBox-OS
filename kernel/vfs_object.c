@@ -6,7 +6,7 @@
 static int valid_capabilities(uint32_t capabilities) {
     const uint32_t known = SB_VFS_CAP_READ | SB_VFS_CAP_WRITE |
                            SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR |
-                           SB_VFS_CAP_SYNC | SB_VFS_CAP_CREATE;
+                           SB_VFS_CAP_SYNC | SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR;
     return (capabilities & ~known) == 0u;
 }
 
@@ -41,8 +41,10 @@ int sb_vfs_node_init(sb_vfs_node_t *node,
     }
     if ((capabilities & SB_VFS_CAP_CREATE) != 0u && ops->create == 0)
         return SB_VFS_OBJECT_INVALID;
+    if ((capabilities & SB_VFS_CAP_MKDIR) != 0u && ops->mkdir == 0)
+        return SB_VFS_OBJECT_INVALID;
     if (type != SB_VFS_NODE_DIRECTORY &&
-        (capabilities & (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR | SB_VFS_CAP_CREATE)) != 0u) {
+        (capabilities & (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR | SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR)) != 0u) {
         return SB_VFS_OBJECT_INVALID;
     }
 
