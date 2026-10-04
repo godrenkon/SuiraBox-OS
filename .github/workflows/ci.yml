@@ -59,6 +59,16 @@ jobs:
           python3 tests/qemu_log_check.py qemu.log --storage-proof
           python3 tests/storage_image_check.py verify build/runtime-fat32.img
 
+      - name: Verify durability proof is opt-in
+        run: |
+          make STORAGE_DURABILITY_PROOF=0 build/suirabox.elf
+          if nm build/suirabox.elf | grep -q 'sb_storage_durability_stage'; then
+            echo 'normal kernel still contains durability fixture'
+            exit 1
+          fi
+          make STORAGE_DURABILITY_PROOF=1 build/suirabox.elf
+          nm build/suirabox.elf | grep -q 'sb_storage_durability_stage'
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
