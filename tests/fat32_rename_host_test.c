@@ -75,7 +75,7 @@ static int start(int mode) {
     entry(disk + 3u * 512u + 64u, "SAVES      ", 0x10u, 4u, 0u);
     entry(disk + 3u * 512u + 96u, "LOCKED     ", 0x11u, 5u, 0u);
     disk[3u * 512u + 128u] = 0x41u; disk[3u * 512u + 139u] = 0x0Fu;
-    entry(disk + 3u * 512u + 160u, "LFNALIAS TMP", 0x20u, 6u, 1u);
+    entry(disk + 3u * 512u + 160u, "LFNALIASTMP", 0x20u, 6u, 1u);
     entry(disk + 3u * 512u + 192u, "READONLYTMP", 0x21u, 0u, 0u);
     memcpy(disk + 4u * 512u, "hello", 5u);
     for (uint32_t sector = 5u; sector <= 6u; ++sector) {
