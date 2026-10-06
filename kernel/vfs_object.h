@@ -17,6 +17,7 @@ typedef enum {
 #define SB_VFS_CAP_SYNC    (1u << 4)
 #define SB_VFS_CAP_CREATE  (1u << 5)
 #define SB_VFS_CAP_MKDIR   (1u << 6)
+#define SB_VFS_CAP_RENAME  (1u << 7)
 
 #define SB_VFS_ACCESS_READ  (1u << 0)
 #define SB_VFS_ACCESS_WRITE (1u << 1)
@@ -59,6 +60,9 @@ typedef int (*sb_vfs_node_write_fn)(sb_vfs_node_t *node,
                                     uint64_t length,
                                     uint64_t *bytes_written);
 typedef int (*sb_vfs_node_sync_fn)(sb_vfs_node_t *node);
+typedef int (*sb_vfs_node_rename_fn)(sb_vfs_node_t *directory,
+                                    const char *old_name, uint64_t old_length,
+                                    const char *new_name, uint64_t new_length);
 /* Backend lookup returns a borrowed live node pointer. Callers use
  * sb_vfs_node_lookup(), which validates and acquires the returned node. */
 typedef int (*sb_vfs_node_lookup_fn)(sb_vfs_node_t *directory,
@@ -85,6 +89,8 @@ typedef struct {
     /* Finalize a mounted root before its namespace reference is released.
      * Failure leaves the mount attached. Caller holds no temporary root ref. */
     sb_vfs_node_sync_fn unmount;
+    /* Exclusive same-directory regular-file rename; no target replacement. */
+    sb_vfs_node_rename_fn rename;
 } sb_vfs_node_ops_t;
 
 struct sb_vfs_node {
@@ -126,6 +132,9 @@ int sb_vfs_node_create(sb_vfs_node_t *directory, const char *name,
                        uint64_t name_length, sb_vfs_node_t **node_out);
 int sb_vfs_node_mkdir(sb_vfs_node_t *directory, const char *name,
                       uint64_t name_length, sb_vfs_node_t **node_out);
+int sb_vfs_node_rename(sb_vfs_node_t *directory,
+                       const char *old_name, uint64_t old_length,
+                       const char *new_name, uint64_t new_length);
 
 int sb_vfs_file_open(sb_vfs_node_t *node,
                      uint32_t access,

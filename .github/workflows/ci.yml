@@ -196,6 +196,47 @@ jobs:
           make BUILD=build/clean STORAGE_DURABILITY_PROOF=0 STORAGE_CLEAN_PROOF=0 userspace
           if nm build/clean/user-hello.elf | grep -q 'runtime_fat32_clean_probe'; then exit 1; fi
 
+      - name: Prove staged-file rename, held handles and writable reboot
+        run: |
+          set -o pipefail
+          make BUILD=build/rename STORAGE_DURABILITY_PROOF=0 STORAGE_RENAME_PROOF=1
+          nm build/rename/user-hello.elf | grep -q 'runtime_fat32_rename_probe'
+          truncate -s 64M build/rename/runtime.img
+          mformat -i build/rename/runtime.img -F ::
+          mcopy -i build/rename/runtime.img build/runtime.txt ::RUNTIME.TXT
+          cp build/rename/runtime.img build/rename/seed.img
+          timeout 20s qemu-system-x86_64 \
+            -m 256M -boot d \
+            -drive file=build/rename/runtime.img,format=raw,if=ide,index=0,media=disk,cache=writeback \
+            -cdrom build/rename/suirabox.iso \
+            -serial stdio -display none -no-reboot -no-shutdown \
+            2>&1 | tee qemu-rename.log || test ${PIPESTATUS[0]} -eq 124
+          python3 tests/qemu_log_check.py qemu-rename.log --rename-proof
+          python3 tests/fat32_rename_image_check.py build/rename/runtime.img build/rename/seed.img
+          mcopy -i build/rename/runtime.img ::WORLD.DAT build/rename/world.txt
+          printf 'SUIRABOX RENAMED\n!' > build/rename/expected.txt
+          cmp build/rename/world.txt build/rename/expected.txt
+          mcopy -i build/rename/runtime.img ::SAVES/WORLD.DAT build/rename/nested.txt
+          printf 'SUIRABOX RENAMED\n' > build/rename/nested-expected.txt
+          cmp build/rename/nested.txt build/rename/nested-expected.txt
+          if mcopy -i build/rename/runtime.img ::STAGED.TMP build/rename/stale.txt; then exit 1; fi
+          if mcopy -i build/rename/runtime.img ::SAVES/STAGED.TMP build/rename/stale-nested.txt; then exit 1; fi
+          cp build/rename/runtime.img build/rename/fsck.img
+          fsck.fat -a build/rename/fsck.img || test $? -eq 1
+          fsck.fat -n build/rename/fsck.img
+          sha256sum build/rename/runtime.img > build/rename/after-rename.sha256
+          timeout 20s qemu-system-x86_64 \
+            -m 256M -boot d \
+            -drive file=build/rename/runtime.img,format=raw,if=ide,index=0,media=disk,cache=writeback \
+            -cdrom build/rename/suirabox.iso \
+            -serial stdio -display none -no-reboot -no-shutdown \
+            2>&1 | tee qemu-rename-reboot.log || test ${PIPESTATUS[0]} -eq 124
+          python3 tests/qemu_log_check.py qemu-rename-reboot.log --rename-reboot-proof
+          python3 tests/fat32_rename_image_check.py build/rename/runtime.img build/rename/seed.img
+          sha256sum -c build/rename/after-rename.sha256
+          make BUILD=build/rename STORAGE_DURABILITY_PROOF=0 STORAGE_RENAME_PROOF=0 userspace
+          if nm build/rename/user-hello.elf | grep -q 'runtime_fat32_rename_probe'; then exit 1; fi
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -220,6 +261,10 @@ jobs:
             build/clean/seed.img
             build/clean/after-unmount.sha256
             qemu-clean-*.log
+            build/rename/runtime.img
+            build/rename/seed.img
+            build/rename/after-rename.sha256
+            qemu-rename*.log
 
   ipc-proof:
     needs: kernel

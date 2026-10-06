@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **8-8 fsync / atomic update semantics・8-9 storage recovery**。FILE_SYNC、FAT32ファイル/directory作成・追記・metadata ordering、dirty記録と明示的なclean unmountまで実装しています。次はatomic update・crash recoveryと、OS全体のshutdown連携へ進みます。
+> **Current focus:** **8-8 fsync / atomic update semantics・8-9 storage recovery**。FILE_SYNC、FAT32ファイル/directory作成・追記・同一directory内rename、metadata ordering、dirty記録と明示的なclean unmountまで実装しています。次は既存ファイルのatomic replacement・crash recoveryと、OS全体のshutdown連携へ進みます。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -320,6 +320,8 @@ FAT32の既存ファイルは現在サイズ内の上書きに対応しました
 
 `DIRECTORY_CREATE`（ABI番号40）で8.3形式のdirectory作成も実装しました。子clusterの全sectorと`.`・`..`を初期化し、data → mirrored FAT → 親entryの順にflushしてからREAD|QUERY directory handleを返します。CIはSAVES/WORLDS/LEVEL.DATの作成・列挙・sync・再openと、終了後の内容・両FAT・dot parent・未使用領域を照合します。公開時のflush失敗では割当を保持して書き込みを停止します。次はatomic update・電源断時recoveryです。
 
+`FILE_RENAME`（ABI番号42）で、同じdirectory内の通常ファイルを未使用の8.3名へ変更できます。保存中のSTAGED.TMPをWORLD.DATへ公開するときは、dirty印と旧名でのdata/metadataをflushしてから名前を変更し、公開後にもflushします。開いているhandleの参照・offsetを維持し、そのhandleからの追記も新しい名前へ反映します。既存名・別directoryへの移動・directoryやLFN付きファイルのrenameは拒否します。公開が不確実になるI/O失敗ではdirty印を保持して書き込みを停止します。CIはroot/子directoryのrename・未同期data・既存handleからの追記・clean unmount後の同一image再起動と、全imageの厳密比較を検証します。既存ファイルの置換や電源断時のatomicityは未完成です。
+
 ### Deliberately still partial
 
 **8-9: storage recovery の入口**
@@ -335,7 +337,7 @@ SuiraBox自身の最初の更新前にも、mirrored/active FATのdirty印をdev
 - **5-2**: IRQ preemption contextとcooperative kernel contextは分離済みだが、context ABI全体の整理は継続中
 - **6-7**: 複数processの並行実行は確認済みだが、一般的なmulti-thread runtimeは未完成
 - **7-9**: Roadmap上のlocal service MVPは完了。現実装はregistry 8枠・1 active client/service・64-byte messageで、multi-client・blocking receive・credential policyは将来拡張
-- **8-8**: FAT32ファイル/directory作成・directory自動拡張・上書き・追記・cluster allocation・data/FAT/directory ordering・FILE_SYNCとfailure/retry contractは実装済み。atomic update・電源断時recoveryは未完成
+- **8-8**: FAT32ファイル/directory作成・directory自動拡張・上書き・追記・同一directory内rename・cluster allocation・data/FAT/directory ordering・FILE_SYNCとfailure/retry contractは実装済み。既存名へのatomic replacement・電源断時recoveryは未完成
 - **8-9**: FAT[1] statusに基づくread-only mount・更新前dirty記録・明示的なclean unmountは実装済み。OS全体のshutdown・破損chainの検査/修復・journal recoveryは未完成
 
 ---

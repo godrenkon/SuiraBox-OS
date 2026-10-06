@@ -710,12 +710,16 @@ static int fat32_directory_create(sb_vfs_node_t *directory, const char *name,
                                    uint64_t name_length, sb_vfs_node_t **node_out);
 static int fat32_directory_mkdir(sb_vfs_node_t *directory, const char *name,
                                   uint64_t name_length, sb_vfs_node_t **node_out);
+static int fat32_directory_rename(sb_vfs_node_t *directory,
+                                  const char *old_name, uint64_t old_length,
+                                  const char *new_name, uint64_t new_length);
 
 static const sb_vfs_node_ops_t fat32_subdir_ops = {
     .lookup = fat32_subdir_lookup,
     .readdir = fat32_subdir_readdir,
     .create = fat32_directory_create,
     .mkdir = fat32_directory_mkdir,
+    .rename = fat32_directory_rename,
 };
 
 static sb_fat32_vfs_node_t *find_cached(sb_fat32_vfs_t *adapter,
@@ -753,6 +757,8 @@ static sb_fat32_vfs_node_t *cache_entry(sb_fat32_vfs_t *adapter,
                                                 : SB_VFS_NODE_REGULAR,
                                             is_directory
                                                 ? (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR |
+                                                   ((adapter->fs.recovery_flags == 0u && !adapter->fs.quiesced && adapter->fs.mount->block_device->write != 0 &&
+                                                     (entry->attributes & SB_FAT32_ATTR_READ_ONLY) == 0u) ? SB_VFS_CAP_RENAME : 0u) |
                                                    ((adapter->fs.recovery_flags == 0u && !adapter->fs.quiesced && adapter->fs.mirrored && adapter->fs.mount->block_device->write != 0 &&
                                                      (entry->attributes & SB_FAT32_ATTR_READ_ONLY) == 0u) ? (SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR) : 0u))
                                                 : file_capabilities,
@@ -937,7 +943,7 @@ static int directory_chain_valid(sb_fat32_t *fs, uint32_t cluster) {
         uint64_t lba;
         uint32_t next;
         if (!cluster_to_lba(fs, cluster, &lba) || !fat_next_cluster(fs, cluster, &next) ||
-            !fat_copies_equal(fs, cluster, next)) return 0;
+            (fs->mirrored && !fat_copies_equal(fs, cluster, next))) return 0;
         if (next >= SB_FAT32_EOC_MIN) return 1;
         if (next < 2u || next == cluster) return 0;
         cluster = next;
@@ -1189,6 +1195,107 @@ static int fat32_directory_mkdir(sb_vfs_node_t *directory, const char *name,
     return fat32_directory_create_kind(directory, name, name_length, node_out, 1);
 }
 
+/* Keep the physical entry and allocation stable, so open handles retain their
+ * node and offset. Reject LFN-associated sources instead of invalidating their
+ * checksum or manufacturing a lossy long-name alias. */
+static int rename_in_cluster(sb_fat32_vfs_t *adapter, uint32_t directory_cluster,
+                              const char *old_name, uint64_t old_length,
+                              const char *new_name, uint64_t new_length) {
+    sb_fat32_t *fs = &adapter->fs;
+    uint8_t old_encoded[11], new_encoded[11];
+    if (!encode_83(old_name, old_length, old_encoded) || !encode_83(new_name, new_length, new_encoded))
+        return SB_VFS_OBJECT_INVALID;
+    if (fs->write_faulted) return SB_VFS_OBJECT_IO;
+    if (fs->quiesced || fs->recovery_flags != 0u || fs->mount->block_device->write == 0)
+        return SB_VFS_OBJECT_ACCESS;
+    if (!directory_chain_valid(fs, directory_cluster)) return SB_VFS_OBJECT_IO;
+    int same = 1, found = 0, collision = 0, previous_lfn = 0, source_lfn = 0;
+    for (uint32_t i = 0u; i < 11u; ++i) if (old_encoded[i] != new_encoded[i]) same = 0;
+    sb_fat32_dirent_t source = {0};
+    uint32_t cluster = directory_cluster;
+    for (;;) {
+        uint64_t lba;
+        if (!cluster_to_lba(fs, cluster, &lba)) return SB_VFS_OBJECT_IO;
+        for (uint32_t s = 0u; s < fs->sectors_per_cluster; ++s) {
+            uint8_t sector[SB_FAT32_SECTOR_BYTES];
+            if (!read_sector(fs, lba + s, sector)) return SB_VFS_OBJECT_IO;
+            for (uint16_t offset = 0u; offset < 512u; offset += 32u) {
+                const uint8_t *raw = sector + offset;
+                if (raw[0] == 0u) goto scanned;
+                if (raw[0] == 0xE5u) { previous_lfn = 0; continue; }
+                if (raw[11] == 0x0Fu) { previous_lfn = 1; continue; }
+                int old_match = 1, new_match = 1;
+                for (uint32_t i = 0u; i < 11u; ++i) {
+                    if ((uint8_t)ascii_upper((char)raw[i]) != old_encoded[i]) old_match = 0;
+                    if ((uint8_t)ascii_upper((char)raw[i]) != new_encoded[i]) new_match = 0;
+                }
+                if (new_match && !same) collision = 1;
+                if (old_match && (raw[11] & SB_FAT32_ATTR_VOLUME_ID) == 0u) {
+                    if (found) return SB_VFS_OBJECT_IO;
+                    parse_dirent(raw, &source);
+                    source.directory_sector = lba + s;
+                    source.directory_offset = offset;
+                    source_lfn = previous_lfn;
+                    found = 1;
+                }
+                previous_lfn = 0;
+            }
+        }
+        uint32_t next;
+        if (!fat_next_cluster(fs, cluster, &next)) return SB_VFS_OBJECT_IO;
+        if (next >= SB_FAT32_EOC_MIN) break;
+        cluster = next;
+    }
+scanned:
+    if (!found) return SB_VFS_OBJECT_NOT_FOUND;
+    if ((source.attributes & SB_FAT32_ATTR_READ_ONLY) != 0u) return SB_VFS_OBJECT_ACCESS;
+    if ((source.attributes & SB_FAT32_ATTR_DIRECTORY) != 0u || source_lfn)
+        return SB_VFS_OBJECT_NOT_SUPPORTED;
+    if (collision) return SB_VFS_OBJECT_EXISTS;
+    if (!writable_chain_valid(fs, &source)) return SB_VFS_OBJECT_IO;
+    if (same) return SB_VFS_OBJECT_OK;
+    uint8_t sector[SB_FAT32_SECTOR_BYTES];
+    if (!read_sector(fs, source.directory_sector, sector)) return SB_VFS_OBJECT_IO;
+    if (sb_fat32_begin_write(fs) != SB_VFS_OBJECT_OK) return SB_VFS_OBJECT_IO;
+    /* Persist staged contents and old-name metadata before publishing a name.
+     * A second barrier makes successful publication durable. This is exclusive
+     * rename, not target replacement or a journaled power-loss transaction. */
+    if (sb_vfs_sync(fs->mount) != SB_VFS_OK) goto fault;
+    uint8_t *raw = sector + source.directory_offset;
+    for (uint32_t i = 0u; i < 11u; ++i) raw[i] = new_encoded[i];
+    if (sb_vfs_write_sectors(fs->mount, source.directory_sector, 1u, sector) != SB_VFS_OK) goto fault;
+    sb_fat32_vfs_node_t *cached = find_cached(adapter, &source);
+    if (cached != 0) {
+        parse_dirent(raw, &cached->entry);
+        cached->entry.directory_sector = source.directory_sector;
+        cached->entry.directory_offset = source.directory_offset;
+    }
+    if (sb_vfs_sync(fs->mount) != SB_VFS_OK) goto fault;
+    return SB_VFS_OBJECT_OK;
+fault:
+    /* Publication may be visible or durable. Preserve dirty evidence and
+     * quarantine further writes/finalization instead of rolling the name back. */
+    fs->write_faulted = 1u;
+    return SB_VFS_OBJECT_IO;
+}
+
+static int fat32_directory_rename(sb_vfs_node_t *directory,
+                                  const char *old_name, uint64_t old_length,
+                                  const char *new_name, uint64_t new_length) {
+    if (directory == 0 || directory->private_data == 0 || directory->ops == 0)
+        return SB_VFS_OBJECT_INVALID;
+    if (directory->ops->lookup == fat32_root_lookup) {
+        sb_fat32_vfs_t *adapter = directory->private_data;
+        if (!adapter->mounted || directory != &adapter->root) return SB_VFS_OBJECT_IO;
+        return rename_in_cluster(adapter, adapter->fs.root_cluster, old_name, old_length, new_name, new_length);
+    }
+    sb_fat32_vfs_node_t *slot = directory->private_data;
+    if (!slot->in_use || slot->owner == 0 || !slot->owner->mounted || directory != &slot->node ||
+        (slot->entry.attributes & SB_FAT32_ATTR_DIRECTORY) == 0u) return SB_VFS_OBJECT_IO;
+    if ((slot->entry.attributes & SB_FAT32_ATTR_READ_ONLY) != 0u) return SB_VFS_OBJECT_ACCESS;
+    return rename_in_cluster(slot->owner, slot->entry.first_cluster, old_name, old_length, new_name, new_length);
+}
+
 static int fat32_root_unmount(sb_vfs_node_t *root) {
     if (root == 0 || root->private_data == 0) return SB_VFS_OBJECT_INVALID;
     sb_fat32_vfs_t *adapter = root->private_data;
@@ -1202,9 +1309,9 @@ static int fat32_root_unmount(sb_vfs_node_t *root) {
     sb_fat32_t *fs = &adapter->fs;
     if (fs->write_faulted) return SB_VFS_OBJECT_IO;
     fs->quiesced = 1u;
-    root->capabilities &= ~(SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR);
+    root->capabilities &= ~(SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR | SB_VFS_CAP_RENAME);
     for (uint32_t i = 0u; i < SB_FAT32_VFS_NODE_CACHE; ++i)
-        adapter->nodes[i].node.capabilities &= ~(SB_VFS_CAP_WRITE | SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR);
+        adapter->nodes[i].node.capabilities &= ~(SB_VFS_CAP_WRITE | SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR | SB_VFS_CAP_RENAME);
     /* Read-only recovery mounts must preserve all evidence, without any I/O.
      * A session that never mutated the volume also needs no clean marker. */
     if (fs->recovery_flags == 0u && fs->dirty_marked) {
@@ -1245,6 +1352,7 @@ static const sb_vfs_node_ops_t fat32_root_ops = {
     .create = fat32_directory_create,
     .mkdir = fat32_directory_mkdir,
     .unmount = fat32_root_unmount,
+    .rename = fat32_directory_rename,
 };
 
 int sb_fat32_vfs_init(sb_fat32_vfs_t *adapter, sb_vfs_mount_t *mount) {
@@ -1255,6 +1363,7 @@ int sb_fat32_vfs_init(sb_fat32_vfs_t *adapter, sb_vfs_mount_t *mount) {
     if (sb_vfs_node_init(&adapter->root,
                          SB_VFS_NODE_DIRECTORY,
                          SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR |
+                             ((adapter->fs.recovery_flags == 0u && mount->block_device->write != 0) ? SB_VFS_CAP_RENAME : 0u) |
                              ((adapter->fs.recovery_flags == 0u && adapter->fs.mirrored && mount->block_device->write != 0) ? (SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR) : 0u),
                          0u,
                          &fat32_root_ops,

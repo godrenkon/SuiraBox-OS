@@ -6,7 +6,7 @@
 static int valid_capabilities(uint32_t capabilities) {
     const uint32_t known = SB_VFS_CAP_READ | SB_VFS_CAP_WRITE |
                            SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR |
-                           SB_VFS_CAP_SYNC | SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR;
+                           SB_VFS_CAP_SYNC | SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR | SB_VFS_CAP_RENAME;
     return (capabilities & ~known) == 0u;
 }
 
@@ -43,8 +43,10 @@ int sb_vfs_node_init(sb_vfs_node_t *node,
         return SB_VFS_OBJECT_INVALID;
     if ((capabilities & SB_VFS_CAP_MKDIR) != 0u && ops->mkdir == 0)
         return SB_VFS_OBJECT_INVALID;
+    if ((capabilities & SB_VFS_CAP_RENAME) != 0u && ops->rename == 0)
+        return SB_VFS_OBJECT_INVALID;
     if (type != SB_VFS_NODE_DIRECTORY &&
-        (capabilities & (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR | SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR)) != 0u) {
+        (capabilities & (SB_VFS_CAP_LOOKUP | SB_VFS_CAP_READDIR | SB_VFS_CAP_CREATE | SB_VFS_CAP_MKDIR | SB_VFS_CAP_RENAME)) != 0u) {
         return SB_VFS_OBJECT_INVALID;
     }
 
@@ -146,6 +148,24 @@ int sb_vfs_node_create(sb_vfs_node_t *directory, const char *name,
 int sb_vfs_node_mkdir(sb_vfs_node_t *directory, const char *name,
                       uint64_t name_length, sb_vfs_node_t **node_out) {
     return node_create(directory, name, name_length, node_out, 1);
+}
+
+int sb_vfs_node_rename(sb_vfs_node_t *directory,
+                       const char *old_name, uint64_t old_length,
+                       const char *new_name, uint64_t new_length) {
+    if (directory == 0 || old_name == 0 || new_name == 0 ||
+        old_length == 0u || new_length == 0u ||
+        old_length > SB_VFS_LOOKUP_NAME_MAX || new_length > SB_VFS_LOOKUP_NAME_MAX)
+        return SB_VFS_OBJECT_INVALID;
+    if (directory->ref_count == 0u) return SB_VFS_OBJECT_CLOSED;
+    if (directory->type != SB_VFS_NODE_DIRECTORY || directory->ops == 0 || directory->ops->rename == 0)
+        return SB_VFS_OBJECT_NOT_SUPPORTED;
+    if ((directory->capabilities & SB_VFS_CAP_RENAME) == 0u) return SB_VFS_OBJECT_ACCESS;
+    for (uint64_t i = 0u; i < old_length; ++i)
+        if (old_name[i] == '\0' || old_name[i] == '/') return SB_VFS_OBJECT_INVALID;
+    for (uint64_t i = 0u; i < new_length; ++i)
+        if (new_name[i] == '\0' || new_name[i] == '/') return SB_VFS_OBJECT_INVALID;
+    return directory->ops->rename(directory, old_name, old_length, new_name, new_length);
 }
 
 int sb_vfs_file_open(sb_vfs_node_t *node,

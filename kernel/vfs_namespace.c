@@ -308,6 +308,52 @@ int sb_vfs_namespace_open_file(sb_vfs_namespace_t *namespace_state,
     return open_result;
 }
 
+static int rename_path(sb_vfs_namespace_t *namespace_state,
+                        const char *path, uint64_t length,
+                        char normalized[SB_VFS_PATH_MAX + 1u], uint64_t *size, uint64_t *leaf) {
+    if (path == 0 || length == 0u || length > SB_VFS_PATH_MAX || path[length - 1u] == '/')
+        return SB_VFS_OBJECT_INVALID;
+    uint64_t start = length;
+    while (start != 0u && path[start - 1u] != '/') --start;
+    if (component_is(path + start, length - start, ".", 1u) ||
+        component_is(path + start, length - start, "..", 2u)) return SB_VFS_OBJECT_INVALID;
+    int result = sb_vfs_path_normalize(path, length, normalized, size);
+    if (result != SB_VFS_OBJECT_OK) return result;
+    if (*size == 1u) return SB_VFS_OBJECT_ACCESS;
+    for (uint32_t i = 0u; i < SB_VFS_NAMESPACE_MAX_MOUNTS; ++i) {
+        const sb_vfs_mount_point_t *mount = &namespace_state->mounts[i];
+        if (mount->in_use && paths_equal(mount->path, mount->path_length, normalized, *size))
+            return SB_VFS_OBJECT_ACCESS;
+    }
+    *leaf = *size;
+    while (*leaf != 0u && normalized[*leaf - 1u] != '/') --*leaf;
+    return SB_VFS_OBJECT_OK;
+}
+
+int sb_vfs_namespace_rename_file(sb_vfs_namespace_t *namespace_state,
+                                 const char *source, uint64_t source_length,
+                                 const char *destination, uint64_t destination_length) {
+    if (namespace_state == 0) return SB_VFS_OBJECT_INVALID;
+    char old_path[SB_VFS_PATH_MAX + 1u], new_path[SB_VFS_PATH_MAX + 1u];
+    uint64_t old_size, new_size, old_leaf, new_leaf;
+    int result = rename_path(namespace_state, source, source_length, old_path, &old_size, &old_leaf);
+    if (result != SB_VFS_OBJECT_OK) return result;
+    result = rename_path(namespace_state, destination, destination_length, new_path, &new_size, &new_leaf);
+    if (result != SB_VFS_OBJECT_OK) return result;
+    sb_vfs_node_t *old_parent = 0, *new_parent = 0;
+    result = sb_vfs_namespace_resolve(namespace_state, old_path, old_leaf == 1u ? 1u : old_leaf - 1u, &old_parent);
+    if (result != SB_VFS_OBJECT_OK) return result;
+    result = sb_vfs_namespace_resolve(namespace_state, new_path, new_leaf == 1u ? 1u : new_leaf - 1u, &new_parent);
+    if (result == SB_VFS_OBJECT_OK) {
+        result = old_parent != new_parent ? SB_VFS_OBJECT_NOT_SUPPORTED :
+            sb_vfs_node_rename(old_parent, old_path + old_leaf, old_size - old_leaf,
+                               new_path + new_leaf, new_size - new_leaf);
+        (void)sb_vfs_node_release(new_parent);
+    }
+    (void)sb_vfs_node_release(old_parent);
+    return result;
+}
+
 static int namespace_create(sb_vfs_namespace_t *namespace_state,
                               const char *path, uint64_t path_length,
                               int is_directory, sb_vfs_node_t **node_out) {
@@ -469,4 +515,10 @@ int sb_vfs_system_create_directory(const char *path, uint64_t path_length,
 uint32_t sb_vfs_system_mount_count(void) {
     ensure_system_namespace();
     return system_namespace.mount_count;
+}
+
+int sb_vfs_system_rename_file(const char *source, uint64_t source_length,
+                              const char *destination, uint64_t destination_length) {
+    ensure_system_namespace();
+    return sb_vfs_namespace_rename_file(&system_namespace, source, source_length, destination, destination_length);
 }

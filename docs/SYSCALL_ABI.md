@@ -49,7 +49,7 @@ Current errors:
 
 ## Version 1 syscall table
 
-The current public maximum syscall number is **41**.
+The current public maximum syscall number is **42**.
 
 | Number | Name | Arguments | Result |
 | ---: | --- | --- | --- |
@@ -95,12 +95,13 @@ The current public maximum syscall number is **41**.
 | 39 | `SB_SYS_FILE_CREATE` | `rdi=absolute path`, `rsi=path length`, `rdx=READ/WRITE access` | new FILE handle; exclusive creation |
 | 40 | `SB_SYS_DIRECTORY_CREATE` | `rdi=absolute path`, `rsi=path length`, `rdx=0` | new DIRECTORY handle; exclusive durable creation |
 | 41 | `SB_SYS_VOLUME_UNMOUNT` | `rdi=exact mount path`, `rsi=path length`, `rdx=0` | 0 after finalization and namespace detach; PID 1 only |
+| 42 | `SB_SYS_FILE_RENAME` | `rdi=source path`, `rsi=source length`, `rdx=destination path`, `r10=destination length`, `r8=0` | 0 after exclusive same-directory rename and publication flush |
 
 Syscall 4 and syscall 13 are retained for ABI-v1 compatibility. New code should prefer the versioned spawn request and generic VFS path interfaces.
 
 ## ABI info routing
 
-The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 41.
+The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 42.
 
 ## Userspace pointer rules
 
@@ -214,6 +215,31 @@ mount writes. In that case the name may exist despite the failed syscall and its
 valid allocation is retained for repair. Creation is not power-loss atomic.
 
 `SB_SYS_FILE_SYNC` requires QUERY and reaches `sb_vfs_file_sync()`, FAT32 mount sync, dirty block-cache writeback and the device flush barrier. WRITE success alone does not promise durability, and CLOSE does not implicitly sync. FAT32 supports overwrite and extension of existing files. Extension flushes data, then mirrored FATs, before accepting directory size; FILE_SYNC persists that final metadata. Extension errors leave offset/size unchanged but may modify overlapping existing bytes. Failed FAT rollback quarantines writes and file sync until repair/remount. Atomic replacement remains future work.
+
+`SB_SYS_FILE_RENAME` publishes an existing regular file under a different ASCII
+8.3 name within the same resolved parent directory. Both complete absolute
+paths are copied before mutation. Reserved flags must be zero; pointer mapping,
+length and embedded-NUL checks use the existing FAULT/LIMIT/INVALID contract.
+Trailing slash and terminal dot components are invalid. Source or destination
+mount roots are protected with RIGHTS. The call uses the same current global
+filesystem authority as FILE_CREATE; it is not restricted to PID 1.
+
+The destination must be absent (EXISTS otherwise). Different parents/volumes,
+directory sources, LFN-associated source entries and unsupported providers return
+INVALID; missing source/parent returns NOT_FOUND. Read-only sources, parents,
+devices and recovery mounts return RIGHTS. A valid case-folded same-name request
+is a no-op without writes or flushes. Physical entry location, allocation, size,
+attributes and timestamps are retained, so held handles preserve their node,
+offset and ability to write under the new name.
+
+FAT32 persists dirty status before mutation, flushes staged contents and old-name
+metadata, changes the short-name bytes, and completes another device flush before
+success. A preflight read failure is retryable. Marker/publication I/O uncertainty
+returns IO, retains dirty evidence and quarantines further mutation and clean
+unmount; the new name may already be visible or durable. Successful rename does
+not restore clean status. This call does not replace an existing destination,
+move directories, synthesize LFN entries or guarantee power-loss atomicity.
+Atomic replacement and a recovery protocol remain future work.
 
 ## PIPE handles
 
