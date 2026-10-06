@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **11-3 input/display transport・11-5 compositor foundation**。RGB描画・ASCII文字に続き、PS/2 IRQキーボードをユーザー空間の入力欄へ接続しました。Shift/Caps・Backspace・Enterを扱い、QEMUの仮想キー操作でイベント列と実画面の全pixelを照合します。USB/HID・マウス・入力routing・CJKフォント・window/compositor・Minecraft実行環境はこれからです。storageのatomic replacement・crash recoveryも未完成です。
+> **Current focus:** **17-3 desktop shell・17-5 Settings・17-6 File Managerの基盤**。Home・Files・SettingsをPS/2キーボードで切り替え、実際のVFSから `/boot` と `/disk` を読み取り専用で表示します。QEMUの仮想キー操作、10画面の全pixel照合、ディスク不変確認をCIに追加しました。USB/HID・マウス・入力routing・CJKフォント・window/compositor・設定保存・Minecraft実行環境はこれからです。storageのatomic replacement・crash recoveryも未完成です。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -255,10 +255,10 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 - [ ] **17-1** userspace init / service manager
 - [ ] **17-2** display/input services
-- [ ] **17-3** desktop shell
+- [-] **17-3** desktop shell — keyboard Home/Files/Settings foundation; windows/compositor pending
 - [ ] **17-4** window / workspace management
-- [ ] **17-5** Settings
-- [ ] **17-6** File Manager
+- [-] **17-5** Settings — current display/input/font status; editable/persistent settings pending
+- [-] **17-6** File Manager — bounded read-only `/boot` and `/disk` listings; traversal/opening pending
 - [ ] **17-7** Terminal
 - [ ] **17-8** notifications / system tray
 - [ ] **17-9** account / privacy / security UI
