@@ -49,7 +49,7 @@ Current errors:
 
 ## Version 1 syscall table
 
-The current public maximum syscall number is **44**.
+The current public maximum syscall number is **45**.
 
 | Number | Name | Arguments | Result |
 | ---: | --- | --- | --- |
@@ -98,12 +98,32 @@ The current public maximum syscall number is **44**.
 | 42 | `SB_SYS_FILE_RENAME` | `rdi=source path`, `rsi=source length`, `rdx=destination path`, `r10=destination length`, `r8=0` | 0 after exclusive same-directory rename and publication flush |
 | 43 | `SB_SYS_DISPLAY_INFO` | `rdi=info output`, `rsi=32`, `rdx=0` | 0 after copying display metadata; NOT_FOUND when no mapped display exists |
 | 44 | `SB_SYS_DISPLAY_PRESENT` | `rdi=present request`, `rsi=32`, `rdx=0` | 0 after bounded RGB rectangle presentation; PID 1 only |
+| 45 | `SB_SYS_KEY_EVENT_READ` | `rdi=writable sb_key_event_t*`, `rsi=32`, `rdx=0` | 0 after event copy; WOULD_BLOCK if empty; PID 1 only |
 
 Syscall 4 and syscall 13 are retained for ABI-v1 compatibility. New code should prefer the versioned spawn request and generic VFS path interfaces.
 
 ## ABI info routing
 
-The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 44.
+The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 45.
+
+## Keyboard event transport
+
+KEY_EVENT_READ uses the exact 32-byte structure from `input_abi.h`:
+`u32 size`, `u16 version/type`, `u16 keycode/flags`, `u32 modifiers`,
+`u64 sequence`, `u32 dropped/reserved`. Version is 1; reserved is zero.
+KEY events carry a normalized physical US-labelled position and DOWN/REPEAT
+flags, not a scancode or encoded character. Modifier bits describe the state
+after that event. OVERFLOW events have zero key/flags and a snapshot of the
+cumulative saturating discarded-entry count. See [keyboard input](KEYBOARD_INPUT.md)
+for key values, decoding and resynchronization policy.
+
+Init/PID 1 owns the boot input queue; children receive RIGHTS before pointer
+access. Null output, wrong size or nonzero flags return INVALID. An unavailable
+keyboard returns NOT_FOUND. Validate the complete writable output even if the
+queue is empty; invalid mappings return FAULT, and a valid empty queue returns
+WOULD_BLOCK. Copy before pop so a failed copy preserves the head event. The
+current UP interrupt gates serialize IRQ and syscall queue access; no blocking
+wait, per-process routing, input handles or SMP synchronization is provided yet.
 
 ## Userspace pointer rules
 

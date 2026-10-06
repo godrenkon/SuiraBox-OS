@@ -62,6 +62,24 @@ class DisplayImageCheckTests(unittest.TestCase):
                 self.assertEqual(pixels[(y*8+x)*3:(y*8+x+1)*3],
                                  full[((y+5)*16+x+3)*3:((y+5)*16+x+4)*3])
 
+    def test_keyboard_input_before_and_after(self):
+        for width, height in ((640,480), (1024,768)):
+            before = expected_pixels(width,height,boot_text=True)
+            after = expected_pixels(width,height,input_proof=True)
+            self.assertNotEqual(before,after)
+            with contextlib.redirect_stdout(io.StringIO()):
+                verify_bytes(f"P6\n{width} {height}\n255\n".encode()+after,input_proof=True)
+            with self.assertRaises(ValueError):
+                verify_bytes(f"P6\n{width} {height}\n255\n".encode()+before,input_proof=True)
+
+    def test_wrong_submitted_text_or_undelivered_enter_detected(self):
+        original = expected_pixels(640,480,input_proof=True)
+        for x,y in ((286,144),(288,146),(24,112),(30,80)):
+            pixels=bytearray(original)
+            pixels[(y*640+x)*3]^=1
+            with self.assertRaises(ValueError):
+                verify_bytes(b"P6\n640 480\n255\n"+pixels,input_proof=True)
+
 
 if __name__ == "__main__":
     unittest.main()

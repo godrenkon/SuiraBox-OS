@@ -92,15 +92,20 @@ def paint_text(pixels: bytearray, width: int, height: int, labels) -> None:
             column += 1
 
 
-def expected_pixels(width: int, height: int, text_proof: bool = False, boot_text: bool = False) -> bytes:
+def expected_pixels(width: int, height: int, text_proof: bool = False, boot_text: bool = False, input_proof: bool = False) -> bytes:
     if width < 640 or height < 480:
         raise ValueError("display proof requires at least 640x480")
     pixels = bytearray(bytes((12, 16, 24)) * width * height)
-    if boot_text:
-        paint_text(pixels, width, height, [
+    if boot_text or input_proof:
+        labels = [
             (24,16,"SuiraBox OS",0xe6eef2,0x0c1018,2),
             (24,48,"Starting userspace services...",0xe6eef2,0x0c1018,2),
-        ])
+            (24,80,"Keyboard ready: type, Backspace, Enter",0xe6eef2,0x0c1018,2),
+            (24,112,"> " + " " * 32,0xe6eef2,0x0c1018,2),
+        ]
+        if input_proof:
+            labels.append((24,144,"Last submitted: AC" + " " * 30,0x259b72,0x0c1018,2))
+        paint_text(pixels, width, height, labels)
         return bytes(pixels)
     def fill(x, y, w, h, color):
         row = bytes(color) * w
@@ -121,19 +126,19 @@ def expected_pixels(width: int, height: int, text_proof: bool = False, boot_text
     return bytes(pixels)
 
 
-def verify_bytes(data: bytes, text_proof: bool = False, boot_text: bool = False) -> None:
+def verify_bytes(data: bytes, text_proof: bool = False, boot_text: bool = False, input_proof: bool = False) -> None:
     width, height, pixels = read_ppm(data)
-    expected = expected_pixels(width, height, text_proof, boot_text)
+    expected = expected_pixels(width, height, text_proof, boot_text, input_proof)
     if pixels != expected:
         first = next(index for index, pair in enumerate(zip(pixels, expected)) if pair[0] != pair[1]) // 3
         raise ValueError(f"display mismatch at ({first % width},{first // width}): "
                          f"actual {tuple(pixels[first * 3:first * 3 + 3])}, expected {tuple(expected[first * 3:first * 3 + 3])}")
-    kind = "boot-text" if boot_text else "bitmap-text" if text_proof else "surface"
+    kind = "keyboard-edit" if input_proof else "boot-text" if boot_text else "bitmap-text" if text_proof else "surface"
     print(f"QEMU display image proof OK: exact {width}x{height} RGB {kind}, clipping boundaries and rejected-request pixels")
 
 
 if __name__ == "__main__":
     try:
-        verify_bytes(Path(sys.argv[1]).read_bytes(), "--text-proof" in sys.argv[2:], "--boot-text" in sys.argv[2:])
+        verify_bytes(Path(sys.argv[1]).read_bytes(), "--text-proof" in sys.argv[2:], "--boot-text" in sys.argv[2:], "--input-proof" in sys.argv[2:])
     except (OSError, ValueError, IndexError) as error:
         raise SystemExit(str(error)) from error

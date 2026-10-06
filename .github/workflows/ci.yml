@@ -266,6 +266,23 @@ jobs:
           python3 tests/display_image_check.py build/boot-text/screen.ppm --boot-text
           sha256sum -c build/boot-text/before.sha256
 
+      # Keyboard injection goes through QEMU hardware and the actual IRQ path.
+      - name: Inject PS/2 keys and prove visible userspace editing
+        run: |
+          make BUILD=build/input STORAGE_DURABILITY_PROOF=0 DISPLAY_PROOF=0 INPUT_PROOF=1
+          nm build/input/user-hello.elf | grep -q 'sb_keyboard_proof_event'
+          truncate -s 64M build/input/runtime.img
+          mformat -i build/input/runtime.img -F ::
+          mcopy -i build/input/runtime.img build/runtime.txt ::RUNTIME.TXT
+          sha256sum build/input/runtime.img > build/input/before.sha256
+          python3 tests/qemu_display_capture.py build/input --input-proof
+          python3 tests/qemu_log_check.py build/input/display.log --input-proof
+          python3 tests/display_image_check.py build/input/before.ppm --boot-text
+          python3 tests/display_image_check.py build/input/screen.ppm --input-proof
+          sha256sum -c build/input/before.sha256
+          make BUILD=build/input STORAGE_DURABILITY_PROOF=0 INPUT_PROOF=0 userspace
+          if nm build/input/user-hello.elf | grep -q 'sb_keyboard_proof_event'; then exit 1; fi
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -304,6 +321,13 @@ jobs:
             build/boot-text/display.log
             build/boot-text/qemu-host.log
             build/boot-text/before.sha256
+            build/input/screen.ppm
+            build/input/screen.png
+            build/input/before.ppm
+            build/input/before.png
+            build/input/display.log
+            build/input/qemu-host.log
+            build/input/before.sha256
 
   ipc-proof:
     needs: kernel

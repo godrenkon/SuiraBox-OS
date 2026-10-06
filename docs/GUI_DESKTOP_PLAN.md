@@ -13,7 +13,10 @@ pattern is a transport fixture. A userspace bitmap text layer now renders all
 printable ASCII, strict UTF-8 fallback, tabs/newlines and clipped cells through
 the same transport; normal boot shows the title and startup status. See
 [text rendering](TEXT_RENDERING.md). The static proof labels do not implement a
-desktop, localization dialog or input. CJK fonts remain a future text step.
+desktop or localization dialog. The first PS/2 IRQ keyboard path now feeds
+init's nonblocking input API and a small userspace line editor after startup;
+see [keyboard input](KEYBOARD_INPUT.md). Mouse/input routing and CJK fonts remain
+future steps.
 
 On a fresh installation:
 

@@ -31,7 +31,11 @@ STORAGE_RECOVERY_PROOF ?= 0
 STORAGE_DIRTY_PROOF ?= 0
 STORAGE_CLEAN_PROOF ?= 0
 STORAGE_RENAME_PROOF ?= 0
+INPUT_PROOF ?= 0
 DISPLAY_PROOF ?= 0
+ifeq ($(INPUT_PROOF):$(DISPLAY_PROOF),1:1)
+$(error Input and display proof modes require separate builds)
+endif
 ifneq ($(word 2,$(filter 1,$(STORAGE_DURABILITY_PROOF) $(STORAGE_RECOVERY_PROOF) $(STORAGE_DIRTY_PROOF) $(STORAGE_CLEAN_PROOF) $(STORAGE_RENAME_PROOF))),)
 $(error Storage proof modes require separate builds)
 endif
@@ -68,6 +72,11 @@ endif
 ifeq ($(DISPLAY_PROOF),1)
 USER_ASFLAGS += -DSB_DISPLAY_PROOF
 USER_CFLAGS += -DSB_DISPLAY_PROOF
+endif
+
+ifeq ($(INPUT_PROOF),1)
+USER_ASFLAGS += -DSB_INPUT_PROOF
+USER_CFLAGS += -DSB_INPUT_PROOF
 endif
 
 BOOT_OBJ := $(BUILD)/boot.o
@@ -121,6 +130,8 @@ MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
 USER_TEXT_OBJ := $(BUILD)/user-text.o
 USER_BOOT_TEXT_OBJ := $(BUILD)/user-boot-text.o
+USER_KEYBOARD_OBJ := $(BUILD)/user-keyboard.o
+USER_LINE_EDIT_OBJ := $(BUILD)/user-line-edit.o
 CHILD_OBJ := $(BUILD)/user-child.o
 
 .PHONY: all clean iso userspace check host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test force-storage-config
@@ -128,13 +139,14 @@ CHILD_OBJ := $(BUILD)/user-child.o
 # Switching back to a normal build must remove the CI-only write path even
 # when objects already exist. Only update the stamp when the mode changes.
 $(BUILD)/storage-durability-mode: force-storage-config | $(BUILD)
-	@if test ! -f $@ || test "$$(cat $@)" != "$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF):$(STORAGE_CLEAN_PROOF):$(STORAGE_RENAME_PROOF):$(DISPLAY_PROOF)"; then \
-		printf '%s\n' '$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF):$(STORAGE_CLEAN_PROOF):$(STORAGE_RENAME_PROOF):$(DISPLAY_PROOF)' > $@; \
+	@if test ! -f $@ || test "$$(cat $@)" != "$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF):$(STORAGE_CLEAN_PROOF):$(STORAGE_RENAME_PROOF):$(DISPLAY_PROOF):$(INPUT_PROOF)"; then \
+		printf '%s\n' '$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF):$(STORAGE_CLEAN_PROOF):$(STORAGE_RENAME_PROOF):$(DISPLAY_PROOF):$(INPUT_PROOF)' > $@; \
 	fi
 
 $(KERNEL_OBJ): $(BUILD)/storage-durability-mode kernel/storage_durability.h
 $(USER_OBJ): $(BUILD)/storage-durability-mode
 $(USER_BOOT_TEXT_OBJ): $(BUILD)/storage-durability-mode
+$(USER_KEYBOARD_OBJ): $(BUILD)/storage-durability-mode
 
 .PHONY: host-fat32-write-test
 
@@ -152,13 +164,13 @@ $(SETUP_OBJ): kernel/setup.c kernel/setup.h | $(BUILD)
 $(FRAMEBUFFER_OBJ): kernel/framebuffer.c kernel/framebuffer.h kernel/display_surface.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(KERNEL_OBJ): kernel/kernel.c kernel/pci.h kernel/vfs.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/block.h kernel/ata_pio.h kernel/fs/fat32.h kernel/framebuffer.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/mm/heap.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/syscall.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(KERNEL_OBJ): kernel/kernel.c kernel/pci.h kernel/vfs.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/block.h kernel/ata_pio.h kernel/fs/fat32.h kernel/framebuffer.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/mm/heap.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/syscall.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -Ikernel/mm -Ikernel/arch/x86_64 -c $< -o $@
 
 $(DISPLAY_SURFACE_OBJ): kernel/display_surface.c kernel/display_surface.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(SYSCALL_DISPLAY_OBJ): kernel/syscall_display.c kernel/syscall_display.h kernel/framebuffer.h kernel/syscall.h kernel/user_access.h kernel/process.h kernel/scheduler.h include/suirabox/display_abi.h include/suirabox/syscall_abi.h | $(BUILD)
+$(SYSCALL_DISPLAY_OBJ): kernel/syscall_display.c kernel/syscall_display.h kernel/framebuffer.h kernel/syscall.h kernel/user_access.h kernel/process.h kernel/scheduler.h include/suirabox/display_abi.h include/suirabox/input_abi.h include/suirabox/syscall_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(PCI_OBJ): kernel/pci.c kernel/pci.h | $(BUILD)
@@ -215,7 +227,7 @@ $(IRQ_OBJ): kernel/arch/x86_64/irq.S | $(BUILD)
 $(PANIC_OBJ): kernel/panic.c kernel/panic.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(TIMER_OBJ): kernel/timer.c kernel/timer.h kernel/process.h kernel/scheduler.h kernel/arch/x86_64/irq_frame.h kernel/arch/x86_64/interrupts.h | $(BUILD)
+$(TIMER_OBJ): kernel/timer.c kernel/timer.h kernel/keyboard.h kernel/process.h kernel/scheduler.h kernel/arch/x86_64/irq_frame.h kernel/arch/x86_64/interrupts.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/arch/x86_64 -c $< -o $@
 
 $(SCHED_OBJ): kernel/scheduler.c kernel/scheduler.h kernel/arch/x86_64/irq_frame.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/mm/pmm.h | $(BUILD)
@@ -248,22 +260,22 @@ $(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.
 $(USER_ACCESS_OBJ): kernel/user_access.c kernel/user_access.h kernel/process.h kernel/handle.h include/suirabox/handle_abi.h kernel/mm/address_space.h kernel/mm/pmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -DSB_SYSCALL_CORE_DISPATCH_BUILD -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_DIR_OBJ): kernel/syscall_directory.c kernel/syscall.h kernel/syscall_pipe.h kernel/syscall_event.h kernel/syscall_message_queue.h kernel/syscall_shared_memory.h kernel/syscall_display.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/handle.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(SYSCALL_DIR_OBJ): kernel/syscall_directory.c kernel/syscall_input.h kernel/syscall.h kernel/syscall_pipe.h kernel/syscall_event.h kernel/syscall_message_queue.h kernel/syscall_shared_memory.h kernel/syscall_display.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/handle.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_PIPE_OBJ): kernel/syscall_pipe.c kernel/syscall_pipe.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/pipe.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(SYSCALL_PIPE_OBJ): kernel/syscall_pipe.c kernel/syscall_pipe.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/pipe.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_EVENT_OBJ): kernel/syscall_event.c kernel/syscall_event.h kernel/syscall.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/event.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(SYSCALL_EVENT_OBJ): kernel/syscall_event.c kernel/syscall_event.h kernel/syscall.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/event.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_MESSAGE_QUEUE_OBJ): kernel/syscall_message_queue.c kernel/syscall_message_queue.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/message_queue.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(SYSCALL_MESSAGE_QUEUE_OBJ): kernel/syscall_message_queue.c kernel/syscall_message_queue.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/message_queue.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_SHARED_MEMORY_OBJ): kernel/syscall_shared_memory.c kernel/syscall_shared_memory.h kernel/syscall.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/shared_memory.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(SYSCALL_SHARED_MEMORY_OBJ): kernel/syscall_shared_memory.c kernel/syscall_shared_memory.h kernel/syscall.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/shared_memory.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
 $(SYSCALL_ARCH_OBJ): kernel/arch/x86_64/syscall.S kernel/arch/x86_64/irq_frame.h | $(BUILD)
@@ -287,20 +299,20 @@ $(USERMODE_OBJ): kernel/arch/x86_64/user_mode.S kernel/arch/x86_64/user_mode.h |
 $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel/mm -c $< -o $@
 
-$(USER_OBJ): userspace/hello.S userspace/display_probe.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(USER_OBJ): userspace/hello.S userspace/display_probe.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(USER_ASFLAGS) -c $< -o $@
 
-$(CHILD_OBJ): userspace/child.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(CHILD_OBJ): userspace/child.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(USER_ASFLAGS) -c $< -o $@
 
 $(USER_TEXT_OBJ): userspace/text.c userspace/text.h userspace/font_bitmap.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_BOOT_TEXT_OBJ): userspace/boot_text.c userspace/text.h include/suirabox/syscall_abi.h include/suirabox/display_abi.h | $(BUILD)
+$(USER_BOOT_TEXT_OBJ): userspace/boot_text.c userspace/text.h userspace/display_client.h userspace/syscall_client.h include/suirabox/syscall_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_ELF): $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ)
+$(USER_ELF): $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ)
 
 $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(CHILD_OBJ)
@@ -459,3 +471,40 @@ check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test ho
 
 clean:
 	rm -rf $(BUILD)
+
+$(BUILD)/key-decoder.o: kernel/key_decoder.c kernel/key_decoder.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+$(BUILD)/ps2-controller.o: kernel/ps2_controller.c kernel/ps2_controller.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+$(BUILD)/keyboard.o: kernel/keyboard.c kernel/keyboard.h kernel/key_decoder.h kernel/ps2_controller.h kernel/arch/x86_64/interrupts.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+$(BUILD)/keyboard-irq.o: kernel/arch/x86_64/keyboard_irq.S | $(BUILD)
+	$(AS) --64 $< -o $@
+$(BUILD)/syscall-input.o: kernel/syscall_input.c kernel/syscall_input.h kernel/keyboard.h kernel/user_access.h kernel/scheduler.h kernel/process.h include/suirabox/syscall_abi.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+KERNEL_OBJECTS += $(BUILD)/key-decoder.o $(BUILD)/ps2-controller.o $(BUILD)/keyboard.o $(BUILD)/keyboard-irq.o $(BUILD)/syscall-input.o
+$(KERNEL): $(BUILD)/key-decoder.o $(BUILD)/ps2-controller.o $(BUILD)/keyboard.o $(BUILD)/keyboard-irq.o $(BUILD)/syscall-input.o
+
+$(USER_KEYBOARD_OBJ): userspace/keyboard_demo.c userspace/text.h userspace/display_client.h userspace/syscall_client.h userspace/line_edit.h include/suirabox/syscall_abi.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+$(USER_LINE_EDIT_OBJ): userspace/line_edit.c userspace/line_edit.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+
+$(BUILD)/key-decoder-host-test: tests/key_decoder_host_test.c kernel/key_decoder.c kernel/key_decoder.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iinclude -Ikernel tests/key_decoder_host_test.c kernel/key_decoder.c -o $@
+$(BUILD)/ps2-controller-host-test: tests/ps2_controller_host_test.c kernel/ps2_controller.c kernel/ps2_controller.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/ps2_controller_host_test.c kernel/ps2_controller.c -o $@
+$(BUILD)/line-edit-host-test: tests/line_edit_host_test.c userspace/line_edit.c userspace/line_edit.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iinclude -Iuserspace tests/line_edit_host_test.c userspace/line_edit.c -o $@
+$(BUILD)/syscall-input-host-test: tests/syscall_input_host_test.c kernel/syscall_input.c kernel/key_decoder.c kernel/syscall_input.h kernel/key_decoder.h kernel/keyboard.h kernel/user_access.h kernel/process.h kernel/scheduler.h include/suirabox/input_abi.h include/suirabox/syscall_abi.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iinclude -Ikernel tests/syscall_input_host_test.c kernel/syscall_input.c kernel/key_decoder.c -o $@
+.PHONY: host-key-decoder-test host-ps2-controller-test host-line-edit-test host-syscall-input-test
+host-key-decoder-test: $(BUILD)/key-decoder-host-test
+	$<
+host-ps2-controller-test: $(BUILD)/ps2-controller-host-test
+	$<
+host-line-edit-test: $(BUILD)/line-edit-host-test
+	$<
+host-syscall-input-test: $(BUILD)/syscall-input-host-test
+	$<
+check: host-key-decoder-test host-ps2-controller-test host-line-edit-test host-syscall-input-test

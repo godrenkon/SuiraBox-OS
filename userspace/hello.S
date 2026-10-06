@@ -1788,6 +1788,17 @@ preempt_spin:
     cmp $concurrent_done_message_len, %rax
     jne lifecycle_failed
 
+#ifndef SB_DISPLAY_PROOF
+    push %rbx
+    mov %rsp, %rbx
+    andq $-16, %rsp
+    call sb_keyboard_demo
+    mov %rbx, %rsp
+    pop %rbx
+    test %rax, %rax
+    jne lifecycle_failed
+#endif
+
 poll:
     mov $50000, %rcx
 spin:
