@@ -1,11 +1,8 @@
 #include "text.h"
+#include "display_client.h"
+#include "syscall_client.h"
 #include <suirabox/syscall_abi.h>
 
-static int64_t syscall3(uint64_t number, uint64_t a, uint64_t b, uint64_t c) {
-    int64_t result;
-    __asm__ volatile("int $0x80" : "=a"(result) : "0"(number), "D"(a), "S"(b), "d"(c) : "memory", "cc");
-    return result;
-}
 static int present(void *context, uint32_t x, uint32_t y, uint32_t width, uint32_t height,
                     const uint32_t *pixels) {
     (void)context;
@@ -13,11 +10,11 @@ static int present(void *context, uint32_t x, uint32_t y, uint32_t width, uint32
         .size = SB_DISPLAY_PRESENT_SIZE, .version = SB_DISPLAY_ABI_VERSION,
         .x = x, .y = y, .width = width, .height = height, .pixels = (uintptr_t)pixels,
     };
-    return syscall3(SB_SYS_DISPLAY_PRESENT, (uintptr_t)&request, sizeof(request), 0u) == 0 ? 0 : -1;
+    return sb_user_call3(SB_SYS_DISPLAY_PRESENT, (uintptr_t)&request, sizeof(request), 0u) == 0 ? 0 : -1;
 }
-static int setup(sb_text_renderer_t *r) {
+int sb_text_display_setup(sb_text_renderer_t *r) {
     sb_display_info_t info;
-    const int64_t status = syscall3(SB_SYS_DISPLAY_INFO, (uintptr_t)&info, sizeof(info), 0u);
+    const int64_t status = sb_user_call3(SB_SYS_DISPLAY_INFO, (uintptr_t)&info, sizeof(info), 0u);
     if (status == SB_SYS_ERROR_NOT_FOUND) return 1; /* Headless boot remains supported. */
     if (status != 0 || info.version != SB_DISPLAY_ABI_VERSION || info.pixel_format != SB_DISPLAY_PIXEL_RGB888 ||
         info.max_present_pixels < 256u || info.reserved[0] || info.reserved[1] || info.reserved[2]) return -1;
@@ -26,11 +23,11 @@ static int setup(sb_text_renderer_t *r) {
     return 0;
 }
 static int log_message(const char *text, size_t length) {
-    return syscall3(SB_SYS_LOG_WRITE, (uintptr_t)text, length, 0u) == (int64_t)length ? 0 : -1;
+    return sb_user_call3(SB_SYS_LOG_WRITE, (uintptr_t)text, length, 0u) == (int64_t)length ? 0 : -1;
 }
 int sb_boot_text(void) {
     sb_text_renderer_t renderer;
-    const int result = setup(&renderer);
+    const int result = sb_text_display_setup(&renderer);
     if (result == 1) return 0;
     if (result != 0) return -1;
     static const char title[] = "SuiraBox OS";
@@ -44,7 +41,7 @@ int sb_boot_text(void) {
 #ifdef SB_DISPLAY_PROOF
 int sb_text_display_proof(void) {
     sb_text_renderer_t r;
-    if (setup(&r) != 0) return -1;
+    if (sb_text_display_setup(&r) != 0) return -1;
     /* Every cell is opaque. Different backgrounds verify pixel packing and
      * spacing as well as glyph strokes in the real ring-3 display transport. */
 #define DRAW(X,Y,TEXT,FG,BG,SCALE) do { \

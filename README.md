@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **11-3 input/display transport・11-7 font/text rendering**。ユーザー空間のRGB描画に加え、ASCII bitmap文字、厳密なUTF-8 fallback、改行・タブ・画面端clipを実装しました。通常起動でもOS名と状態を表示し、QEMU実画面の全pixelを照合します。CJKフォント・入力・window/compositor・Minecraft実行環境はこれからです。storageのatomic replacement・crash recoveryも未完成です。
+> **Current focus:** **11-3 input/display transport・11-5 compositor foundation**。RGB描画・ASCII文字に続き、PS/2 IRQキーボードをユーザー空間の入力欄へ接続しました。Shift/Caps・Backspace・Enterを扱い、QEMUの仮想キー操作でイベント列と実画面の全pixelを照合します。USB/HID・マウス・入力routing・CJKフォント・window/compositor・Minecraft実行環境はこれからです。storageのatomic replacement・crash recoveryも未完成です。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -179,7 +179,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [ ] **10-3** PCI / PCIe enumeration
 - [ ] **10-4** interrupt routing integration
 - [ ] **10-5** storage drivers
-- [ ] **10-6** input drivers
+- [ ] **10-6** input drivers — PS/2 keyboard IRQ implemented; USB/HID/mouse pending
 - [ ] **10-7** USB framework
 - [ ] **10-8** audio devices
 - [ ] **10-9** power-management devices
@@ -188,7 +188,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 - [x] **11-1** framebuffer abstraction
 - [ ] **11-2** display device model
-- [ ] **11-3** input/display event transport
+- [ ] **11-3** input/display event transport — [PS/2 key events and init editor](docs/KEYBOARD_INPUT.md) implemented; routing/mouse/blocking service pending
 - [ ] **11-4** graphics memory management
 - [ ] **11-5** compositor foundation
 - [ ] **11-6** window system
@@ -310,7 +310,7 @@ block cacheは固定16-entryのsector cacheで、device identity + LBAをkeyにr
 
 Multibootのframebuffer検証で、初回の利用可能状態を確立できなかった不具合を修正しました。RGB565・24bit・32bitのkernel surfaceに統一し、行幅・pitch・メモリ範囲・重複する色maskを検証します。fillは表示領域内へclipし、外部からのpresentはrectangle全体を事前検証します。paddingや領域外のメモリを書き換えません。
 
-`DISPLAY_INFO`（ABI番号43）は解像度と共通pixel形式を返します。`DISPLAY_PRESENT`（44）はPID 1からの1〜256 pixelのRGB描画を受け付け、requestと全pixelをkernelへコピーしてからframebufferへ反映します。物理/MMIOアドレスは公開しません。CIはring 3の描画・不正pointer/範囲/権限の拒否・従来IPCの完走後に、QEMUの実画面をPPM/PNGへ取得し全pixelを照合します。表示は描画輸送の検証用patternです。desktop、文字・入力・window管理は未実装です。
+`DISPLAY_INFO`（ABI番号43）は解像度と共通pixel形式を返します。`DISPLAY_PRESENT`（44）はPID 1からの1〜256 pixelのRGB描画を受け付け、requestと全pixelをkernelへコピーしてからframebufferへ反映します。物理/MMIOアドレスは公開しません。ASCII文字描画と、`KEY_EVENT_READ`（45）によるPS/2キーボード入力も接続しました。通常起動の入力欄で文字入力・Backspace・Enterを扱い、CIは仮想キーからIRQ1・ring 3へ届くイベント列と入力前後の実画面を全pixel照合します。desktop、CJKフォント、入力routing・window管理は未実装です。
 
 **8-8: fsync / atomic update semantics**
 

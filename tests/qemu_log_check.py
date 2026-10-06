@@ -94,6 +94,15 @@ def main() -> None:
             "Display: framebuffer ready", "Display: framebuffer mapped",
             "Display: framebuffer clear OK", "Userspace: boot text rendered",
             "Userspace: concurrent child processes completed",
+            "Userspace: keyboard demo ready",
+        ])
+    if "--input-proof" in sys.argv[2:]:
+        require_ordered(log, "ps2-keyboard", [
+            "Input: PS/2 keyboard IRQ1 ready",
+            "Userspace: concurrent child processes completed",
+            "Userspace: keyboard demo ready",
+            *[f"Userspace: keyboard event {index:02d} OK" for index in range(1,23)],
+            "Userspace: PS/2 IRQ keyboard editing and rejection lifecycle OK",
         ])
     if "--recovery-proof" in sys.argv[2:]:
         require_ordered(log, "fat32-recovery-read-only", [

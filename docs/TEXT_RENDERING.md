@@ -48,6 +48,8 @@ pixel, so partial prefix drawing fails the screenshot comparison. Existing IPC
 and storage proofs continue, and both capture-only fixture disks retain their
 SHA-256. PNG, PPM and serial logs are retained as CI artifacts.
 
-Next steps remain input events, a compositor/window service, font loading and
+PS/2 input events and a small init line editor now use this text renderer; see
+[keyboard input](KEYBOARD_INPUT.md). Next steps remain input routing, a
+compositor/window service, font loading and
 Unicode/CJK text. The proof labels and Continue rectangle are static; they are
 not a working settings screen or language-selection dialog.

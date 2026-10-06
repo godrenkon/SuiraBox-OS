@@ -8,14 +8,14 @@ import sys
 import time
 
 
-def run(build: Path, boot_text: bool = False) -> None:
+def run(build: Path, boot_text: bool = False, keyboard: bool = False) -> None:
     build = build.resolve()
     serial = build / "display.log"
     qmp = build / "qmp.sock"
     # Only this tool's disposable socket is removed; never a user disk path.
     qmp.unlink(missing_ok=True)
     serial.unlink(missing_ok=True)
-    marker = "Userspace: boot text rendered" if boot_text else "Userspace: display surface present and rejection lifecycle OK"
+    marker = "Userspace: keyboard demo ready" if boot_text or keyboard else "Userspace: display surface present and rejection lifecycle OK"
     deadline = time.monotonic() + 30
     with (build / "qemu-host.log").open("wb") as host_log:
         process = subprocess.Popen([
@@ -60,6 +60,32 @@ def run(build: Path, boot_text: bool = False) -> None:
                                 raise RuntimeError(f"QMP {name} failed: {response['error']}")
                             return
                     command("qmp_capabilities")
+                    if keyboard:
+                        command("stop")
+                        command("screendump", {"filename": str(build / "before.ppm")})
+                        command("screendump", {"filename": str(build / "before.png"), "format": "png"})
+                        command("cont")
+                        events = [("shift",True),("a",True),("a",False),("shift",False),
+                                  ("b",True),("b",False),("backspace",True),("backspace",False),
+                                  ("caps_lock",True),("caps_lock",False),("c",True),("c",False),
+                                  ("caps_lock",True),("caps_lock",False),("right",True),("right",False),
+                                  ("ctrl_r",True),("ctrl_r",False),("alt_r",True),("alt_r",False),
+                                  ("ret",True),("ret",False)]
+                        def wait_marker(expected):
+                            while True:
+                                log = serial.read_text(errors="replace")
+                                if "FAILED" in log or "Exception:" in log:
+                                    raise RuntimeError("guest keyboard failure")
+                                if expected in log:
+                                    return
+                                if process.poll() is not None or time.monotonic() > deadline:
+                                    raise RuntimeError(f"missing guest marker: {expected}")
+                                time.sleep(0.01)
+                        for index, (key, down) in enumerate(events, 1):
+                            command("input-send-event", {"events": [{"type":"key", "data": {
+                                "down":down, "key":{"type":"qcode", "data":key}}}]})
+                            wait_marker(f"Userspace: keyboard event {index:02d} OK")
+                        wait_marker("Userspace: PS/2 IRQ keyboard editing and rejection lifecycle OK")
                     command("stop")
                     command("screendump", {"filename": str(build / "screen.ppm")})
                     command("screendump", {"filename": str(build / "screen.png"), "format": "png"})
@@ -84,4 +110,4 @@ def run(build: Path, boot_text: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    run(Path(sys.argv[1]), "--boot-text" in sys.argv[2:])
+    run(Path(sys.argv[1]), "--boot-text" in sys.argv[2:], "--input-proof" in sys.argv[2:])

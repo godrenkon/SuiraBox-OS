@@ -2,6 +2,7 @@
 #include "arch/x86_64/interrupts.h"
 #include "scheduler.h"
 #include "process.h"
+#include "keyboard.h"
 #include <stdint.h>
 
 #define PIT_COMMAND 0x43u
@@ -81,6 +82,8 @@ void timer_init(uint32_t frequency_hz) {
     if (divisor > 0xFFFFu) divisor = 0xFFFFu;
     ticks = 0;
     timer_debug("[TIMER] PIC remap begin\r\n"); pic_remap(); timer_debug("[TIMER] PIC remap complete\r\n");
+    (void)sb_keyboard_init();
+    timer_debug(sb_keyboard_available() ? "Input: PS/2 keyboard IRQ1 ready\r\n" : "Input: PS/2 keyboard unavailable\r\n");
     timer_debug("[TIMER] PIT program begin\r\n");
     outb(PIT_COMMAND, 0x36u); outb(PIT_CHANNEL0, (uint8_t)(divisor & 0xFFu)); outb(PIT_CHANNEL0, (uint8_t)((divisor >> 8) & 0xFFu));
     timer_debug("[TIMER] PIT program complete\r\n");

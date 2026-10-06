@@ -3,6 +3,7 @@
 
 #include <suirabox/handle_abi.h>
 #include <suirabox/display_abi.h>
+#include <suirabox/input_abi.h>
 
 /* SuiraBox userspace syscall ABI, version 1.
  * x86_64 entry: int $0x80
@@ -56,9 +57,10 @@
 #define SB_SYS_FILE_RENAME            42
 #define SB_SYS_DISPLAY_INFO           43
 #define SB_SYS_DISPLAY_PRESENT        44
+#define SB_SYS_KEY_EVENT_READ         45
 
 #define SB_SYS_CORE_MAX_NUMBER   SB_SYS_FILE_OPEN
-#define SB_SYS_PUBLIC_MAX_NUMBER SB_SYS_DISPLAY_PRESENT
+#define SB_SYS_PUBLIC_MAX_NUMBER SB_SYS_KEY_EVENT_READ
 #ifdef SB_SYSCALL_CORE_DISPATCH_BUILD
 #define SB_SYS_MAX_NUMBER SB_SYS_CORE_MAX_NUMBER
 #else

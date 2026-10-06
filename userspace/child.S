@@ -35,6 +35,15 @@ _start:
     cmp $SB_SYS_ERROR_RIGHTS, %rax
     jne child_failed
 
+    /* Init alone owns keyboard events; children cannot consume or probe them. */
+    mov $1, %rdi
+    mov $SB_KEY_EVENT_SIZE, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_KEY_EVENT_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne child_failed
+
     /* The first legacy child owns the dedicated cross-process service proof. */
     cmp $2, %r15
     je service_server
