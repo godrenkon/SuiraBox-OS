@@ -8,14 +8,15 @@ import sys
 import time
 
 
-def run(build: Path, boot_text: bool = False, keyboard: bool = False) -> None:
+def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: bool = False) -> None:
     build = build.resolve()
     serial = build / "display.log"
     qmp = build / "qmp.sock"
     # Only this tool's disposable socket is removed; never a user disk path.
     qmp.unlink(missing_ok=True)
     serial.unlink(missing_ok=True)
-    marker = "Userspace: keyboard demo ready" if boot_text or keyboard else "Userspace: display surface present and rejection lifecycle OK"
+    marker = ("Userspace: keyboard demo ready" if keyboard else "Userspace: shell ready" if boot_text or shell
+              else "Userspace: display surface present and rejection lifecycle OK")
     deadline = time.monotonic() + 30
     with (build / "qemu-host.log").open("wb") as host_log:
         process = subprocess.Popen([
@@ -60,6 +61,43 @@ def run(build: Path, boot_text: bool = False, keyboard: bool = False) -> None:
                                 raise RuntimeError(f"QMP {name} failed: {response['error']}")
                             return
                     command("qmp_capabilities")
+                    def wait_marker(expected):
+                        while True:
+                            log = serial.read_text(errors="replace")
+                            if "FAILED" in log or "Exception:" in log:
+                                raise RuntimeError("guest input failure")
+                            if expected in log:
+                                return
+                            if process.poll() is not None or time.monotonic() > deadline:
+                                raise RuntimeError(f"missing guest marker: {expected}")
+                            time.sleep(0.01)
+                    def key(code, down):
+                        command("input-send-event", {"events": [{"type":"key", "data": {
+                            "down":down, "key":{"type":"qcode", "data":code}}}]})
+                    if shell:
+                        def capture(name):
+                            command("stop")
+                            command("screendump", {"filename": str(build / f"{name}.ppm")})
+                            command("screendump", {"filename": str(build / f"{name}.png"), "format": "png"})
+                            command("cont")
+                        wait_marker("Userspace: shell frame 1 Home")
+                        capture("home")
+                        stages = [("f2", "Files /boot", "boot-files"),
+                                  ("d", "Files /disk", "disk-files"),
+                                  ("r", "Files /disk", "disk-refresh"),
+                                  ("f3", "Settings", "settings"),
+                                  ("tab", "Home", "home-cycle"),
+                                  ("shift-tab", "Settings", "settings-reverse"),
+                                  ("esc", "Home", "home-escape"),
+                                  ("f2", "Files /disk", "disk-return"),
+                                  ("b", "Files /boot", "boot-return")]
+                        for number, (code, view, name) in enumerate(stages, 2):
+                            if code == "shift-tab":
+                                key("shift", True); key("tab", True); key("tab", False); key("shift", False)
+                            else:
+                                key(code, True); key(code, False)
+                            wait_marker(f"Userspace: shell frame {number} {view}")
+                            capture(name)
                     if keyboard:
                         command("stop")
                         command("screendump", {"filename": str(build / "before.ppm")})
@@ -71,16 +109,6 @@ def run(build: Path, boot_text: bool = False, keyboard: bool = False) -> None:
                                   ("caps_lock",True),("caps_lock",False),("right",True),("right",False),
                                   ("ctrl_r",True),("ctrl_r",False),("alt_r",True),("alt_r",False),
                                   ("ret",True),("ret",False)]
-                        def wait_marker(expected):
-                            while True:
-                                log = serial.read_text(errors="replace")
-                                if "FAILED" in log or "Exception:" in log:
-                                    raise RuntimeError("guest keyboard failure")
-                                if expected in log:
-                                    return
-                                if process.poll() is not None or time.monotonic() > deadline:
-                                    raise RuntimeError(f"missing guest marker: {expected}")
-                                time.sleep(0.01)
                         for index, (key, down) in enumerate(events, 1):
                             command("input-send-event", {"events": [{"type":"key", "data": {
                                 "down":down, "key":{"type":"qcode", "data":key}}}]})
@@ -110,4 +138,4 @@ def run(build: Path, boot_text: bool = False, keyboard: bool = False) -> None:
 
 
 if __name__ == "__main__":
-    run(Path(sys.argv[1]), "--boot-text" in sys.argv[2:], "--input-proof" in sys.argv[2:])
+    run(Path(sys.argv[1]), "--boot-text" in sys.argv[2:], "--input-proof" in sys.argv[2:], "--shell" in sys.argv[2:])

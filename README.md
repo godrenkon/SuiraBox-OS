@@ -310,7 +310,11 @@ block cacheは固定16-entryのsector cacheで、device identity + LBAをkeyにr
 
 Multibootのframebuffer検証で、初回の利用可能状態を確立できなかった不具合を修正しました。RGB565・24bit・32bitのkernel surfaceに統一し、行幅・pitch・メモリ範囲・重複する色maskを検証します。fillは表示領域内へclipし、外部からのpresentはrectangle全体を事前検証します。paddingや領域外のメモリを書き換えません。
 
-`DISPLAY_INFO`（ABI番号43）は解像度と共通pixel形式を返します。`DISPLAY_PRESENT`（44）はPID 1からの1〜256 pixelのRGB描画を受け付け、requestと全pixelをkernelへコピーしてからframebufferへ反映します。物理/MMIOアドレスは公開しません。ASCII文字描画と、`KEY_EVENT_READ`（45）によるPS/2キーボード入力も接続しました。通常起動の入力欄で文字入力・Backspace・Enterを扱い、CIは仮想キーからIRQ1・ring 3へ届くイベント列と入力前後の実画面を全pixel照合します。desktop、CJKフォント、入力routing・window管理は未実装です。
+`DISPLAY_INFO`（ABI番号43）は解像度と共通pixel形式を返します。`DISPLAY_PRESENT`（44）はPID 1からの1〜256 pixelのRGB描画を受け付け、requestと全pixelをkernelへコピーしてからframebufferへ反映します。物理/MMIOアドレスは公開しません。ASCII文字描画と、`KEY_EVENT_READ`（45）によるPS/2キーボード入力も接続しました。CIは仮想キーからIRQ1・ring 3へ届くイベント列と、文字入力・Backspace・Enter前後の実画面を全pixel照合します。
+
+**17-3 / 17-5 / 17-6: desktop shell の基盤**
+
+通常起動でHome・Files・Settingsを表示し、F1/F2/F3・Tab/Shift+Tab・Escapeで切り替えます。Filesは実際のVFSから `/boot` と `/disk` の名前・種類・サイズを読み取り専用で表示し、B/Dで対象を選択、Rで再読込できます。件数は12行までに制限し、列挙の成功・失敗・省略すべてでhandleをcloseします。未mountや読込失敗は画面内に表示して再試行できます。Settingsは現在の解像度と入力・フォントの状態を表示します。CIは特別なproofビルドを使わず、実PS/2入力による10画面を全pixel照合し、ディスク全体の不変も確認します。[実装と制限](docs/DESKTOP_SHELL.md)。compositor、window管理、mouse、任意のdirectory移動、設定保存、初回言語選択、CJKフォント・IME、Minecraft本体は未完成のため、ロードマップ全体の完了にはしていません。
 
 **8-8: fsync / atomic update semantics**
 
