@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **8-8 fsync / atomic update semantics・8-9 storage recovery**。FILE_SYNC、FAT32ファイル/directory作成・追記・同一directory内rename、metadata ordering、dirty記録と明示的なclean unmountまで実装しています。次は既存ファイルのatomic replacement・crash recoveryと、OS全体のshutdown連携へ進みます。
+> **Current focus:** **11-1 framebuffer abstraction → 11-3 input/display transport・11-7 font/text rendering**。保存基盤に続き、ユーザー空間から画面情報を取得し、安全にRGB描画を送る基盤を実装しました。入力・文字描画・window/compositor・Minecraft実行環境はこれからです。storageのatomic replacement・crash recoveryも未完成です。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -186,7 +186,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 ## 11. Graphics
 
-- [ ] **11-1** framebuffer abstraction
+- [x] **11-1** framebuffer abstraction
 - [ ] **11-2** display device model
 - [ ] **11-3** input/display event transport
 - [ ] **11-4** graphics memory management
@@ -305,6 +305,12 @@ canonical block I/O、ATA PIO device、VFS node/open-file/open-directory object�
 block cacheは固定16-entryのsector cacheで、device identity + LBAをkeyにread hit/missを処理し、full-sector writeはdirty entryとして保持します。dirty read-after-write、replacement/device unregister/explicit flushでのwriteback、writeback failure時のdirty保持までhost testで固定しています。`sb_block_flush()`と`sb_vfs_sync()`がcanonical flush境界です。
 
 ### Primary work
+
+**11-1: framebuffer abstraction**
+
+Multibootのframebuffer検証で、初回の利用可能状態を確立できなかった不具合を修正しました。RGB565・24bit・32bitのkernel surfaceに統一し、行幅・pitch・メモリ範囲・重複する色maskを検証します。fillは表示領域内へclipし、外部からのpresentはrectangle全体を事前検証します。paddingや領域外のメモリを書き換えません。
+
+`DISPLAY_INFO`（ABI番号43）は解像度と共通pixel形式を返します。`DISPLAY_PRESENT`（44）はPID 1からの1〜256 pixelのRGB描画を受け付け、requestと全pixelをkernelへコピーしてからframebufferへ反映します。物理/MMIOアドレスは公開しません。CIはring 3の描画・不正pointer/範囲/権限の拒否・従来IPCの完走後に、QEMUの実画面をPPM/PNGへ取得し全pixelを照合します。表示は描画輸送の検証用patternです。desktop、文字・入力・window管理は未実装です。
 
 **8-8: fsync / atomic update semantics**
 

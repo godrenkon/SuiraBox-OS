@@ -23,11 +23,14 @@ FAT32_RECOVERY_HOST_TEST := $(BUILD)/fat32-recovery-host-test
 FAT32_DIRTY_HOST_TEST := $(BUILD)/fat32-dirty-host-test
 FAT32_UNMOUNT_HOST_TEST := $(BUILD)/fat32-unmount-host-test
 FAT32_RENAME_HOST_TEST := $(BUILD)/fat32-rename-host-test
+DISPLAY_SURFACE_HOST_TEST := $(BUILD)/display-surface-host-test
+FRAMEBUFFER_HOST_TEST := $(BUILD)/framebuffer-host-test
 STORAGE_DURABILITY_PROOF ?= 0
 STORAGE_RECOVERY_PROOF ?= 0
 STORAGE_DIRTY_PROOF ?= 0
 STORAGE_CLEAN_PROOF ?= 0
 STORAGE_RENAME_PROOF ?= 0
+DISPLAY_PROOF ?= 0
 ifneq ($(word 2,$(filter 1,$(STORAGE_DURABILITY_PROOF) $(STORAGE_RECOVERY_PROOF) $(STORAGE_DIRTY_PROOF) $(STORAGE_CLEAN_PROOF) $(STORAGE_RENAME_PROOF))),)
 $(error Storage proof modes require separate builds)
 endif
@@ -58,11 +61,16 @@ endif
 ifeq ($(STORAGE_RENAME_PROOF),1)
 USER_ASFLAGS += -DSB_STORAGE_RENAME_PROOF
 endif
+ifeq ($(DISPLAY_PROOF),1)
+USER_ASFLAGS += -DSB_DISPLAY_PROOF
+endif
 
 BOOT_OBJ := $(BUILD)/boot.o
 KERNEL_OBJ := $(BUILD)/kernel.o
 SETUP_OBJ := $(BUILD)/setup.o
 FRAMEBUFFER_OBJ := $(BUILD)/framebuffer.o
+DISPLAY_SURFACE_OBJ := $(BUILD)/display_surface.o
+SYSCALL_DISPLAY_OBJ := $(BUILD)/syscall_display.o
 PCI_OBJ := $(BUILD)/pci.o
 BLOCK_OBJ := $(BUILD)/block.o
 BLOCK_CACHE_OBJ := $(BUILD)/block_cache.o
@@ -113,8 +121,8 @@ CHILD_OBJ := $(BUILD)/user-child.o
 # Switching back to a normal build must remove the CI-only write path even
 # when objects already exist. Only update the stamp when the mode changes.
 $(BUILD)/storage-durability-mode: force-storage-config | $(BUILD)
-	@if test ! -f $@ || test "$$(cat $@)" != "$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF):$(STORAGE_CLEAN_PROOF):$(STORAGE_RENAME_PROOF)"; then \
-		printf '%s\n' '$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF):$(STORAGE_CLEAN_PROOF):$(STORAGE_RENAME_PROOF)' > $@; \
+	@if test ! -f $@ || test "$$(cat $@)" != "$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF):$(STORAGE_CLEAN_PROOF):$(STORAGE_RENAME_PROOF):$(DISPLAY_PROOF)"; then \
+		printf '%s\n' '$(STORAGE_DURABILITY_PROOF):$(STORAGE_RECOVERY_PROOF):$(STORAGE_DIRTY_PROOF):$(STORAGE_CLEAN_PROOF):$(STORAGE_RENAME_PROOF):$(DISPLAY_PROOF)' > $@; \
 	fi
 
 $(KERNEL_OBJ): $(BUILD)/storage-durability-mode kernel/storage_durability.h
@@ -133,11 +141,17 @@ $(BOOT_OBJ): boot/boot.S | $(BUILD)
 $(SETUP_OBJ): kernel/setup.c kernel/setup.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(FRAMEBUFFER_OBJ): kernel/framebuffer.c kernel/framebuffer.h | $(BUILD)
+$(FRAMEBUFFER_OBJ): kernel/framebuffer.c kernel/framebuffer.h kernel/display_surface.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
-$(KERNEL_OBJ): kernel/kernel.c kernel/pci.h kernel/vfs.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/block.h kernel/ata_pio.h kernel/fs/fat32.h kernel/framebuffer.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/mm/heap.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/syscall.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(KERNEL_OBJ): kernel/kernel.c kernel/pci.h kernel/vfs.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/block.h kernel/ata_pio.h kernel/fs/fat32.h kernel/framebuffer.h kernel/mm/pmm.h kernel/mm/vmm.h kernel/mm/heap.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/syscall.h kernel/arch/x86_64/interrupts.h kernel/arch/x86_64/gdt.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/fs -Ikernel/mm -Ikernel/arch/x86_64 -c $< -o $@
+
+$(DISPLAY_SURFACE_OBJ): kernel/display_surface.c kernel/display_surface.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
+
+$(SYSCALL_DISPLAY_OBJ): kernel/syscall_display.c kernel/syscall_display.h kernel/framebuffer.h kernel/syscall.h kernel/user_access.h kernel/process.h kernel/scheduler.h include/suirabox/display_abi.h include/suirabox/syscall_abi.h | $(BUILD)
+	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
 
 $(PCI_OBJ): kernel/pci.c kernel/pci.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -c $< -o $@
@@ -226,22 +240,22 @@ $(PROCESS_EXEC_OBJ): kernel/process_exec.c kernel/process_exec.h kernel/process.
 $(USER_ACCESS_OBJ): kernel/user_access.c kernel/user_access.h kernel/process.h kernel/handle.h include/suirabox/handle_abi.h kernel/mm/address_space.h kernel/mm/pmm.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(SYSCALL_OBJ): kernel/syscall.c kernel/syscall.h kernel/user_access.h kernel/timer.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/process_exec.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -DSB_SYSCALL_CORE_DISPATCH_BUILD -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_DIR_OBJ): kernel/syscall_directory.c kernel/syscall.h kernel/syscall_pipe.h kernel/syscall_event.h kernel/syscall_message_queue.h kernel/syscall_shared_memory.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/handle.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(SYSCALL_DIR_OBJ): kernel/syscall_directory.c kernel/syscall.h kernel/syscall_pipe.h kernel/syscall_event.h kernel/syscall_message_queue.h kernel/syscall_shared_memory.h kernel/syscall_display.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/process_exec.h kernel/handle.h kernel/vfs_object.h kernel/vfs_namespace.h kernel/vfs_boot_module.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_PIPE_OBJ): kernel/syscall_pipe.c kernel/syscall_pipe.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/pipe.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(SYSCALL_PIPE_OBJ): kernel/syscall_pipe.c kernel/syscall_pipe.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/pipe.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_EVENT_OBJ): kernel/syscall_event.c kernel/syscall_event.h kernel/syscall.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/event.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(SYSCALL_EVENT_OBJ): kernel/syscall_event.c kernel/syscall_event.h kernel/syscall.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/event.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_MESSAGE_QUEUE_OBJ): kernel/syscall_message_queue.c kernel/syscall_message_queue.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/message_queue.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(SYSCALL_MESSAGE_QUEUE_OBJ): kernel/syscall_message_queue.c kernel/syscall_message_queue.h kernel/syscall.h kernel/user_access.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/message_queue.h kernel/mm/heap.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
-$(SYSCALL_SHARED_MEMORY_OBJ): kernel/syscall_shared_memory.c kernel/syscall_shared_memory.h kernel/syscall.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/shared_memory.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(SYSCALL_SHARED_MEMORY_OBJ): kernel/syscall_shared_memory.c kernel/syscall_shared_memory.h kernel/syscall.h kernel/scheduler.h kernel/process.h kernel/handle.h kernel/shared_memory.h kernel/arch/x86_64/irq_frame.h include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel -Ikernel/mm -c $< -o $@
 
 $(SYSCALL_ARCH_OBJ): kernel/arch/x86_64/syscall.S kernel/arch/x86_64/irq_frame.h | $(BUILD)
@@ -265,10 +279,10 @@ $(USERMODE_OBJ): kernel/arch/x86_64/user_mode.S kernel/arch/x86_64/user_mode.h |
 $(MB_MODULES_OBJ): kernel/mm/multiboot_modules.c kernel/mm/multiboot_modules.h | $(BUILD)
 	$(CC) $(CFLAGS) -Ikernel/mm -c $< -o $@
 
-$(USER_OBJ): userspace/hello.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(USER_OBJ): userspace/hello.S userspace/display_probe.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(USER_ASFLAGS) -c $< -o $@
 
-$(CHILD_OBJ): userspace/child.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h | $(BUILD)
+$(CHILD_OBJ): userspace/child.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(USER_ASFLAGS) -c $< -o $@
 
 $(USER_ELF): $(USER_OBJ) userspace/user.ld
@@ -279,7 +293,7 @@ $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 
 userspace: $(USER_ELF) $(CHILD_ELF)
 
-KERNEL_OBJECTS := $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(BLOCK_CACHE_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_NAMESPACE_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PIPE_OBJ) $(EVENT_OBJ) $(MESSAGE_QUEUE_OBJ) $(SHARED_MEMORY_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_DIR_OBJ) $(SYSCALL_PIPE_OBJ) $(SYSCALL_EVENT_OBJ) $(SYSCALL_MESSAGE_QUEUE_OBJ) $(SYSCALL_SHARED_MEMORY_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
+KERNEL_OBJECTS := $(BOOT_OBJ) $(SETUP_OBJ) $(FRAMEBUFFER_OBJ) $(DISPLAY_SURFACE_OBJ) $(SYSCALL_DISPLAY_OBJ) $(KERNEL_OBJ) $(PCI_OBJ) $(BLOCK_OBJ) $(BLOCK_CACHE_OBJ) $(VFS_OBJ) $(VFS_OBJECT_OBJ) $(VFS_NAMESPACE_OBJ) $(VFS_BOOT_MODULE_OBJ) $(STORAGE_TEST_OBJ) $(ATA_OBJ) $(FAT32_OBJ) $(PMM_OBJ) $(PMM_MB_OBJ) $(VMM_OBJ) $(HEAP_OBJ) $(INT_OBJ) $(EXC_OBJ) $(IRQ_OBJ) $(PANIC_OBJ) $(TIMER_OBJ) $(SCHED_OBJ) $(CONTEXT_OBJ) $(HANDLE_OBJ) $(PIPE_OBJ) $(EVENT_OBJ) $(MESSAGE_QUEUE_OBJ) $(SHARED_MEMORY_OBJ) $(PROCESS_OBJ) $(PROCESS_EXEC_OBJ) $(USER_ACCESS_OBJ) $(SYSCALL_OBJ) $(SYSCALL_DIR_OBJ) $(SYSCALL_PIPE_OBJ) $(SYSCALL_EVENT_OBJ) $(SYSCALL_MESSAGE_QUEUE_OBJ) $(SYSCALL_SHARED_MEMORY_OBJ) $(SYSCALL_ARCH_OBJ) $(ADDRSPACE_OBJ) $(ELF_OBJ) $(ELF_LOADER_OBJ) $(GDT_OBJ) $(USERMODE_OBJ) $(MB_MODULES_OBJ)
 
 ifeq ($(STORAGE_DURABILITY_PROOF),1)
 KERNEL_OBJECTS += $(BUILD)/storage_durability.o
@@ -402,7 +416,19 @@ $(FAT32_RENAME_HOST_TEST): tests/fat32_rename_host_test.c kernel/fs/fat32.c kern
 host-fat32-rename-test: $(FAT32_RENAME_HOST_TEST)
 	$(FAT32_RENAME_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test host-fat32-write-test host-fat32-extend-test host-fat32-create-test host-fat32-directory-growth-test host-fat32-mkdir-test host-fat32-recovery-test host-fat32-dirty-test host-fat32-unmount-test host-fat32-rename-test
+$(DISPLAY_SURFACE_HOST_TEST): tests/display_surface_host_test.c kernel/display_surface.c kernel/display_surface.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/display_surface_host_test.c kernel/display_surface.c -o $@
+.PHONY: host-display-surface-test
+host-display-surface-test: $(DISPLAY_SURFACE_HOST_TEST)
+	$(DISPLAY_SURFACE_HOST_TEST)
+
+$(FRAMEBUFFER_HOST_TEST): tests/framebuffer_host_test.c kernel/framebuffer.c kernel/framebuffer.h kernel/display_surface.c kernel/display_surface.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Ikernel tests/framebuffer_host_test.c kernel/framebuffer.c kernel/display_surface.c -o $@
+.PHONY: host-framebuffer-test
+host-framebuffer-test: $(FRAMEBUFFER_HOST_TEST)
+	$(FRAMEBUFFER_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test host-fat32-write-test host-fat32-extend-test host-fat32-create-test host-fat32-directory-growth-test host-fat32-mkdir-test host-fat32-recovery-test host-fat32-dirty-test host-fat32-unmount-test host-fat32-rename-test host-display-surface-test host-framebuffer-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \

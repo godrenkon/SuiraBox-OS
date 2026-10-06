@@ -1,4 +1,5 @@
 #include <suirabox/syscall_abi.h>
+#include "display_probe.S"
 
 .section .text
 .code64
@@ -651,6 +652,9 @@ runtime_rename_directory_end:
     int $SB_SYSCALL_VECTOR
     cmp $runtime_directory_message_len, %rax
     jne lifecycle_failed
+#ifdef SB_DISPLAY_PROOF
+    call sb_display_probe
+#endif
 #ifdef SB_STORAGE_RECOVERY_PROOF
 runtime_fat32_recovery_probe:
     lea runtime_disk_path(%rip), %rdi

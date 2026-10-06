@@ -6,6 +6,12 @@ The current target is the graphical desktop edition. The CUI/server edition is a
 
 ## First visible experience
 
+The current implemented foundation is a validated boot RGB surface and bounded
+DISPLAY_INFO/DISPLAY_PRESENT transport from init userspace. QEMU capture verifies
+the actual screen after ring-3 rendering and rejection tests. The colored proof
+pattern is a transport fixture; it does not implement the desktop, localization
+dialog, text rendering or input. Those remain the next GUI integration steps.
+
 On a fresh installation:
 
 1. Firmware/bootloader starts the kernel.

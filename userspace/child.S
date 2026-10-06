@@ -26,6 +26,15 @@ _start:
     cmp $SB_SYS_ERROR_RIGHTS, %rax
     jne child_failed
 
+    /* Display presentation belongs to bootstrap init; reject before copying. */
+    mov $1, %rdi
+    mov $SB_DISPLAY_PRESENT_SIZE, %rsi
+    xor %rdx, %rdx
+    mov $SB_SYS_DISPLAY_PRESENT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne child_failed
+
     /* The first legacy child owns the dedicated cross-process service proof. */
     cmp $2, %r15
     je service_server

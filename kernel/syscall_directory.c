@@ -3,6 +3,7 @@
 #include "syscall_event.h"
 #include "syscall_message_queue.h"
 #include "syscall_shared_memory.h"
+#include "syscall_display.h"
 #include "scheduler.h"
 #include "process.h"
 #include "process_exec.h"
@@ -25,7 +26,7 @@ _Static_assert(SB_DIRECTORY_ENTRY_TYPE_DEVICE == SB_VFS_NODE_DEVICE,
                "directory device type mismatch");
 _Static_assert(sizeof(sb_directory_entry_t) == SB_DIRECTORY_ENTRY_SIZE,
                "directory entry ABI size mismatch");
-_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_FILE_RENAME,
+_Static_assert(SB_SYS_PUBLIC_MAX_NUMBER >= SB_SYS_DISPLAY_PRESENT,
                "public syscall max-number table is stale");
 
 static int directory_open_logged;
@@ -480,6 +481,8 @@ sb_irq_frame_t *sb_syscall_dispatch_entry(sb_irq_frame_t *frame) {
     if (frame->rax == SB_SYS_DIRECTORY_CREATE) return directory_create(frame);
     if (frame->rax == SB_SYS_VOLUME_UNMOUNT) return volume_unmount(frame);
     if (frame->rax == SB_SYS_FILE_RENAME) return file_rename(frame);
+    if (frame->rax == SB_SYS_DISPLAY_INFO || frame->rax == SB_SYS_DISPLAY_PRESENT)
+        return sb_syscall_dispatch_display(frame);
     if (frame->rax >= SB_SYS_PIPE_CREATE && frame->rax <= SB_SYS_PIPE_WRITE)
         return sb_syscall_dispatch_pipe(frame);
     if (frame->rax >= SB_SYS_EVENT_CREATE && frame->rax <= SB_SYS_EVENT_RESET)

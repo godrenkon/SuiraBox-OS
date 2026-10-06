@@ -49,7 +49,7 @@ Current errors:
 
 ## Version 1 syscall table
 
-The current public maximum syscall number is **42**.
+The current public maximum syscall number is **44**.
 
 | Number | Name | Arguments | Result |
 | ---: | --- | --- | --- |
@@ -96,12 +96,14 @@ The current public maximum syscall number is **42**.
 | 40 | `SB_SYS_DIRECTORY_CREATE` | `rdi=absolute path`, `rsi=path length`, `rdx=0` | new DIRECTORY handle; exclusive durable creation |
 | 41 | `SB_SYS_VOLUME_UNMOUNT` | `rdi=exact mount path`, `rsi=path length`, `rdx=0` | 0 after finalization and namespace detach; PID 1 only |
 | 42 | `SB_SYS_FILE_RENAME` | `rdi=source path`, `rsi=source length`, `rdx=destination path`, `r10=destination length`, `r8=0` | 0 after exclusive same-directory rename and publication flush |
+| 43 | `SB_SYS_DISPLAY_INFO` | `rdi=info output`, `rsi=32`, `rdx=0` | 0 after copying display metadata; NOT_FOUND when no mapped display exists |
+| 44 | `SB_SYS_DISPLAY_PRESENT` | `rdi=present request`, `rsi=32`, `rdx=0` | 0 after bounded RGB rectangle presentation; PID 1 only |
 
 Syscall 4 and syscall 13 are retained for ABI-v1 compatibility. New code should prefer the versioned spawn request and generic VFS path interfaces.
 
 ## ABI info routing
 
-The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 42.
+The original frame dispatcher owns the historic 0..16 implementation table. Object-specific calls 17 and above are append-only extensions routed by the syscall entry layer. This split is internal only: userspace sees one ABI and `SB_SYS_ABI_INFO` reports the public maximum, 44.
 
 ## Userspace pointer rules
 
@@ -240,6 +242,35 @@ unmount; the new name may already be visible or durable. Successful rename does
 not restore clean status. This call does not replace an existing destination,
 move directories, synthesize LFN entries or guarantee power-loss atomicity.
 Atomic replacement and a recovery protocol remain future work.
+
+## Display surface
+
+The append-only display calls use layouts in `include/suirabox/display_abi.h`.
+DISPLAY_INFO is available to any process; it returns a zero-initialized 32-byte
+`sb_display_info_t` containing version 1, width, height, RGB888 source format and
+a maximum of 256 pixels per present. Reserved fields are zero. The interface
+does not expose physical addresses, native pitch, channel masks or kernel MMIO.
+No available mapped boot display returns NOT_FOUND. Invalid length/null pointer
+or reserved `rdx` returns INVALID; an unwritable output mapping returns FAULT.
+
+DISPLAY_PRESENT currently requires bootstrap init/PID 1. Children receive RIGHTS
+before request access, including when the pointer is invalid. Its 32-byte request
+contains size (u32), version (u16), flags (u16, zero), x/y/width/height (u32 each),
+and a pixels pointer (u64). Rows are tightly packed, with one 32-bit word per
+pixel in numeric 0x00RRGGBB form; the high byte is ignored. No alpha blending is
+performed. Width and height must be positive, total pixels at most 256, and the
+whole rectangle must fit the display. Null/invalid fields, flags, versions and
+coordinates return INVALID; excess pixel count returns LIMIT. Absent mapped
+display returns NOT_FOUND. Unreadable request or source mapping returns FAULT.
+
+The kernel copies the complete request and bounded source before touching the
+framebuffer, so user pointer faults cannot cause partial drawing. Native RGB565,
+24-bit and 32-bit channel layouts are converted inside the validated surface
+layer, preserving row padding. Present requests reject overflow rather than
+clipping. Kernel fill helpers may clip. This is one boot framebuffer with one
+authorized presenter, not buffer handles, window ownership, a compositor, text
+rendering, GPU acceleration, input events or dynamic mode setting. A dedicated
+display-service capability remains future work.
 
 ## PIPE handles
 
