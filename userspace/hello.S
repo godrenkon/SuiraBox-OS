@@ -563,6 +563,44 @@ runtime_directory_fillers:
     dec %r14
     jnz runtime_directory_fillers
 #endif
+#ifdef SB_STORAGE_RENAME_PROOF
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    je runtime_rename_directory_end
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_REGULAR, directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpw $9, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpq $runtime_rename_expected_len, SB_DIRECTORY_ENTRY_SIZE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    lea SB_DIRECTORY_ENTRY_NAME_OFFSET+directory_entry_buffer(%rip), %rsi
+    lea runtime_rename_world_name(%rip), %rdi
+    mov $9, %rcx
+    cld
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea directory_entry_buffer(%rip), %rsi
+    mov $SB_SYS_DIRECTORY_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jne lifecycle_failed
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_DIRECTORY, directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    cmpw $5, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+    lea SB_DIRECTORY_ENTRY_NAME_OFFSET+directory_entry_buffer(%rip), %rsi
+    lea runtime_rename_saves_name(%rip), %rdi
+    mov $5, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+    movq $1, runtime_rename_reboot(%rip)
+#endif
 #ifdef SB_STORAGE_CLEAN_PROOF
     /* The second boot has the extra file published by clean unmount. */
     mov %r12, %rdi
@@ -592,6 +630,9 @@ runtime_directory_fillers:
     jne lifecycle_failed
 #ifdef SB_STORAGE_CLEAN_PROOF
 runtime_clean_directory_end:
+#endif
+#ifdef SB_STORAGE_RENAME_PROOF
+runtime_rename_directory_end:
 #endif
     mov %r12, %rdi
     mov $SB_SYS_HANDLE_CLOSE, %rax
@@ -658,6 +699,347 @@ runtime_fat32_dirty_probe:
     jne lifecycle_failed
 runtime_dirty_stop:
     jmp runtime_dirty_stop
+#endif
+#ifdef SB_STORAGE_RENAME_PROOF
+runtime_fat32_rename_probe:
+    cmpq $0, runtime_rename_reboot(%rip)
+    jne runtime_rename_reboot_read
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_rename_payload(%rip), %rsi
+    mov $runtime_rename_payload_len, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_payload_len, %rax
+    jne lifecycle_failed
+    /* No FILE_SYNC before rename: publication must first persist staged bytes. */
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    lea runtime_rename_world(%rip), %rdx
+    mov $runtime_rename_world_len, %r10
+    mov $1, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_INVALID, %rax
+    jne lifecycle_failed
+    mov $1, %rdi
+    mov $5, %rsi
+    lea runtime_rename_world(%rip), %rdx
+    mov $runtime_rename_world_len, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    mov $1, %rdx
+    mov $5, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_FAULT, %rax
+    jne lifecycle_failed
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    lea runtime_rename_world(%rip), %rdx
+    mov $256, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_LIMIT, %rax
+    jne lifecycle_failed
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    lea runtime_rename_nul(%rip), %rdx
+    mov $runtime_rename_nul_len, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_INVALID, %rax
+    jne lifecycle_failed
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    lea runtime_disk_path(%rip), %rdx
+    mov $runtime_disk_path_len, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_EXISTS, %rax
+    jne lifecycle_failed
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    lea runtime_disk_directory_path(%rip), %rdx
+    mov $runtime_disk_directory_path_len, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_RIGHTS, %rax
+    jne lifecycle_failed
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    lea runtime_rename_world(%rip), %rdx
+    mov $runtime_rename_world_len, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    lea runtime_rename_world(%rip), %rdi
+    mov $runtime_rename_world_len, %rsi
+    lea runtime_rename_lower(%rip), %rdx
+    mov $runtime_rename_lower_len, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+    /* Held handle remains at end of payload; append through it after rename. */
+    mov %r12, %rdi
+    lea runtime_rename_suffix(%rip), %rsi
+    mov $1, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $1, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_FILE_SYNC, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $0, %rsi
+    mov $SB_SYS_FILE_SEEK, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea runtime_rename_buffer(%rip), %rsi
+    mov $runtime_rename_expected_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_expected_len, %rax
+    jne lifecycle_failed
+    cld
+    lea runtime_rename_buffer(%rip), %rsi
+    lea runtime_rename_payload(%rip), %rdi
+    mov $runtime_rename_expected_len, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    lea runtime_rename_world(%rip), %rdi
+    mov $runtime_rename_world_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_rename_buffer(%rip), %rsi
+    mov $runtime_rename_expected_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_expected_len, %rax
+    jne lifecycle_failed
+    cld
+    lea runtime_rename_buffer(%rip), %rsi
+    lea runtime_rename_payload(%rip), %rdi
+    mov $runtime_rename_expected_len, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    lea runtime_rename_message(%rip), %rdi
+    mov $runtime_rename_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_message_len, %rax
+    jne lifecycle_failed
+    lea runtime_rename_saves(%rip), %rdi
+    mov $runtime_rename_saves_len, %rsi
+    mov $0, %rdx
+    mov $SB_SYS_DIRECTORY_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    lea runtime_rename_nested_staged(%rip), %rdi
+    mov $runtime_rename_nested_staged_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_CREATE, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_rename_payload(%rip), %rsi
+    mov $runtime_rename_payload_len, %rdx
+    mov $SB_SYS_FILE_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_payload_len, %rax
+    jne lifecycle_failed
+    lea runtime_rename_nested_staged(%rip), %rdi
+    mov $runtime_rename_nested_staged_len, %rsi
+    lea runtime_rename_world(%rip), %rdx
+    mov $runtime_rename_world_len, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_INVALID, %rax
+    jne lifecycle_failed
+    lea runtime_rename_nested_staged(%rip), %rdi
+    mov $runtime_rename_nested_staged_len, %rsi
+    lea runtime_rename_nested_world(%rip), %rdx
+    mov $runtime_rename_nested_world_len, %r10
+    mov $0, %r8
+    mov $SB_SYS_FILE_RENAME, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $0, %rsi
+    mov $SB_SYS_FILE_SEEK, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    mov %r12, %rdi
+    lea runtime_rename_buffer(%rip), %rsi
+    mov $runtime_rename_payload_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_payload_len, %rax
+    jne lifecycle_failed
+    cld
+    lea runtime_rename_buffer(%rip), %rsi
+    lea runtime_rename_payload(%rip), %rdi
+    mov $runtime_rename_payload_len, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    jmp runtime_rename_detach
+runtime_rename_reboot_read:
+    lea runtime_rename_world(%rip), %rdi
+    mov $runtime_rename_world_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_rename_buffer(%rip), %rsi
+    mov $runtime_rename_expected_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_expected_len, %rax
+    jne lifecycle_failed
+    cld
+    lea runtime_rename_buffer(%rip), %rsi
+    lea runtime_rename_payload(%rip), %rdi
+    mov $runtime_rename_expected_len, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    lea runtime_rename_nested_world(%rip), %rdi
+    mov $runtime_rename_nested_world_len, %rsi
+    mov $SB_FILE_ACCESS_ALL, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    test %rax, %rax
+    jle lifecycle_failed
+    mov %rax, %r12
+    mov %r12, %rdi
+    lea runtime_rename_buffer(%rip), %rsi
+    mov $runtime_rename_payload_len, %rdx
+    mov $SB_SYS_FILE_READ, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_payload_len, %rax
+    jne lifecycle_failed
+    cld
+    lea runtime_rename_buffer(%rip), %rsi
+    lea runtime_rename_payload(%rip), %rdi
+    mov $runtime_rename_payload_len, %rcx
+    repe cmpsb
+    jne lifecycle_failed
+    mov %r12, %rdi
+    mov $SB_SYS_HANDLE_CLOSE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    lea runtime_rename_staged(%rip), %rdi
+    mov $runtime_rename_staged_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+    lea runtime_rename_nested_staged(%rip), %rdi
+    mov $runtime_rename_nested_staged_len, %rsi
+    mov $SB_FILE_ACCESS_READ, %rdx
+    mov $SB_SYS_FILE_OPEN, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+    jne lifecycle_failed
+runtime_rename_detach:
+    lea runtime_disk_directory_path(%rip), %rdi
+    mov $runtime_disk_directory_path_len, %rsi
+    mov $0, %rdx
+    mov $SB_SYS_VOLUME_UNMOUNT, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $0, %rax
+    jne lifecycle_failed
+    cmpq $0, runtime_rename_reboot(%rip)
+    jne runtime_rename_reboot_log
+    lea runtime_rename_detach_message(%rip), %rdi
+    mov $runtime_rename_detach_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_detach_message_len, %rax
+    jne lifecycle_failed
+    jmp runtime_rename_done
+runtime_rename_reboot_log:
+    lea runtime_rename_reboot_message(%rip), %rdi
+    mov $runtime_rename_reboot_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_rename_reboot_message_len, %rax
+    jne lifecycle_failed
+runtime_rename_done:
 #endif
 #ifdef SB_STORAGE_CLEAN_PROOF
 runtime_fat32_clean_probe:
@@ -1517,6 +1899,55 @@ runtime_dirty_path:
 runtime_dirty_message:
     .ascii "Userspace: FAT32 dirty marker durable before unsynced create checkpoint\r\n"
 .set runtime_dirty_message_len, . - runtime_dirty_message
+#endif
+#ifdef SB_STORAGE_RENAME_PROOF
+runtime_rename_staged:
+    .ascii "/disk/STAGED.TMP"
+.set runtime_rename_staged_len, . - runtime_rename_staged
+runtime_rename_world:
+    .ascii "/disk/WORLD.DAT"
+.set runtime_rename_world_len, . - runtime_rename_world
+runtime_rename_lower:
+    .ascii "/disk/world.dat"
+.set runtime_rename_lower_len, . - runtime_rename_lower
+runtime_rename_saves:
+    .ascii "/disk/SAVES"
+.set runtime_rename_saves_len, . - runtime_rename_saves
+runtime_rename_nested_staged:
+    .ascii "/disk/SAVES/STAGED.TMP"
+.set runtime_rename_nested_staged_len, . - runtime_rename_nested_staged
+runtime_rename_nested_world:
+    .ascii "/disk/SAVES/WORLD.DAT"
+.set runtime_rename_nested_world_len, . - runtime_rename_nested_world
+runtime_rename_nul:
+    .ascii "/disk/WOR\000LD.DAT"
+.set runtime_rename_nul_len, . - runtime_rename_nul
+runtime_rename_world_name:
+    .ascii "WORLD.DAT"
+runtime_rename_saves_name:
+    .ascii "SAVES"
+runtime_rename_payload:
+    .ascii "SUIRABOX RENAMED\n"
+.set runtime_rename_payload_len, . - runtime_rename_payload
+runtime_rename_suffix:
+    .ascii "!"
+.set runtime_rename_expected_len, . - runtime_rename_payload
+runtime_rename_message:
+    .ascii "Userspace: FAT32 rename published staged data and preserved open handles\r\n"
+.set runtime_rename_message_len, . - runtime_rename_message
+runtime_rename_detach_message:
+    .ascii "Userspace: FAT32 nested rename persisted and cleanly detached volume\r\n"
+.set runtime_rename_detach_message_len, . - runtime_rename_detach_message
+runtime_rename_reboot_message:
+    .ascii "Userspace: FAT32 rename reboot verified writable files and detached volume\r\n"
+.set runtime_rename_reboot_message_len, . - runtime_rename_reboot_message
+.section .bss
+.balign 8
+runtime_rename_reboot:
+    .skip 8
+runtime_rename_buffer:
+    .skip 32
+.section .rodata
 #endif
 #ifdef SB_STORAGE_CLEAN_PROOF
 runtime_clean_path:

@@ -66,6 +66,18 @@ def main() -> None:
             "Storage: VOLUME_UNMOUNT finalized backing volume",
             marker,
         ])
+    if "--rename-proof" in sys.argv[2:] or "--rename-reboot-proof" in sys.argv[2:]:
+        if "recovery required" in log or "FAILED" in log:
+            fail("rename proof encountered a recovery mount or failed lifecycle")
+        markers = ["Storage: FAT32 system mount /disk ready",
+                   "Userspace: runtime FAT32 directory enumeration OK"]
+        if "--rename-proof" in sys.argv[2:]:
+            markers.append("Userspace: FAT32 rename published staged data and preserved open handles")
+        markers += ["Storage: VOLUME_UNMOUNT finalized backing volume",
+                    "Userspace: FAT32 rename reboot verified writable files and detached volume"
+                    if "--rename-reboot-proof" in sys.argv[2:] else
+                    "Userspace: FAT32 nested rename persisted and cleanly detached volume"]
+        require_ordered(log, "fat32-rename", markers)
     if "--recovery-proof" in sys.argv[2:]:
         require_ordered(log, "fat32-recovery-read-only", [
             "Storage: FAT32 recovery required; mounted read-only",
