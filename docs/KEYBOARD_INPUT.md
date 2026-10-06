@@ -45,8 +45,9 @@ remain future work; other processes cannot drain the boot owner's queue.
 
 ## Visible demo and tests
 
-After the existing IPC/child lifecycle completes, normal init shows a 32-character
-ASCII input line. The userspace editor applies a temporary US layout, Shift/Caps,
+Normal init now starts the [desktop shell](DESKTOP_SHELL.md) after the IPC/child
+lifecycle, with F1/F2/F3 and Tab navigation. The opt-in INPUT_PROOF fixture shows
+a 32-character ASCII input line. Its editor applies a temporary US layout, Shift/Caps,
 Backspace and Enter. Enter shows the last submitted line; arrows and shortcuts
 do not insert text. The loop sleeps one PIT tick while empty. This is a small
 keyboard demo, not a shell, desktop, IME, language dialog or Minecraft runtime.
@@ -62,7 +63,7 @@ same sequence must survive. Before and after PNG/PPM screens are compared at
 every pixel; the final submitted value is AC and the typed line is empty. The
 file-backed disk SHA-256 must remain unchanged and all existing boot/IPC/storage
 proofs run alongside it. INPUT_PROOF is opt-in and its C proof symbol disappears
-when the mode is disabled; normal editing remains enabled.
+when the mode is disabled; normal boot starts desktop navigation instead.
 
 Protocol verification references: [QEMU PC keyboard controller](https://github.com/qemu/qemu/blob/master/hw/input/pckbd.c),
 [PS/2 emulation](https://github.com/qemu/qemu/blob/master/hw/input/ps2.c),

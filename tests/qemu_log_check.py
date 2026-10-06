@@ -52,6 +52,15 @@ def main() -> None:
 
     if "Exception:" in log:
         fail("unexpected kernel/user exception detected")
+    if "--shell" in sys.argv[2:]:
+        if "FAILED" in log:
+            fail("desktop shell encountered a failed lifecycle")
+        require_ordered(log,"desktop-shell",[
+            "Userspace: boot text rendered",
+            "Userspace: concurrent child processes completed",
+            "Userspace: shell frame 1 Home",
+            "Userspace: shell ready",
+        ])
     if "--clean-proof" in sys.argv[2:] or "--clean-reboot-proof" in sys.argv[2:]:
         if "recovery required" in log or "FAILED" in log:
             fail("clean-unmount proof encountered a recovery mount or failed lifecycle")

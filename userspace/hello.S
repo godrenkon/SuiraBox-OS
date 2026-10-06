@@ -1792,7 +1792,11 @@ preempt_spin:
     push %rbx
     mov %rsp, %rbx
     andq $-16, %rsp
+#ifdef SB_INPUT_PROOF
     call sb_keyboard_demo
+#else
+    call sb_desktop_shell
+#endif
     mov %rbx, %rsp
     pop %rbx
     test %rax, %rax

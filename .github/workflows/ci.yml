@@ -253,7 +253,7 @@ jobs:
           if nm build/display/user-hello.elf | grep -q 'sb_display_probe'; then exit 1; fi
           if nm build/display/user-hello.elf | grep -q 'sb_text_display_proof'; then exit 1; fi
 
-      - name: Capture normal boot text without display proof mode
+      - name: Capture normal desktop without proof mode
         run: |
           make BUILD=build/boot-text STORAGE_DURABILITY_PROOF=0 DISPLAY_PROOF=0
           if nm build/boot-text/user-hello.elf | grep -q 'sb_text_display_proof'; then exit 1; fi
@@ -262,8 +262,8 @@ jobs:
           mcopy -i build/boot-text/runtime.img build/runtime.txt ::RUNTIME.TXT
           sha256sum build/boot-text/runtime.img > build/boot-text/before.sha256
           python3 tests/qemu_display_capture.py build/boot-text --boot-text
-          python3 tests/qemu_log_check.py build/boot-text/display.log --boot-text
-          python3 tests/display_image_check.py build/boot-text/screen.ppm --boot-text
+          python3 tests/qemu_log_check.py build/boot-text/display.log --shell
+          python3 tests/shell_image_check.py build/boot-text/screen.ppm --home
           sha256sum -c build/boot-text/before.sha256
 
       # Keyboard injection goes through QEMU hardware and the actual IRQ path.
@@ -282,6 +282,18 @@ jobs:
           sha256sum -c build/input/before.sha256
           make BUILD=build/input STORAGE_DURABILITY_PROOF=0 INPUT_PROOF=0 userspace
           if nm build/input/user-hello.elf | grep -q 'sb_keyboard_proof_event'; then exit 1; fi
+
+      - name: Navigate desktop and verify real VFS directory screens
+        run: |
+          make BUILD=build/shell STORAGE_DURABILITY_PROOF=0 DISPLAY_PROOF=0 INPUT_PROOF=0
+          truncate -s 64M build/shell/runtime.img
+          mformat -i build/shell/runtime.img -F ::
+          mcopy -i build/shell/runtime.img build/runtime.txt ::RUNTIME.TXT
+          sha256sum build/shell/runtime.img > build/shell/before.sha256
+          python3 tests/qemu_display_capture.py build/shell --shell
+          python3 tests/qemu_log_check.py build/shell/display.log --shell
+          python3 tests/shell_image_check.py build/shell
+          sha256sum -c build/shell/before.sha256
 
       - name: Upload kernel artifacts
         if: always()
@@ -328,6 +340,13 @@ jobs:
             build/input/display.log
             build/input/qemu-host.log
             build/input/before.sha256
+            build/shell/*.ppm
+            build/shell/*.png
+            build/shell/display.log
+            build/shell/qemu-host.log
+            build/shell/before.sha256
+            build/shell/user-hello.elf
+            build/shell/user-child.elf
 
   ipc-proof:
     needs: kernel

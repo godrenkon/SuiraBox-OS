@@ -132,6 +132,9 @@ USER_TEXT_OBJ := $(BUILD)/user-text.o
 USER_BOOT_TEXT_OBJ := $(BUILD)/user-boot-text.o
 USER_KEYBOARD_OBJ := $(BUILD)/user-keyboard.o
 USER_LINE_EDIT_OBJ := $(BUILD)/user-line-edit.o
+USER_SHELL_OBJ := $(BUILD)/user-shell.o
+USER_SHELL_MODEL_OBJ := $(BUILD)/user-shell-model.o
+USER_SHELL_VIEW_OBJ := $(BUILD)/user-shell-view.o
 CHILD_OBJ := $(BUILD)/user-child.o
 
 .PHONY: all clean iso userspace check host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test force-storage-config
@@ -311,8 +314,8 @@ $(USER_TEXT_OBJ): userspace/text.c userspace/text.h userspace/font_bitmap.h | $(
 $(USER_BOOT_TEXT_OBJ): userspace/boot_text.c userspace/text.h userspace/display_client.h userspace/syscall_client.h include/suirabox/syscall_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_ELF): $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ)
+$(USER_ELF): $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ) $(USER_SHELL_OBJ) $(USER_SHELL_MODEL_OBJ) $(USER_SHELL_VIEW_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ) $(USER_SHELL_OBJ) $(USER_SHELL_MODEL_OBJ) $(USER_SHELL_VIEW_OBJ)
 
 $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(CHILD_OBJ)
@@ -508,3 +511,20 @@ host-line-edit-test: $(BUILD)/line-edit-host-test
 host-syscall-input-test: $(BUILD)/syscall-input-host-test
 	$<
 check: host-key-decoder-test host-ps2-controller-test host-line-edit-test host-syscall-input-test
+
+$(USER_SHELL_OBJ): userspace/desktop_shell.c userspace/shell.h userspace/display_client.h userspace/syscall_client.h include/suirabox/syscall_abi.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+$(USER_SHELL_MODEL_OBJ): userspace/shell_model.c userspace/shell.h userspace/text.h include/suirabox/syscall_abi.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+$(USER_SHELL_VIEW_OBJ): userspace/shell_view.c userspace/shell.h userspace/text.h include/suirabox/syscall_abi.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+.PHONY: host-shell-model-test host-shell-view-test
+$(BUILD)/shell-model-host-test: tests/shell_model_host_test.c userspace/shell_model.c userspace/shell.h | $(BUILD)
+	$(CC) -std=c11 -Wall -Wextra -Werror -O2 -Iinclude -Iuserspace tests/shell_model_host_test.c userspace/shell_model.c -o $@
+host-shell-model-test: $(BUILD)/shell-model-host-test
+	./$(BUILD)/shell-model-host-test
+$(BUILD)/shell-view-host-test: tests/shell_view_host_test.c userspace/shell_view.c userspace/shell_model.c userspace/text.c userspace/shell.h userspace/font_bitmap.h | $(BUILD)
+	$(CC) -std=c11 -Wall -Wextra -Werror -O2 -Iinclude -Iuserspace tests/shell_view_host_test.c userspace/shell_view.c userspace/shell_model.c userspace/text.c -o $@
+host-shell-view-test: $(BUILD)/shell-view-host-test
+	./$(BUILD)/shell-view-host-test
+check: host-shell-model-test host-shell-view-test
