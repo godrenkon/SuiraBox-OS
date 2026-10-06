@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **11-1 framebuffer abstraction → 11-3 input/display transport・11-7 font/text rendering**。保存基盤に続き、ユーザー空間から画面情報を取得し、安全にRGB描画を送る基盤を実装しました。入力・文字描画・window/compositor・Minecraft実行環境はこれからです。storageのatomic replacement・crash recoveryも未完成です。
+> **Current focus:** **11-3 input/display transport・11-7 font/text rendering**。ユーザー空間のRGB描画に加え、ASCII bitmap文字、厳密なUTF-8 fallback、改行・タブ・画面端clipを実装しました。通常起動でもOS名と状態を表示し、QEMU実画面の全pixelを照合します。CJKフォント・入力・window/compositor・Minecraft実行環境はこれからです。storageのatomic replacement・crash recoveryも未完成です。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -192,7 +192,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [ ] **11-4** graphics memory management
 - [ ] **11-5** compositor foundation
 - [ ] **11-6** window system
-- [ ] **11-7** font / text rendering
+- [ ] **11-7** font / text rendering — [ASCII/UTF-8 fallback foundation](docs/TEXT_RENDERING.md) implemented; CJK/font loading/shaping pending
 - [ ] **11-8** GPU acceleration path
 - [ ] **11-9** multi-monitor
 

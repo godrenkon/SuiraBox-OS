@@ -9,8 +9,11 @@ The current target is the graphical desktop edition. The CUI/server edition is a
 The current implemented foundation is a validated boot RGB surface and bounded
 DISPLAY_INFO/DISPLAY_PRESENT transport from init userspace. QEMU capture verifies
 the actual screen after ring-3 rendering and rejection tests. The colored proof
-pattern is a transport fixture; it does not implement the desktop, localization
-dialog, text rendering or input. Those remain the next GUI integration steps.
+pattern is a transport fixture. A userspace bitmap text layer now renders all
+printable ASCII, strict UTF-8 fallback, tabs/newlines and clipped cells through
+the same transport; normal boot shows the title and startup status. See
+[text rendering](TEXT_RENDERING.md). The static proof labels do not implement a
+desktop, localization dialog or input. CJK fonts remain a future text step.
 
 On a fresh installation:
 

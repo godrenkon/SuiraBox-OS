@@ -152,6 +152,14 @@ sb_display_probe:
     call display_present
     cmp $SB_SYS_ERROR_FAULT, %rax
     jne lifecycle_failed
+    # Render labels through the reusable C text layer after all transport
+    # rejection checks. Align the C call independently of assembly callers.
+    mov %rsp, %rbx
+    andq $-16, %rsp
+    call sb_text_display_proof
+    mov %rbx, %rsp
+    test %rax, %rax
+    jne lifecycle_failed
     lea display_message(%rip), %rdi
     mov $display_message_len, %rsi
     mov $SB_SYS_LOG_WRITE, %rax
