@@ -1,4 +1,5 @@
 #include "framebuffer.h"
+#include "display_surface.h"
 #include "mm/vmm.h"
 #include "mm/pmm.h"
 #include <stdint.h>
@@ -46,38 +47,34 @@ static uint64_t align8(uint64_t value) {
     return (value + 7u) & ~7ull;
 }
 
-static uint32_t component_mask(uint8_t bits) {
-    if (bits == 0u) return 0u;
-    if (bits >= 32u) return UINT32_MAX;
-    return (1u << bits) - 1u;
-}
-
-static uint32_t scale_component(uint8_t value, uint8_t bits) {
-    const uint32_t max_value = component_mask(bits);
-    if (max_value == 0u) return 0u;
-    return ((uint32_t)value * max_value + 127u) / 255u;
+static sb_display_surface_t surface_at(uint64_t address) {
+    return (sb_display_surface_t){
+        .pixels = (volatile uint8_t *)(uintptr_t)address,
+        .byte_length = (uint64_t)current.pitch * current.height,
+        .width = current.width, .height = current.height, .pitch = current.pitch,
+        .bits_per_pixel = current.bits_per_pixel,
+        .red_position = current.red_position, .red_size = current.red_mask_size,
+        .green_position = current.green_position, .green_size = current.green_mask_size,
+        .blue_position = current.blue_position, .blue_size = current.blue_mask_size,
+    };
 }
 
 static int framebuffer_geometry_ok(void) {
-    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
-    const uint64_t span = (uint64_t)current.pitch * current.height;
-    if (!available || current.type != SB_FB_DIRECT || bytes_per_pixel == 0u || bytes_per_pixel > 4u ||
-        current.bits_per_pixel > SB_FB_MAX_BPP || current.address == 0u ||
-        span == 0u || span > UINT64_MAX - current.address)
-        return 0;
-    if (current.red_position >= 32u || current.green_position >= 32u || current.blue_position >= 32u ||
-        current.red_mask_size > 32u || current.green_mask_size > 32u || current.blue_mask_size > 32u ||
-        (uint16_t)current.red_position + current.red_mask_size > current.bits_per_pixel ||
-        (uint16_t)current.green_position + current.green_mask_size > current.bits_per_pixel ||
-        (uint16_t)current.blue_position + current.blue_mask_size > current.bits_per_pixel)
-        return 0;
-    return 1;
+    if (current.type != SB_FB_DIRECT) return 0;
+    const sb_display_surface_t surface = surface_at(current.address);
+    return sb_display_surface_valid(&surface);
+}
+
+static int reject_framebuffer(void) {
+    available = 0;
+    current = (sb_framebuffer_info_t){0};
+    return 0;
 }
 
 static int framebuffer_target(uint64_t *target_address) {
-    if (target_address == 0 || !framebuffer_geometry_ok()) return -1;
+    if (target_address == 0 || !available || !framebuffer_geometry_ok()) return -1;
     if (current.mapped_address != 0u) {
-        if (current.mapped_size == 0u) return -2;
+        if (current.mapped_size < (uint64_t)current.pitch * current.height) return -2;
         *target_address = current.mapped_address;
         return 0;
     }
@@ -92,40 +89,33 @@ static int framebuffer_target(uint64_t *target_address) {
     return 0;
 }
 
-static uint32_t pack_pixel(uint8_t red, uint8_t green, uint8_t blue) {
-    uint32_t pixel = scale_component(red, current.red_mask_size) << current.red_position;
-    pixel |= scale_component(green, current.green_mask_size) << current.green_position;
-    pixel |= scale_component(blue, current.blue_mask_size) << current.blue_position;
-    return pixel;
-}
-
-static void store_pixel(volatile uint8_t *dst, uint64_t bytes_per_pixel, uint32_t pixel) {
-    for (uint64_t byte = 0u; byte < bytes_per_pixel; ++byte)
-        dst[byte] = (uint8_t)(pixel >> (byte * 8u));
-}
-
 int sb_framebuffer_init(uint64_t multiboot_info_address) {
     available = 0;
     current = (sb_framebuffer_info_t){0};
 
-    if (multiboot_info_address == 0u || multiboot_info_address >= 0x40000000ull)
-        return 0;
+    if (multiboot_info_address == 0u || (multiboot_info_address & 7u) != 0u || multiboot_info_address >= 0x40000000ull)
+        return reject_framebuffer();
 
     {
         const uint32_t total_size = *(const uint32_t *)(uintptr_t)multiboot_info_address;
         if (total_size < 16u || total_size > SB_MB2_MAX_INFO_SIZE ||
-            (total_size & 7u) != 0u || total_size > UINT64_MAX - multiboot_info_address)
-            return 0;
+            (total_size & 7u) != 0u || total_size > SB_IDENTITY_MAP_LIMIT - multiboot_info_address)
+            return reject_framebuffer();
 
         uint32_t offset = 8u;
         uint32_t tags_seen = 0u;
+        int ended = 0;
         while (offset <= total_size - 8u && tags_seen++ < SB_MB2_MAX_TAGS) {
             const sb_mb2_tag_t *tag = (const sb_mb2_tag_t *)(uintptr_t)(multiboot_info_address + offset);
-            if (tag->size < 8u || tag->size > total_size - offset) return 0;
-            if (tag->type == SB_MB2_TAG_END) break;
+            if (tag->size < 8u || tag->size > total_size - offset) return reject_framebuffer();
+            if (tag->type == SB_MB2_TAG_END) {
+                if (tag->size != 8u || offset + 8u != total_size) return reject_framebuffer();
+                ended = 1;
+                break;
+            }
 
-            if (tag->type == SB_MB2_TAG_FRAMEBUFFER &&
-                tag->size >= sizeof(sb_mb2_fb_tag_prefix_t)) {
+            if (tag->type == SB_MB2_TAG_FRAMEBUFFER) {
+                if (available || tag->size < sizeof(sb_mb2_fb_tag_prefix_t)) return reject_framebuffer();
                 const sb_mb2_fb_tag_prefix_t *fb = (const sb_mb2_fb_tag_prefix_t *)tag;
                 const uint64_t bytes_per_pixel = ((uint64_t)fb->bpp + 7u) / 8u;
                 const uint64_t total_bytes = (uint64_t)fb->pitch * fb->height;
@@ -151,14 +141,16 @@ int sb_framebuffer_init(uint64_t multiboot_info_address) {
                         available = framebuffer_geometry_ok();
                     }
                 }
+                if (!available) return reject_framebuffer();
             }
 
             {
                 const uint64_t next = align8(tag->size);
-                if (next > UINT32_MAX || next > (uint64_t)(total_size - offset)) return 0;
+                if (next > UINT32_MAX || next > (uint64_t)(total_size - offset)) return reject_framebuffer();
                 offset += (uint32_t)next;
             }
         }
+        if (!ended) return reject_framebuffer();
     }
 
     return available;
@@ -173,7 +165,8 @@ const sb_framebuffer_info_t *sb_framebuffer_info(void) {
 int sb_framebuffer_map(void) {
     uint64_t physical_start, physical_end, page_count, virtual_start;
 
-    if (!framebuffer_geometry_ok() || current.mapped_address != 0u) return current.mapped_address != 0u;
+    if (!available || !framebuffer_geometry_ok()) return 0;
+    if (current.mapped_address != 0u) return 1;
 
     physical_start = current.address & SB_PAGE_MASK;
     physical_end = current.address + (uint64_t)current.pitch * current.height;
@@ -200,61 +193,28 @@ int sb_framebuffer_map(void) {
     return 1;
 }
 
-int sb_framebuffer_clear(uint8_t red, uint8_t green, uint8_t blue) {
-    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
-    uint64_t target_address;
-    uint32_t pixel;
-
-    if (framebuffer_target(&target_address) != 0) return -1;
-    pixel = pack_pixel(red, green, blue);
-
-    for (uint32_t y = 0u; y < current.height; ++y) {
-        volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(target_address + (uint64_t)y * current.pitch);
-        for (uint32_t x = 0u; x < current.width; ++x)
-            store_pixel(row + (uint64_t)x * bytes_per_pixel, bytes_per_pixel, pixel);
-    }
-
-    return 0;
+static int drawing_surface(sb_display_surface_t *surface) {
+    uint64_t address;
+    if (framebuffer_target(&address) != 0) return -1;
+    *surface = surface_at(address);
+    return sb_display_surface_valid(surface) ? 0 : -1;
 }
 
-int sb_framebuffer_draw_pixel(uint32_t x, uint32_t y, uint8_t red, uint8_t green, uint8_t blue) {
-    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
-    uint64_t target_address;
-
-    if (x >= current.width || y >= current.height) return -1;
-    if (framebuffer_target(&target_address) != 0) return -2;
-    if ((uint64_t)y * current.pitch > UINT64_MAX - (uint64_t)x * bytes_per_pixel) return -3;
-
-    store_pixel((volatile uint8_t *)(uintptr_t)(target_address + (uint64_t)y * current.pitch +
-                                                   (uint64_t)x * bytes_per_pixel),
-                bytes_per_pixel, pack_pixel(red, green, blue));
-    return 0;
+int sb_framebuffer_clear(uint8_t r, uint8_t g, uint8_t b) {
+    return sb_framebuffer_fill_rect(0u, 0u, current.width, current.height, r, g, b);
 }
-
+int sb_framebuffer_draw_pixel(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b) {
+    return sb_framebuffer_fill_rect(x, y, 1u, 1u, r, g, b);
+}
 int sb_framebuffer_fill_rect(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
-                             uint8_t red, uint8_t green, uint8_t blue) {
-    const uint64_t bytes_per_pixel = ((uint64_t)current.bits_per_pixel + 7u) / 8u;
-    uint64_t target_address;
-    uint32_t right, bottom;
-    uint32_t pixel;
-
-    if (width == 0u || height == 0u) return 0;
-    if (x >= current.width || y >= current.height) return -1;
-    if (width > current.width - x) width = current.width - x;
-    if (height > current.height - y) height = current.height - y;
-    right = x + width;
-    bottom = y + height;
-    (void)right; (void)bottom;
-
-    if (framebuffer_target(&target_address) != 0) return -2;
-    pixel = pack_pixel(red, green, blue);
-
-    for (uint32_t row_index = y; row_index < y + height; ++row_index) {
-        const uint64_t row_offset = (uint64_t)row_index * current.pitch + (uint64_t)x * bytes_per_pixel;
-        volatile uint8_t *row = (volatile uint8_t *)(uintptr_t)(target_address + row_offset);
-        for (uint32_t column = 0u; column < width; ++column)
-            store_pixel(row + (uint64_t)column * bytes_per_pixel, bytes_per_pixel, pixel);
-    }
-
-    return 0;
+                             uint8_t r, uint8_t g, uint8_t b) {
+    sb_display_surface_t surface;
+    if (drawing_surface(&surface) != 0) return -1;
+    return sb_display_surface_fill(&surface, x, y, width, height, r, g, b);
+}
+int sb_framebuffer_present(uint32_t x, uint32_t y, uint32_t width, uint32_t height,
+                            const uint32_t *rgb, uint64_t count) {
+    sb_display_surface_t surface;
+    if (drawing_surface(&surface) != 0) return -1;
+    return sb_display_surface_present(&surface, x, y, width, height, rgb, count);
 }

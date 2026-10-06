@@ -237,6 +237,21 @@ jobs:
           make BUILD=build/rename STORAGE_DURABILITY_PROOF=0 STORAGE_RENAME_PROOF=0 userspace
           if nm build/rename/user-hello.elf | grep -q 'runtime_fat32_rename_probe'; then exit 1; fi
 
+      - name: Prove userspace display presentation against QEMU screen capture
+        run: |
+          make BUILD=build/display STORAGE_DURABILITY_PROOF=0 DISPLAY_PROOF=1
+          nm build/display/user-hello.elf | grep -q 'sb_display_probe'
+          truncate -s 64M build/display/runtime.img
+          mformat -i build/display/runtime.img -F ::
+          mcopy -i build/display/runtime.img build/runtime.txt ::RUNTIME.TXT
+          sha256sum build/display/runtime.img > build/display/before-display.sha256
+          python3 tests/qemu_display_capture.py build/display
+          python3 tests/qemu_log_check.py build/display/display.log --display-proof
+          python3 tests/display_image_check.py build/display/screen.ppm
+          sha256sum -c build/display/before-display.sha256
+          make BUILD=build/display STORAGE_DURABILITY_PROOF=0 DISPLAY_PROOF=0 userspace
+          if nm build/display/user-hello.elf | grep -q 'sb_display_probe'; then exit 1; fi
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -265,6 +280,11 @@ jobs:
             build/rename/seed.img
             build/rename/after-rename.sha256
             qemu-rename*.log
+            build/display/screen.ppm
+            build/display/screen.png
+            build/display/display.log
+            build/display/qemu-host.log
+            build/display/before-display.sha256
 
   ipc-proof:
     needs: kernel

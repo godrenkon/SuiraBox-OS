@@ -78,6 +78,16 @@ def main() -> None:
                     if "--rename-reboot-proof" in sys.argv[2:] else
                     "Userspace: FAT32 nested rename persisted and cleanly detached volume"]
         require_ordered(log, "fat32-rename", markers)
+    if "--display-proof" in sys.argv[2:]:
+        if "FAILED" in log:
+            fail("display proof encountered a failed guest lifecycle")
+        require_ordered(log, "display-surface", [
+            "Display: framebuffer ready",
+            "Display: framebuffer mapped",
+            "Display: framebuffer clear OK",
+            "Userspace: display surface present and rejection lifecycle OK",
+            "Userspace: concurrent child processes completed",
+        ])
     if "--recovery-proof" in sys.argv[2:]:
         require_ordered(log, "fat32-recovery-read-only", [
             "Storage: FAT32 recovery required; mounted read-only",
