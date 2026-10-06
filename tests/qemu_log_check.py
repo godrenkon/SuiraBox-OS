@@ -85,7 +85,14 @@ def main() -> None:
             "Display: framebuffer ready",
             "Display: framebuffer mapped",
             "Display: framebuffer clear OK",
+            "Userspace: UTF-8 bitmap text and clipping lifecycle OK",
             "Userspace: display surface present and rejection lifecycle OK",
+            "Userspace: concurrent child processes completed",
+        ])
+    if "--boot-text" in sys.argv[2:]:
+        require_ordered(log, "boot-text", [
+            "Display: framebuffer ready", "Display: framebuffer mapped",
+            "Display: framebuffer clear OK", "Userspace: boot text rendered",
             "Userspace: concurrent child processes completed",
         ])
     if "--recovery-proof" in sys.argv[2:]:

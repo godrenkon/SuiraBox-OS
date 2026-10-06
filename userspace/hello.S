@@ -654,6 +654,16 @@ runtime_rename_directory_end:
     jne lifecycle_failed
 #ifdef SB_DISPLAY_PROOF
     call sb_display_probe
+#else
+    # C follows the SysV stack convention; entry assembly has no C prologue.
+    push %rbx
+    mov %rsp, %rbx
+    andq $-16, %rsp
+    call sb_boot_text
+    mov %rbx, %rsp
+    pop %rbx
+    test %rax, %rax
+    jne lifecycle_failed
 #endif
 #ifdef SB_STORAGE_RECOVERY_PROOF
 runtime_fat32_recovery_probe:

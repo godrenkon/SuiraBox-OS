@@ -8,12 +8,14 @@ import sys
 import time
 
 
-def run(build: Path) -> None:
+def run(build: Path, boot_text: bool = False) -> None:
     build = build.resolve()
     serial = build / "display.log"
     qmp = build / "qmp.sock"
     # Only this tool's disposable socket is removed; never a user disk path.
     qmp.unlink(missing_ok=True)
+    serial.unlink(missing_ok=True)
+    marker = "Userspace: boot text rendered" if boot_text else "Userspace: display surface present and rejection lifecycle OK"
     deadline = time.monotonic() + 30
     with (build / "qemu-host.log").open("wb") as host_log:
         process = subprocess.Popen([
@@ -28,7 +30,7 @@ def run(build: Path) -> None:
                 log = serial.read_text(errors="replace") if serial.exists() else ""
                 if "FAILED" in log or "Exception:" in log:
                     raise RuntimeError("guest failed; inspect display.log")
-                if ("Userspace: display surface present and rejection lifecycle OK" in log and
+                if (marker in log and
                         "Userspace: concurrent child processes completed" in log):
                     break
                 if process.poll() is not None or time.monotonic() > deadline:
@@ -64,6 +66,12 @@ def run(build: Path) -> None:
                     command("quit")
             if process.wait(timeout=5) != 0:
                 raise RuntimeError("QEMU exited unsuccessfully after capture")
+        except Exception:
+            # Preserve useful CI diagnostics even if QMP or the guest fails.
+            if serial.exists():
+                print(serial.read_text(errors="replace")[-16000:], file=sys.stderr)
+            print((build / "qemu-host.log").read_text(errors="replace")[-4000:], file=sys.stderr)
+            raise
         finally:
             if process.poll() is None:
                 process.terminate()
@@ -76,4 +84,4 @@ def run(build: Path) -> None:
 
 
 if __name__ == "__main__":
-    run(Path(sys.argv[1]))
+    run(Path(sys.argv[1]), "--boot-text" in sys.argv[2:])

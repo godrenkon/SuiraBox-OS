@@ -25,6 +25,7 @@ FAT32_UNMOUNT_HOST_TEST := $(BUILD)/fat32-unmount-host-test
 FAT32_RENAME_HOST_TEST := $(BUILD)/fat32-rename-host-test
 DISPLAY_SURFACE_HOST_TEST := $(BUILD)/display-surface-host-test
 FRAMEBUFFER_HOST_TEST := $(BUILD)/framebuffer-host-test
+TEXT_HOST_TEST := $(BUILD)/text-host-test
 STORAGE_DURABILITY_PROOF ?= 0
 STORAGE_RECOVERY_PROOF ?= 0
 STORAGE_DIRTY_PROOF ?= 0
@@ -46,6 +47,9 @@ endif
 LDFLAGS := -nostdlib -z max-page-size=0x1000 -T linker.ld
 USER_LDFLAGS := -nostdlib -z max-page-size=0x1000 -T userspace/user.ld
 USER_ASFLAGS := -m64 -ffreestanding -fno-pie -Iinclude
+# Userspace lives above 2GiB. C addresses and calls need the large code model;
+# disable SIMD/red-zone/unwind runtime dependencies just like the kernel.
+USER_CFLAGS := -ffreestanding -fno-builtin -fno-stack-protector -fno-pie -mcmodel=large -mno-red-zone -m64 -mno-mmx -mno-sse -mno-sse2 -fno-asynchronous-unwind-tables -fno-unwind-tables -Wall -Wextra -Werror -O2 -Iinclude
 ifeq ($(STORAGE_DURABILITY_PROOF),1)
 USER_ASFLAGS += -DSB_STORAGE_DURABILITY_PROOF
 endif
@@ -63,6 +67,7 @@ USER_ASFLAGS += -DSB_STORAGE_RENAME_PROOF
 endif
 ifeq ($(DISPLAY_PROOF),1)
 USER_ASFLAGS += -DSB_DISPLAY_PROOF
+USER_CFLAGS += -DSB_DISPLAY_PROOF
 endif
 
 BOOT_OBJ := $(BUILD)/boot.o
@@ -114,6 +119,8 @@ GDT_OBJ := $(BUILD)/gdt.o
 USERMODE_OBJ := $(BUILD)/user_mode.o
 MB_MODULES_OBJ := $(BUILD)/multiboot_modules.o
 USER_OBJ := $(BUILD)/user-hello.o
+USER_TEXT_OBJ := $(BUILD)/user-text.o
+USER_BOOT_TEXT_OBJ := $(BUILD)/user-boot-text.o
 CHILD_OBJ := $(BUILD)/user-child.o
 
 .PHONY: all clean iso userspace check host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test force-storage-config
@@ -127,6 +134,7 @@ $(BUILD)/storage-durability-mode: force-storage-config | $(BUILD)
 
 $(KERNEL_OBJ): $(BUILD)/storage-durability-mode kernel/storage_durability.h
 $(USER_OBJ): $(BUILD)/storage-durability-mode
+$(USER_BOOT_TEXT_OBJ): $(BUILD)/storage-durability-mode
 
 .PHONY: host-fat32-write-test
 
@@ -285,8 +293,14 @@ $(USER_OBJ): userspace/hello.S userspace/display_probe.S include/suirabox/syscal
 $(CHILD_OBJ): userspace/child.S include/suirabox/syscall_abi.h include/suirabox/handle_abi.h include/suirabox/display_abi.h | $(BUILD)
 	$(CC) $(USER_ASFLAGS) -c $< -o $@
 
-$(USER_ELF): $(USER_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ)
+$(USER_TEXT_OBJ): userspace/text.c userspace/text.h userspace/font_bitmap.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+
+$(USER_BOOT_TEXT_OBJ): userspace/boot_text.c userspace/text.h include/suirabox/syscall_abi.h include/suirabox/display_abi.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+
+$(USER_ELF): $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ)
 
 $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(CHILD_OBJ)
@@ -428,7 +442,13 @@ $(FRAMEBUFFER_HOST_TEST): tests/framebuffer_host_test.c kernel/framebuffer.c ker
 host-framebuffer-test: $(FRAMEBUFFER_HOST_TEST)
 	$(FRAMEBUFFER_HOST_TEST)
 
-check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test host-fat32-write-test host-fat32-extend-test host-fat32-create-test host-fat32-directory-growth-test host-fat32-mkdir-test host-fat32-recovery-test host-fat32-dirty-test host-fat32-unmount-test host-fat32-rename-test host-display-surface-test host-framebuffer-test
+$(TEXT_HOST_TEST): tests/text_host_test.c userspace/text.c userspace/text.h userspace/font_bitmap.h | $(BUILD)
+	$(CC) -Wall -Wextra -Werror -Iuserspace tests/text_host_test.c userspace/text.c -o $@
+.PHONY: host-text-test
+host-text-test: $(TEXT_HOST_TEST)
+	$(TEXT_HOST_TEST)
+
+check: $(KERNEL) $(USER_ELF) $(CHILD_ELF) host-pmm-test host-block-cache-test host-fat32-test host-handle-test host-pipe-test host-event-test host-message-queue-test host-vfs-object-test host-vfs-namespace-test host-storage-durability-test host-fat32-write-test host-fat32-extend-test host-fat32-create-test host-fat32-directory-growth-test host-fat32-mkdir-test host-fat32-recovery-test host-fat32-dirty-test host-fat32-unmount-test host-fat32-rename-test host-display-surface-test host-framebuffer-test host-text-test
 	@if command -v grub-file >/dev/null 2>&1; then \
 		grub-file --is-x86-multiboot2 $(KERNEL); \
 	else \

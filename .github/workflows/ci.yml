@@ -247,10 +247,24 @@ jobs:
           sha256sum build/display/runtime.img > build/display/before-display.sha256
           python3 tests/qemu_display_capture.py build/display
           python3 tests/qemu_log_check.py build/display/display.log --display-proof
-          python3 tests/display_image_check.py build/display/screen.ppm
+          python3 tests/display_image_check.py build/display/screen.ppm --text-proof
           sha256sum -c build/display/before-display.sha256
           make BUILD=build/display STORAGE_DURABILITY_PROOF=0 DISPLAY_PROOF=0 userspace
           if nm build/display/user-hello.elf | grep -q 'sb_display_probe'; then exit 1; fi
+          if nm build/display/user-hello.elf | grep -q 'sb_text_display_proof'; then exit 1; fi
+
+      - name: Capture normal boot text without display proof mode
+        run: |
+          make BUILD=build/boot-text STORAGE_DURABILITY_PROOF=0 DISPLAY_PROOF=0
+          if nm build/boot-text/user-hello.elf | grep -q 'sb_text_display_proof'; then exit 1; fi
+          truncate -s 64M build/boot-text/runtime.img
+          mformat -i build/boot-text/runtime.img -F ::
+          mcopy -i build/boot-text/runtime.img build/runtime.txt ::RUNTIME.TXT
+          sha256sum build/boot-text/runtime.img > build/boot-text/before.sha256
+          python3 tests/qemu_display_capture.py build/boot-text --boot-text
+          python3 tests/qemu_log_check.py build/boot-text/display.log --boot-text
+          python3 tests/display_image_check.py build/boot-text/screen.ppm --boot-text
+          sha256sum -c build/boot-text/before.sha256
 
       - name: Upload kernel artifacts
         if: always()
@@ -285,6 +299,11 @@ jobs:
             build/display/display.log
             build/display/qemu-host.log
             build/display/before-display.sha256
+            build/boot-text/screen.ppm
+            build/boot-text/screen.png
+            build/boot-text/display.log
+            build/boot-text/qemu-host.log
+            build/boot-text/before.sha256
 
   ipc-proof:
     needs: kernel
