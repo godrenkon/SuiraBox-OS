@@ -62,7 +62,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - `[ ]` 未着手
 - `[*]` 現在の主作業地点
 
-> **Current focus:** **17-3 desktop shell・17-5 Settings・17-6 File Managerの基盤**。Home・Files・SettingsをPS/2キーボードで切り替え、実際のVFSから `/boot` と `/disk` を読み取り専用で表示します。QEMUの仮想キー操作、10画面の全pixel照合、ディスク不変確認をCIに追加しました。USB/HID・マウス・入力routing・CJKフォント・window/compositor・設定保存・Minecraft実行環境はこれからです。storageのatomic replacement・crash recoveryも未完成です。
+> **Current focus:** **17-3 desktop shell・17-5 Settings・17-6 File Managerの基盤**。Home・Files・SettingsをPS/2キーボードで切り替えます。Filesは `/boot`・`/disk` の子/親directoryへ移動し、選択したファイルの先頭512byteを読み取り専用で表示します。QEMUの仮想キー操作、10画面のシェルと26画面のFiles操作の全pixel照合、ディスク不変確認をCIに追加しました。USB/HID・マウス・入力routing・CJKフォント・window/compositor・設定保存・Minecraft実行環境はこれからです。storageのatomic replacement・crash recoveryも未完成です。
 >
 > 仕様上の完成と実装上の完成は同一ではありません。実際の状態はソースコード、build、test、CI、QEMU、実機検証を優先します。
 
@@ -258,7 +258,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [-] **17-3** desktop shell — keyboard Home/Files/Settings foundation; windows/compositor pending
 - [ ] **17-4** window / workspace management
 - [-] **17-5** Settings — current display/input/font status; editable/persistent settings pending
-- [-] **17-6** File Manager — bounded read-only `/boot` and `/disk` listings; traversal/opening pending
+- [-] **17-6** File Manager — bounded directory traversal and read-only file previews; scrolling/editing/launching pending
 - [ ] **17-7** Terminal
 - [ ] **17-8** notifications / system tray
 - [ ] **17-9** account / privacy / security UI
@@ -314,7 +314,9 @@ Multibootのframebuffer検証で、初回の利用可能状態を確立できな
 
 **17-3 / 17-5 / 17-6: desktop shell の基盤**
 
-通常起動でHome・Files・Settingsを表示し、F1/F2/F3・Tab/Shift+Tab・Escapeで切り替えます。Filesは実際のVFSから `/boot` と `/disk` の名前・種類・サイズを読み取り専用で表示し、B/Dで対象を選択、Rで再読込できます。件数は12行までに制限し、列挙の成功・失敗・省略すべてでhandleをcloseします。未mountや読込失敗は画面内に表示して再試行できます。Settingsは現在の解像度と入力・フォントの状態を表示します。CIは特別なproofビルドを使わず、実PS/2入力による10画面を全pixel照合し、ディスク全体の不変も確認します。[実装と制限](docs/DESKTOP_SHELL.md)。compositor、window管理、mouse、任意のdirectory移動、設定保存、初回言語選択、CJKフォント・IME、Minecraft本体は未完成のため、ロードマップ全体の完了にはしていません。
+通常起動でHome・Files・Settingsを表示し、F1/F2/F3・Tab/Shift+Tab・Escapeで切り替えます。Filesは実際のVFSから `/boot` と `/disk` の名前・種類・サイズを読み取り専用で表示し、B/Dで対象を選択、Rで再読込できます。件数は12行までに制限し、列挙の成功・失敗・省略すべてでhandleをcloseします。未mountや読込失敗は画面内に表示して再試行できます。Settingsは現在の解像度と入力・フォントの状態を表示します。CIは特別なproofビルドを使わず、実PS/2入力による10画面を全pixel照合し、ディスク全体の不変も確認します。[実装と制限](docs/DESKTOP_SHELL.md)。compositor、window管理、mouse、scroll・ファイル編集/起動、設定保存、初回言語選択、CJKフォント・IME、Minecraft本体は未完成のため、ロードマップ全体の完了にはしていません。
+
+Filesには上下選択・Enterによる子directory移動とファイルプレビュー・Backspaceによる親移動・Escapeによる一覧復帰を追加しました。読込は先頭512byte/12行までで、空ファイル・short read・binary/control byte・失敗時のhandle closeを扱います。CIは `/disk/SAVES/WORLDS` と文章・空・長い・binaryファイル、boot ELFを実際に開き、26画面とディスク不変を照合します。[詳細と制限](docs/FILES_BROWSER.md)。
 
 **8-8: fsync / atomic update semantics**
 

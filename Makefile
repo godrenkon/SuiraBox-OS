@@ -134,6 +134,7 @@ USER_KEYBOARD_OBJ := $(BUILD)/user-keyboard.o
 USER_LINE_EDIT_OBJ := $(BUILD)/user-line-edit.o
 USER_SHELL_OBJ := $(BUILD)/user-shell.o
 USER_SHELL_MODEL_OBJ := $(BUILD)/user-shell-model.o
+USER_SHELL_BROWSER_OBJ := $(BUILD)/user-shell-browser.o
 USER_SHELL_VIEW_OBJ := $(BUILD)/user-shell-view.o
 CHILD_OBJ := $(BUILD)/user-child.o
 
@@ -314,8 +315,8 @@ $(USER_TEXT_OBJ): userspace/text.c userspace/text.h userspace/font_bitmap.h | $(
 $(USER_BOOT_TEXT_OBJ): userspace/boot_text.c userspace/text.h userspace/display_client.h userspace/syscall_client.h include/suirabox/syscall_abi.h include/suirabox/display_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -c $< -o $@
 
-$(USER_ELF): $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ) $(USER_SHELL_OBJ) $(USER_SHELL_MODEL_OBJ) $(USER_SHELL_VIEW_OBJ) userspace/user.ld
-	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ) $(USER_SHELL_OBJ) $(USER_SHELL_MODEL_OBJ) $(USER_SHELL_VIEW_OBJ)
+$(USER_ELF): $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ) $(USER_SHELL_OBJ) $(USER_SHELL_MODEL_OBJ) $(USER_SHELL_VIEW_OBJ) $(USER_SHELL_BROWSER_OBJ) userspace/user.ld
+	$(LD) $(USER_LDFLAGS) -o $@ $(USER_OBJ) $(USER_TEXT_OBJ) $(USER_BOOT_TEXT_OBJ) $(USER_KEYBOARD_OBJ) $(USER_LINE_EDIT_OBJ) $(USER_SHELL_OBJ) $(USER_SHELL_MODEL_OBJ) $(USER_SHELL_VIEW_OBJ) $(USER_SHELL_BROWSER_OBJ)
 
 $(CHILD_ELF): $(CHILD_OBJ) userspace/user.ld
 	$(LD) $(USER_LDFLAGS) -o $@ $(CHILD_OBJ)
@@ -523,8 +524,17 @@ $(BUILD)/shell-model-host-test: tests/shell_model_host_test.c userspace/shell_mo
 	$(CC) -std=c11 -Wall -Wextra -Werror -O2 -Iinclude -Iuserspace tests/shell_model_host_test.c userspace/shell_model.c -o $@
 host-shell-model-test: $(BUILD)/shell-model-host-test
 	./$(BUILD)/shell-model-host-test
-$(BUILD)/shell-view-host-test: tests/shell_view_host_test.c userspace/shell_view.c userspace/shell_model.c userspace/text.c userspace/shell.h userspace/font_bitmap.h | $(BUILD)
-	$(CC) -std=c11 -Wall -Wextra -Werror -O2 -Iinclude -Iuserspace tests/shell_view_host_test.c userspace/shell_view.c userspace/shell_model.c userspace/text.c -o $@
+$(BUILD)/shell-view-host-test: tests/shell_view_host_test.c userspace/shell_view.c userspace/shell_model.c userspace/shell_browser.c userspace/text.c userspace/shell.h userspace/font_bitmap.h | $(BUILD)
+	$(CC) -std=c11 -Wall -Wextra -Werror -O2 -Iinclude -Iuserspace tests/shell_view_host_test.c userspace/shell_view.c userspace/shell_model.c userspace/shell_browser.c userspace/text.c -o $@
 host-shell-view-test: $(BUILD)/shell-view-host-test
 	./$(BUILD)/shell-view-host-test
 check: host-shell-model-test host-shell-view-test
+
+$(USER_SHELL_BROWSER_OBJ): userspace/shell_browser.c userspace/shell.h userspace/text.h include/suirabox/syscall_abi.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) $(USER_CFLAGS) -c $< -o $@
+$(BUILD)/shell-browser-host-test: tests/shell_browser_host_test.c userspace/shell_browser.c userspace/shell_model.c userspace/shell.h | $(BUILD)
+	$(CC) -std=c11 -Wall -Wextra -Werror -O2 -Iinclude -Iuserspace tests/shell_browser_host_test.c userspace/shell_browser.c userspace/shell_model.c -o $@
+.PHONY: host-shell-browser-test
+host-shell-browser-test: $(BUILD)/shell-browser-host-test
+	./$(BUILD)/shell-browser-host-test
+check: host-shell-browser-test

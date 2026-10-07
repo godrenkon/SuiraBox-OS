@@ -5,6 +5,12 @@
 #define FG 0xe6eef2u
 #define ACCENT 0x259b72u
 static size_t length(const char *s) { size_t n=0u; while(s[n]) ++n; return n; }
+static void label(char *out,const char *input,unsigned n,unsigned limit) {
+    unsigned visible=n<limit?n:limit;
+    for(unsigned i=0u;i<visible;++i) { unsigned char c=(unsigned char)input[i]; out[i]=c>=32u && c<=126u?(char)c:'?'; }
+    if(n>limit) out[limit-1u]='~';
+    out[visible]=0;
+}
 static int text(const sb_text_renderer_t *r, int32_t x, int32_t y, const char *s,
                 uint32_t fg, uint32_t bg, unsigned scale) {
     sb_text_renderer_t copy=*r; copy.foreground=fg; copy.background=bg; copy.scale=scale;
@@ -26,7 +32,9 @@ static int fill(const sb_text_renderer_t *r,uint32_t x,uint32_t y,uint32_t w,uin
 int sb_shell_render(const sb_text_renderer_t *r,const sb_shell_state_t *s,
                     const sb_shell_listing_t *l,unsigned keyboard) {
     if(!r || !r->emit || !r->width || !r->height || r->width>4096u || r->height>4096u ||
-       !s || s->view>SB_SHELL_SETTINGS || s->disk>1u || !l || l->count>SB_SHELL_ROWS) return -1;
+       !s || s->view>SB_SHELL_SETTINGS || s->disk>1u || s->preview>1u || s->path_length>SB_SYS_PATH_MAX ||
+       !l || l->count>SB_SHELL_ROWS || (l->count && s->selected>=l->count) ||
+       (s->preview && (l->content.length>SB_SHELL_PREVIEW_BYTES || !l->count))) return -1;
     /* Validate snapshot metadata before any draw; names are sanitized below. */
     for(unsigned i=0u;i<l->count;++i) if (!l->entries[i].name_length ||
         l->entries[i].name_length>SB_SYS_FILE_NAME_MAX || l->entries[i].reserved ||
@@ -61,7 +69,16 @@ int sb_shell_render(const sb_text_renderer_t *r,const sb_shell_state_t *s,
         TEXT(208,224,"CJK fonts and IME are pending.",0xf2ae43u,BG,1u);
         TEXT(208,256,"Persistent settings are pending.",FG,BG,1u);
     } else {
-        TEXT(208,112,s->disk?"/disk":"/boot",ACCENT,BG,2u);
+        char path[49]; label(path,s->path,s->path_length,48u);
+        TEXT(208,112,path,ACCENT,BG,s->path_length<=24u?2u:1u);
+        if(s->preview) {
+            char title[40]="Preview: "; label(title+9u,l->entries[s->selected].name,l->entries[s->selected].name_length,24u);
+            TEXT(208,140,title,FG,BG,1u);
+            char rows[SB_SHELL_ROWS][SB_SHELL_PREVIEW_COLUMNS+1u]; unsigned clipped;
+            unsigned count=sb_shell_preview_lines(&l->content,rows,&clipped);
+            if(!count) TEXT(208,176,"File is empty",FG,BG,1u);
+            for(unsigned i=0u;i<count;++i) TEXT(208,(int32_t)(160u+i*24u),rows[i],FG,BG,1u);
+        } else {
         TEXT(208,140,"Type / name                  Size (bytes)",FG,BG,1u);
         if(l->error) TEXT(208,176,"Directory unavailable; B / D / R to retry",0xf2ae43u,BG,1u);
         else if(!l->count) TEXT(208,176,"Directory is empty",FG,BG,1u);
@@ -73,11 +90,22 @@ int sb_shell_render(const sb_text_renderer_t *r,const sb_shell_state_t *s,
             for(unsigned j=0u;j<visible;++j) { unsigned char c=(unsigned char)e->name[j]; row[4u+j]=c>=32u && c<=126u?(char)c:'?'; }
             if(e->name_length>24u) row[27]='~';
             size_t n=29u+sb_shell_decimal(row+29u,e->size); row[n]=0;
-            TEXT(208,(int32_t)(160u+i*24u),row,FG,BG,1u);
+            uint32_t color=i==s->selected?0x18394bu:BG;
+            if(i==s->selected && fill(r,208,160u+i*24u,400u,16u,color)!=0) return -1;
+            TEXT(208,(int32_t)(160u+i*24u),row,FG,color,1u);
+        }
         }
     }
     const char *footer="F1 Home  F2 Files  F3 Settings  Tab cycle  Esc Home";
-    if(s->view==SB_SHELL_FILES) footer=l->truncated?"First 12 entries only  B boot  D disk  R refresh":"B boot  D disk  R refresh  F1 Home  F3 Settings";
+    if(s->view==SB_SHELL_FILES) {
+        footer=l->truncated?"First 12 only  Up/Down select  Enter open  Backspace up":"Up/Down select  Enter open  Backspace up  B/D root  R reload";
+        if(s->preview) {
+            char rows[SB_SHELL_ROWS][SB_SHELL_PREVIEW_COLUMNS+1u]; unsigned clipped;
+            sb_shell_preview_lines(&l->content,rows,&clipped);
+            footer=clipped?"Preview truncated  Esc/Backspace list  B/D root":"Read-only preview  Esc/Backspace list  B/D root";
+        }
+        if(s->error) footer="Unable to open; select another entry or try again";
+    }
     if(s->overflow) footer="Input overflow: keys resynchronized; release and retry";
     if(!keyboard) footer="Keyboard unavailable";
     TEXT(24,(int32_t)r->height-20,footer,FG,PANEL,1u);

@@ -15,7 +15,8 @@ the same transport; normal boot shows the title and startup status. See
 [text rendering](TEXT_RENDERING.md). The static proof labels do not implement a
 desktop or localization dialog. The first PS/2 IRQ keyboard path now feeds
 init's nonblocking input API. Normal boot starts a single-init Home/Files/Settings
-shell with keyboard navigation and real read-only `/boot` and `/disk` listings;
+shell with keyboard navigation, real `/boot` and `/disk` directory traversal
+and bounded read-only file previews;
 see [desktop shell](DESKTOP_SHELL.md) and [keyboard input](KEYBOARD_INPUT.md).
 The line editor remains a separate IRQ regression fixture. Compositor, windows,
 mouse/input routing, settings persistence and CJK fonts remain future steps.

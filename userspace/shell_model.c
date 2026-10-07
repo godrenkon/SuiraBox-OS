@@ -1,7 +1,12 @@
 #include "shell.h"
 
 void sb_shell_init(sb_shell_state_t *s) {
-    if (s) { s->view=SB_SHELL_HOME; s->disk=s->overflow=0u; }
+    if (s) {
+        s->view=SB_SHELL_HOME; s->disk=s->overflow=s->selected=s->preview=0u; s->error=0;
+        s->path_length=5u;
+        static const char root[]="/boot";
+        for(unsigned i=0u;i<=5u;++i) s->path[i]=root[i];
+    }
 }
 int sb_shell_event(sb_shell_state_t *s, const sb_key_event_t *e) {
     if (!s || s->view>SB_SHELL_SETTINGS || s->disk>1u || !e || e->size!=SB_KEY_EVENT_SIZE ||
@@ -40,10 +45,14 @@ size_t sb_shell_decimal(char *out, uint64_t value) {
 }
 int sb_shell_load(sb_shell_listing_t *l, unsigned disk, sb_shell_call_t call, void *context) {
     if (!l || !call || disk>1u) return -1;
-    l->count=l->truncated=0u; l->error=0;
     static const char boot[]="/boot", volume[]="/disk";
     const char *path=disk?volume:boot;
-    const int64_t handle=call(context,SB_SYS_DIRECTORY_OPEN,(uintptr_t)path,5u,0u);
+    return sb_shell_load_path(l,path,5u,call,context);
+}
+int sb_shell_load_path(sb_shell_listing_t *l,const char *path,size_t length,sb_shell_call_t call,void *context) {
+    if (!l || !call || !path || !length || length>SB_SYS_PATH_MAX) return -1;
+    l->count=l->truncated=0u; l->error=0;
+    const int64_t handle=call(context,SB_SYS_DIRECTORY_OPEN,(uintptr_t)path,length,0u);
     if (handle<=0) { l->error=handle<0?(int)handle:SB_SYS_ERROR_INVALID; return 0; }
     for (unsigned index=0u;index<=SB_SHELL_ROWS;++index) {
         sb_directory_entry_t entry;

@@ -15,6 +15,8 @@ address or kernel pointer is exposed. Headless boot continues without a shell.
 | Tab / Shift+Tab | Next / previous view |
 | B / D in Files | Read `/boot` / `/disk` |
 | R in Files | Reload the current directory |
+| Up / Down in Files | Select a visible entry |
+| Enter / Backspace in Files | Open / parent directory (close a preview first) |
 
 Only an initial key-down activates an action. Releases, auto-repeat and
 Ctrl/Alt/Meta chords do not navigate. Caps Lock does not affect these physical
@@ -27,7 +29,9 @@ not yet change or persist configuration.
 
 ## Read-only Files view
 
-Files reads DIRECTORY_OPEN / DIRECTORY_READ from the real VFS, showing type,
+The [Files browser](FILES_BROWSER.md) now supports bounded child/parent directory
+navigation and read-only file previews. Escape closes a preview before returning
+Home. Files reads DIRECTORY_OPEN / DIRECTORY_READ from the real VFS, showing type,
 name and byte size. It defaults to `/boot`; the selected volume persists when
 switching views. `/disk` is the mounted FAT32 volume. A missing/unmounted volume,
 read error, invalid entry or close error becomes a recoverable inline message.
@@ -59,7 +63,7 @@ Disk SHA-256 must remain unchanged. Existing storage, graphics, text, keyboard
 editing and cross-process IPC proofs remain separate regression checks.
 
 This is a single PID 1 shell. Display/input service separation, compositor,
-windows, mouse, scrolling, arbitrary directory traversal, file opening, CJK
+windows, mouse, scrolling, file editing/launching, CJK
 fonts/IME, first-run language selection, settings persistence, networking, JVM
 and the Minecraft launcher remain unfinished. Roadmap 17-3, 17-5, 17-6 and 11-5
 are still partial and are not marked complete.
