@@ -103,6 +103,11 @@ def verify_lifecycle(build):
 def verify_browser(build):
     log=(build/'display.log').read_text()
     if 'FAILED' in log or 'Exception:' in log: raise ValueError('guest browser failure')
+    tail=log.find('Userspace: runtime FAT32 additional directory entries verified')
+    complete=log.find('Userspace: runtime FAT32 directory enumeration OK',tail)
+    ready=log.find('Userspace: shell ready',complete)
+    if tail<0 or complete<0 or ready<0:
+        raise ValueError('browser boot did not enumerate additional root entries through EOF')
     boot=[('user-hello',(build/'user-hello.elf').stat().st_size),('user-child',(build/'user-child.elf').stat().st_size)]
     root=[('RUNTIME.TXT',(build.parent/'runtime.txt').stat().st_size),('SAVES',0,'D')]
     saves=[('WORLDS',0,'D')]+[(n,(build/n).stat().st_size) for n in ('README.TXT','EMPTY.TXT','LONG.TXT','BINARY.DAT')]

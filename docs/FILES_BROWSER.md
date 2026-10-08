@@ -51,6 +51,14 @@ checker compares 26 completed screenshots at every RGB pixel, using the real
 fixture bytes and ELF artifacts as data. The entire disk SHA-256 must remain
 unchanged. The normal shell ISO is retained alongside the CI screen artifacts.
 
+The ordinary bootstrap directory probe accepts additional regular files and
+directories after its `RUNTIME.TXT` seed, validates their type/name bounds and
+reads through EOF before closing the handle. Its safety limit is 4096 additional
+entries. Storage durability/rename/clean-unmount proof builds retain their exact
+fixture checks. The browser QEMU check requires the additional-entry marker
+before directory completion and shell readiness, so a multi-entry root cannot
+silently regress to a boot-time stall.
+
 This is still a bounded browser: only the first 12 entries are listed, there is
 no scrolling, search, file editing, launching, Unicode filename display or
 Unicode text layout, and only a file's beginning can be inspected. Settings

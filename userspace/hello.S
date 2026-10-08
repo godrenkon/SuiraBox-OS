@@ -623,12 +623,46 @@ runtime_directory_fillers:
     jne lifecycle_failed
     movq $1, runtime_clean_reboot(%rip)
 #endif
+#if !defined(SB_STORAGE_DURABILITY_PROOF) && !defined(SB_STORAGE_RENAME_PROOF) && !defined(SB_STORAGE_CLEAN_PROOF)
+    # Ordinary images may contain other files and directories after RUNTIME.TXT.
+    # Keep the bootstrap probe bounded, and validate every copied entry to EOF.
+    mov $4097, %r14
+runtime_directory_tail:
+#endif
     mov %r12, %rdi
     lea directory_entry_buffer(%rip), %rsi
     mov $SB_SYS_DIRECTORY_READ, %rax
     int $SB_SYSCALL_VECTOR
     cmp $SB_SYS_ERROR_NOT_FOUND, %rax
+#if !defined(SB_STORAGE_DURABILITY_PROOF) && !defined(SB_STORAGE_RENAME_PROOF) && !defined(SB_STORAGE_CLEAN_PROOF)
+    je runtime_directory_tail_end
+    test %rax, %rax
     jne lifecycle_failed
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_REGULAR, SB_DIRECTORY_ENTRY_TYPE_OFFSET+directory_entry_buffer(%rip)
+    je runtime_directory_tail_type_ok
+    cmpl $SB_DIRECTORY_ENTRY_TYPE_DIRECTORY, SB_DIRECTORY_ENTRY_TYPE_OFFSET+directory_entry_buffer(%rip)
+    jne lifecycle_failed
+runtime_directory_tail_type_ok:
+    cmpw $0, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    je lifecycle_failed
+    cmpw $SB_DIRECTORY_ENTRY_NAME_MAX, SB_DIRECTORY_ENTRY_NAME_LENGTH_OFFSET+directory_entry_buffer(%rip)
+    ja lifecycle_failed
+    dec %r14
+    jnz runtime_directory_tail
+    jmp lifecycle_failed
+runtime_directory_tail_end:
+    cmp $4097, %r14
+    je runtime_directory_tail_logged
+    lea runtime_directory_tail_message(%rip), %rdi
+    mov $runtime_directory_tail_message_len, %rsi
+    mov $SB_SYS_LOG_WRITE, %rax
+    int $SB_SYSCALL_VECTOR
+    cmp $runtime_directory_tail_message_len, %rax
+    jne lifecycle_failed
+runtime_directory_tail_logged:
+#else
+    jne lifecycle_failed
+#endif
 #ifdef SB_STORAGE_CLEAN_PROOF
 runtime_clean_directory_end:
 #endif
@@ -2017,6 +2051,9 @@ runtime_disk_message:
 runtime_directory_message:
     .ascii "Userspace: runtime FAT32 directory enumeration OK\r\n"
 .set runtime_directory_message_len, . - runtime_directory_message
+runtime_directory_tail_message:
+    .ascii "Userspace: runtime FAT32 additional directory entries verified\r\n"
+.set runtime_directory_tail_message_len, . - runtime_directory_tail_message
 pipe_message:
     .ascii "Userspace: PIPE handle lifecycle OK\r\n"
 .set pipe_message_len, . - pipe_message
