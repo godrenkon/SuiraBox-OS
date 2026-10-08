@@ -20,7 +20,7 @@ def preview_rows(data):
         else: rows[-1]+=chr(byte) if 32<=byte<=126 else '.'
     return [r.ljust(48) for r in rows[:12]] if data else [], index<len(data)
 
-def expected(width, height, view, entries=(), disk=False, selected=0, location=None, preview=None, filename=None):
+def expected(width, height, view, entries=(), disk=False, selected=0, location=None, preview=None, filename=None, offset=0, more=False):
     if width < 640 or height < 480 or view not in ('Home', 'Files', 'Settings'):
         raise ValueError('unsupported shell expectation')
     pixels = bytearray(BG.to_bytes(3, 'big') * width * height)
@@ -32,7 +32,10 @@ def expected(width, height, view, entries=(), disk=False, selected=0, location=N
     fill(0,0,width,48,PANEL)
     fill(16,72,160,height-112,PANEL)
     fill(0,height-28,width,28,PANEL)
-    labels = [(24,16,'SuiraBox OS',FG,PANEL,2), (208,80,view,FG,BG,2)]
+    title=view
+    if view=='Files' and preview is None and entries and (offset or more):
+        title=f'Files {offset+1}-{offset+len(entries)}'+('+' if more else '')
+    labels = [(24,16,'SuiraBox OS',FG,PANEL,2), (208,80,title,FG,BG,2 if len(title)<=24 else 1)]
     for index, name in enumerate(('Home','Files','Settings')):
         color = ACCENT if name == view else PANEL
         fill(24,88+index*40,144,32,color)
@@ -52,6 +55,7 @@ def expected(width, height, view, entries=(), disk=False, selected=0, location=N
                    (208,256,'Persistent settings are pending.',FG,BG,1)]
     else:
         footer = 'Up/Down select  Enter open  Backspace up  B/D root  R reload'
+        if offset or more: footer='PgUp/PgDn pages  Up/Down select  Enter open  Backspace up'
         path=location or ('/disk' if disk else '/boot')
         labels.append((208,112,path,ACCENT,BG,2))
         if preview is not None:
@@ -136,10 +140,46 @@ def verify_browser(build):
         verify(build/f'{name}.ppm',view,entries,**options)
     print(f'QEMU Files browser lifecycle OK: {len(stages)} frames, nested paths and real text/empty/long/binary/ELF reads')
 
+def verify_paging(build):
+    log=(build/'display.log').read_text()
+    if 'FAILED' in log or 'Exception:' in log: raise ValueError('guest paging failure')
+    boot=[('user-hello',(build/'user-hello.elf').stat().st_size),('user-child',(build/'user-child.elf').stat().st_size)]
+    root=[('RUNTIME.TXT',(build.parent/'runtime.txt').stat().st_size),('MANY',0,'D')]
+    files=[(f'FILE{i:02d}.TXT',(build/f'FILE{i:02d}.TXT').stat().st_size) for i in range(1,28)]
+    first,second,third=files[:12],files[12:24],files[24:]
+    a={'location':'/disk/MANY','more':True}
+    b={**a,'offset':12}
+    c={'location':'/disk/MANY','offset':24}
+    def preview(options,number):
+        name=f'FILE{number:02d}.TXT'
+        return {**options,'filename':name,'preview':(build/name).read_bytes()}
+    stages=[('home','Home',[],{}),('boot-files','Files',boot,{'location':'/boot'}),
+            ('disk-files','Files',root,{'location':'/disk'}),('select-many','Files',root,{'location':'/disk','selected':1}),
+            ('page-one','Files',first,a),('page-two','Files',second,b),
+            ('file13-preview','Files',second,preview(b,13)),('file13-return','Files',second,b),
+            ('page-three','Files',third,c),('file25-preview','Files',third,preview(c,25)),
+            ('file25-return','Files',third,c),('select26','Files',third,{**c,'selected':1}),
+            ('select27','Files',third,{**c,'selected':2}),('select26-return','Files',third,{**c,'selected':1}),
+            ('page-two-return','Files',second,b),('page-one-last','Files',first,{**a,'selected':11}),
+            ('file12-preview','Files',first,preview({**a,'selected':11},12)),
+            ('file12-return','Files',first,{**a,'selected':11}),('page-two-edge','Files',second,b),
+            ('page-two-refresh','Files',second,b),('root-return','Files',root,{'location':'/disk'}),
+            ('boot-return','Files',boot,{'location':'/boot'}),('home-return','Home',[],{})]
+    cursor=0
+    for number,(name,view,entries,options) in enumerate(stages,1):
+        marker=f'Userspace: shell frame {number} {view}'
+        if view=='Files': marker+=' '+options['location']+(' preview' if 'preview' in options else '')
+        position=log.find(marker+'\n',cursor)
+        if position<0: raise ValueError(f'missing completed paging frame: {marker}')
+        cursor=position+len(marker)+1
+        verify(build/f'{name}.ppm',view,entries,**options)
+    print(f'QEMU Files paging lifecycle OK: {len(stages)} frames, 27 entries, Page/arrow boundaries and files 12/13/25 previewed')
+
 if __name__ == '__main__':
     try:
         if '--home' in sys.argv[2:]: verify(Path(sys.argv[1]),'Home')
         elif '--browser' in sys.argv[2:]: verify_browser(Path(sys.argv[1]))
+        elif '--paging' in sys.argv[2:]: verify_paging(Path(sys.argv[1]))
         else: verify_lifecycle(Path(sys.argv[1]))
     except (OSError,ValueError,IndexError) as error:
         raise SystemExit(str(error)) from error

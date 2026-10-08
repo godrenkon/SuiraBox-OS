@@ -25,6 +25,10 @@ int main(void) {
     memset(l.entries[0].name,'A',63u); l.entries[0].name[0]='\n'; l.entries[0].name[1]=0; l.entries[0].name[2]=(char)0xff;
     assert(sb_shell_render(&r,&s,&l,1u)==0);
     assert(pixels[160u*640u+616u]==0x0c1018u); /* Long row is bounded to x<608. */
+    s.offset=UINT32_MAX/12u*12u; assert(sb_shell_render(&r,&s,&l,1u)==0);
+    s.offset=1u; unsigned invalid_calls=calls;
+    assert(sb_shell_render(&r,&s,&l,1u)==-1 && calls==invalid_calls);
+    s.offset=0u;
     l.entries[0].name_length=64u; unsigned before=calls;
     assert(sb_shell_render(&r,&s,&l,1u)==-1 && calls==before);
     l.count=0u; l.error=-6; assert(sb_shell_render(&r,&s,&l,1u)==0);

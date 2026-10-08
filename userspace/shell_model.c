@@ -2,7 +2,7 @@
 
 void sb_shell_init(sb_shell_state_t *s) {
     if (s) {
-        s->view=SB_SHELL_HOME; s->disk=s->overflow=s->selected=s->preview=0u; s->error=0;
+        s->view=SB_SHELL_HOME; s->disk=s->overflow=s->selected=s->preview=s->offset=0u; s->error=0;
         s->path_length=5u;
         static const char root[]="/boot";
         for(unsigned i=0u;i<=5u;++i) s->path[i]=root[i];
@@ -50,11 +50,14 @@ int sb_shell_load(sb_shell_listing_t *l, unsigned disk, sb_shell_call_t call, vo
     return sb_shell_load_path(l,path,5u,call,context);
 }
 int sb_shell_load_path(sb_shell_listing_t *l,const char *path,size_t length,sb_shell_call_t call,void *context) {
+    return sb_shell_load_page(l,path,length,0u,call,context);
+}
+int sb_shell_load_page(sb_shell_listing_t *l,const char *path,size_t length,unsigned offset,sb_shell_call_t call,void *context) {
     if (!l || !call || !path || !length || length>SB_SYS_PATH_MAX) return -1;
     l->count=l->truncated=0u; l->error=0;
     const int64_t handle=call(context,SB_SYS_DIRECTORY_OPEN,(uintptr_t)path,length,0u);
     if (handle<=0) { l->error=handle<0?(int)handle:SB_SYS_ERROR_INVALID; return 0; }
-    for (unsigned index=0u;index<=SB_SHELL_ROWS;++index) {
+    for (uint64_t index=0u;index<=(uint64_t)offset+SB_SHELL_ROWS;++index) {
         sb_directory_entry_t entry;
         const int64_t status=call(context,SB_SYS_DIRECTORY_READ,(uint64_t)handle,(uintptr_t)&entry,0u);
         if (status==SB_SYS_ERROR_NOT_FOUND) break;
@@ -63,7 +66,8 @@ int sb_shell_load_path(sb_shell_listing_t *l,const char *path,size_t length,sb_s
             entry.type<SB_DIRECTORY_ENTRY_TYPE_REGULAR || entry.type>SB_DIRECTORY_ENTRY_TYPE_DEVICE) {
             l->error=SB_SYS_ERROR_INVALID; break;
         }
-        if (index==SB_SHELL_ROWS) { l->truncated=1u; break; }
+        if (index<offset) continue;
+        if (l->count==SB_SHELL_ROWS) { l->truncated=1u; break; }
         /* Only initialized, length-delimited name bytes cross this boundary. */
         sb_directory_entry_t *dst=&l->entries[l->count++];
         dst->type=entry.type; dst->name_length=entry.name_length; dst->reserved=0u; dst->size=entry.size;

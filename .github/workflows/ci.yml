@@ -313,6 +313,23 @@ jobs:
           python3 tests/shell_image_check.py build/browser --browser
           sha256sum -c build/browser/before.sha256
 
+      - name: Page through a real 27-file directory and open later entries
+        run: |
+          make BUILD=build/paging all STORAGE_DURABILITY_PROOF=0 STORAGE_RECOVERY_PROOF=0 STORAGE_DIRTY_PROOF=0 STORAGE_CLEAN_PROOF=0 STORAGE_RENAME_PROOF=0 DISPLAY_PROOF=0 INPUT_PROOF=0
+          truncate -s 64M build/paging/runtime.img
+          mformat -i build/paging/runtime.img -F ::
+          mcopy -i build/paging/runtime.img build/runtime.txt ::RUNTIME.TXT
+          mmd -i build/paging/runtime.img ::MANY
+          python3 tests/paging_fixture.py build/paging
+          for file in build/paging/FILE*.TXT; do
+            mcopy -i build/paging/runtime.img "$file" ::MANY/
+          done
+          sha256sum build/paging/runtime.img > build/paging/before.sha256
+          python3 tests/qemu_display_capture.py build/paging --paging
+          python3 tests/qemu_log_check.py build/paging/display.log --shell
+          python3 tests/shell_image_check.py build/paging --paging
+          sha256sum -c build/paging/before.sha256
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -373,6 +390,17 @@ jobs:
             build/browser/before.sha256
             build/browser/user-hello.elf
             build/browser/user-child.elf
+            build/paging/*.ppm
+            build/paging/*.png
+            build/paging/*.TXT
+            build/paging/display.log
+            build/paging/qemu-host.log
+            build/paging/before.sha256
+            build/paging/user-hello.elf
+            build/paging/user-child.elf
+            build/paging/suirabox.iso
+            build/paging/runtime.img
+            build/runtime.txt
 
   ipc-proof:
     needs: kernel

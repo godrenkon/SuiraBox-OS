@@ -2,18 +2,18 @@
 
 static int location_valid(const sb_shell_state_t *s) {
     if(!s || s->disk>1u || s->preview>1u || s->path_length<5u || s->path_length>SB_SYS_PATH_MAX ||
-       s->path[s->path_length]!=0) return 0;
+       s->path[s->path_length]!=0 || s->offset%SB_SHELL_ROWS) return 0;
     const char *root=s->disk?"/disk":"/boot";
     for(unsigned i=0u;i<5u;++i) if(s->path[i]!=root[i]) return 0;
     return s->path_length==5u || s->path[5]=='/';
 }
 static void root(sb_shell_state_t *s) {
     const char *path=s->disk?"/disk":"/boot";
-    s->path_length=5u; s->selected=s->preview=0u;
+    s->path_length=5u; s->selected=s->preview=s->offset=0u;
     for(unsigned i=0u;i<=5u;++i) s->path[i]=path[i];
 }
 int sb_shell_browser_event(sb_shell_state_t *s,const sb_shell_listing_t *l,const sb_key_event_t *e) {
-    if(!location_valid(s) || !l || l->count>SB_SHELL_ROWS) return -1;
+    if(!location_valid(s) || !l || l->count>SB_SHELL_ROWS || (l->count && s->selected>=l->count)) return -1;
     const unsigned old_view=s->view, old_preview=s->preview, old_disk=s->disk;
     const int action=sb_shell_event(s,e); /* Shared ABI/modifier/repeat validation. */
     if(action<0) return -1;
@@ -24,7 +24,7 @@ int sb_shell_browser_event(sb_shell_state_t *s,const sb_shell_listing_t *l,const
             s->view=SB_SHELL_FILES; s->preview=0u; s->error=0; return SB_SHELL_REDRAW;
         }
         if(e->keycode=='B' || e->keycode=='D') {
-            if(old_disk!=s->disk || s->path_length!=5u || old_preview) {
+            if(old_disk!=s->disk || s->path_length!=5u || s->offset || old_preview) {
                 root(s); s->error=0; return SB_SHELL_RELOAD;
             }
         }
@@ -34,8 +34,12 @@ int sb_shell_browser_event(sb_shell_state_t *s,const sb_shell_listing_t *l,const
             return s->path_length>5u?SB_SHELL_PARENT:SB_SHELL_NONE;
         }
         if(!old_preview && !l->error && l->count) {
+            if(e->keycode==SB_KEY_PAGE_DOWN) return l->truncated?SB_SHELL_PAGE_NEXT:SB_SHELL_NONE;
+            if(e->keycode==SB_KEY_PAGE_UP) return s->offset?SB_SHELL_PAGE_PREV:SB_SHELL_NONE;
             if(e->keycode==SB_KEY_UP && s->selected>0u) { --s->selected; s->error=0; return SB_SHELL_REDRAW; }
+            if(e->keycode==SB_KEY_UP && s->offset) return SB_SHELL_PAGE_PREV_LAST;
             if(e->keycode==SB_KEY_DOWN_ARROW && s->selected+1u<l->count) { ++s->selected; s->error=0; return SB_SHELL_REDRAW; }
+            if(e->keycode==SB_KEY_DOWN_ARROW && l->truncated) return SB_SHELL_PAGE_NEXT;
             if(e->keycode==SB_KEY_ENTER) return SB_SHELL_OPEN;
         }
     }
@@ -79,12 +83,45 @@ static int preview_file(sb_shell_preview_t *p,const char *path,unsigned length,s
     if(error) p->length=p->more=0u;
     return error;
 }
+static void snapshot(sb_shell_listing_t *l,const sb_shell_listing_t *candidate) {
+    l->count=candidate->count; l->truncated=candidate->truncated; l->error=0;
+    l->content.length=l->content.more=0u;
+    for(unsigned i=0u;i<l->count;++i) {
+        sb_directory_entry_t *dst=&l->entries[i]; const sb_directory_entry_t *src=&candidate->entries[i];
+        dst->type=src->type; dst->name_length=src->name_length; dst->reserved=0; dst->size=src->size;
+        for(unsigned j=0u;j<=src->name_length;++j) dst->name[j]=src->name[j];
+    }
+}
 int sb_shell_browser_action(sb_shell_state_t *s,sb_shell_listing_t *l,int action,sb_shell_call_t call,void *ctx) {
     if(!location_valid(s) || !l || l->count>SB_SHELL_ROWS || !call) return -1;
     if(action==SB_SHELL_RELOAD) {
         s->preview=0u; s->error=0;
-        if(sb_shell_load_path(l,s->path,s->path_length,call,ctx)!=0) return -1;
+        if(sb_shell_load_page(l,s->path,s->path_length,s->offset,call,ctx)!=0) return -1;
+        if(s->offset && !l->error && !l->count) {
+            /* A directory may have shrunk since its previous snapshot. */
+            s->offset=s->selected=0u;
+            if(sb_shell_load_path(l,s->path,s->path_length,call,ctx)!=0) return -1;
+        }
         if(s->selected>=l->count) s->selected=0u;
+        return 0;
+    }
+    if(action==SB_SHELL_PAGE_NEXT || action==SB_SHELL_PAGE_PREV || action==SB_SHELL_PAGE_PREV_LAST) {
+        unsigned offset=s->offset;
+        if(action==SB_SHELL_PAGE_NEXT) {
+            if(!l->truncated) return 0;
+            if(offset>UINT32_MAX-SB_SHELL_ROWS) { s->error=SB_SYS_ERROR_LIMIT; return 0; }
+            offset+=SB_SHELL_ROWS;
+        } else {
+            if(!offset) return 0;
+            offset-=SB_SHELL_ROWS;
+        }
+        sb_shell_listing_t candidate;
+        if(sb_shell_load_page(&candidate,s->path,s->path_length,offset,call,ctx)!=0) return -1;
+        s->error=candidate.error;
+        if(!s->error && !candidate.count) s->error=SB_SYS_ERROR_NOT_FOUND;
+        if(s->error) return 0;
+        snapshot(l,&candidate); s->offset=offset; s->preview=0u;
+        s->selected=action==SB_SHELL_PAGE_PREV_LAST?l->count-1u:0u;
         return 0;
     }
     if(action!=SB_SHELL_OPEN && action!=SB_SHELL_PARENT) return action<0?-1:0;
@@ -112,14 +149,9 @@ int sb_shell_browser_action(sb_shell_state_t *s,sb_shell_listing_t *l,int action
     if(sb_shell_load_path(&candidate,path,length,call,ctx)!=0) return -1;
     s->error=candidate.error;
     if(s->error) return 0; /* Keep the previous directory/selection on failure. */
-    l->count=candidate.count; l->truncated=candidate.truncated; l->error=0;
-    for(unsigned i=0u;i<l->count;++i) {
-        sb_directory_entry_t *dst=&l->entries[i], *src=&candidate.entries[i];
-        dst->type=src->type; dst->name_length=src->name_length; dst->reserved=0; dst->size=src->size;
-        for(unsigned j=0u;j<=src->name_length;++j) dst->name[j]=src->name[j];
-    }
+    snapshot(l,&candidate);
     for(unsigned i=0u;i<=length;++i) s->path[i]=path[i];
-    s->path_length=length; s->selected=s->preview=0u; return 0;
+    s->path_length=length; s->selected=s->preview=s->offset=0u; return 0;
 }
 unsigned sb_shell_preview_lines(const sb_shell_preview_t *p,char rows[SB_SHELL_ROWS][SB_SHELL_PREVIEW_COLUMNS+1u],unsigned *clipped) {
     if(!p || !rows || !clipped || p->length>SB_SHELL_PREVIEW_BYTES) return 0u;

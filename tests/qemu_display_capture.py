@@ -8,16 +8,16 @@ import sys
 import time
 
 
-def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: bool = False, browser: bool = False) -> None:
+def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: bool = False, browser: bool = False, paging: bool = False) -> None:
     build = build.resolve()
     serial = build / "display.log"
     qmp = build / "qmp.sock"
     # Only this tool's disposable socket is removed; never a user disk path.
     qmp.unlink(missing_ok=True)
     serial.unlink(missing_ok=True)
-    marker = ("Userspace: keyboard demo ready" if keyboard else "Userspace: shell ready" if boot_text or shell or browser
+    marker = ("Userspace: keyboard demo ready" if keyboard else "Userspace: shell ready" if boot_text or shell or browser or paging
               else "Userspace: display surface present and rejection lifecycle OK")
-    deadline = time.monotonic() + (45 if browser else 30)
+    deadline = time.monotonic() + (45 if browser or paging else 30)
     with (build / "qemu-host.log").open("wb") as host_log:
         process = subprocess.Popen([
             "qemu-system-x86_64", "-m", "256M", "-boot", "d",
@@ -74,7 +74,7 @@ def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: boo
                     def key(code, down):
                         command("input-send-event", {"events": [{"type":"key", "data": {
                             "down":down, "key":{"type":"qcode", "data":code}}}]})
-                    if shell or browser:
+                    if shell or browser or paging:
                         def capture(name):
                             command("stop")
                             command("screendump", {"filename": str(build / f"{name}.ppm")})
@@ -116,6 +116,29 @@ def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: boo
                                       ("b","Files /boot","boot-return"),
                                       ("ret","Files /boot preview","elf-preview"),
                                       ("esc","Files /boot","elf-return"),
+                                      ("esc","Home","home-return")]
+                        if paging:
+                            stages = [("f2","Files /boot","boot-files"),
+                                      ("d","Files /disk","disk-files"),
+                                      ("down","Files /disk","select-many"),
+                                      ("ret","Files /disk/MANY","page-one"),
+                                      ("pgdn","Files /disk/MANY","page-two"),
+                                      ("ret","Files /disk/MANY preview","file13-preview"),
+                                      ("esc","Files /disk/MANY","file13-return"),
+                                      ("pgdn","Files /disk/MANY","page-three"),
+                                      ("ret","Files /disk/MANY preview","file25-preview"),
+                                      ("esc","Files /disk/MANY","file25-return"),
+                                      ("down","Files /disk/MANY","select26"),
+                                      ("down","Files /disk/MANY","select27"),
+                                      ("up","Files /disk/MANY","select26-return"),
+                                      ("pgup","Files /disk/MANY","page-two-return"),
+                                      ("up","Files /disk/MANY","page-one-last"),
+                                      ("ret","Files /disk/MANY preview","file12-preview"),
+                                      ("esc","Files /disk/MANY","file12-return"),
+                                      ("down","Files /disk/MANY","page-two-edge"),
+                                      ("r","Files /disk/MANY","page-two-refresh"),
+                                      ("backspace","Files /disk","root-return"),
+                                      ("b","Files /boot","boot-return"),
                                       ("esc","Home","home-return")]
                         for number, (code, view, name) in enumerate(stages, 2):
                             if code == "shift-tab":
@@ -164,4 +187,4 @@ def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: boo
 
 
 if __name__ == "__main__":
-    run(Path(sys.argv[1]), "--boot-text" in sys.argv[2:], "--input-proof" in sys.argv[2:], "--shell" in sys.argv[2:], "--browser" in sys.argv[2:])
+    run(Path(sys.argv[1]), "--boot-text" in sys.argv[2:], "--input-proof" in sys.argv[2:], "--shell" in sys.argv[2:], "--browser" in sys.argv[2:], "--paging" in sys.argv[2:])
