@@ -7,9 +7,10 @@
 #define SB_SHELL_PREVIEW_BYTES 512u
 #define SB_SHELL_PREVIEW_COLUMNS 48u
 enum { SB_SHELL_HOME, SB_SHELL_FILES, SB_SHELL_SETTINGS };
-enum { SB_SHELL_NONE, SB_SHELL_REDRAW, SB_SHELL_RELOAD, SB_SHELL_OPEN, SB_SHELL_PARENT };
+enum { SB_SHELL_NONE, SB_SHELL_REDRAW, SB_SHELL_RELOAD, SB_SHELL_OPEN, SB_SHELL_PARENT,
+       SB_SHELL_PAGE_NEXT, SB_SHELL_PAGE_PREV, SB_SHELL_PAGE_PREV_LAST };
 typedef struct {
-    unsigned view, disk, overflow, selected, preview, path_length;
+    unsigned view, disk, overflow, selected, preview, path_length, offset;
     int error;
     char path[SB_SYS_PATH_MAX+1u];
 } sb_shell_state_t;
@@ -29,6 +30,8 @@ int sb_shell_browser_event(sb_shell_state_t *state, const sb_shell_listing_t *li
 int sb_shell_browser_action(sb_shell_state_t *state, sb_shell_listing_t *listing, int action,
                             sb_shell_call_t call, void *context);
 int sb_shell_load_path(sb_shell_listing_t *listing, const char *path, size_t length, sb_shell_call_t call, void *context);
+int sb_shell_load_page(sb_shell_listing_t *listing, const char *path, size_t length, unsigned offset,
+                       sb_shell_call_t call, void *context);
 unsigned sb_shell_preview_lines(const sb_shell_preview_t *preview,
                                 char rows[SB_SHELL_ROWS][SB_SHELL_PREVIEW_COLUMNS+1u], unsigned *clipped);
 /* Bounded, read-only directory snapshot. Every successfully opened handle is

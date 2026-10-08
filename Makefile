@@ -538,3 +538,10 @@ $(BUILD)/shell-browser-host-test: tests/shell_browser_host_test.c userspace/shel
 host-shell-browser-test: $(BUILD)/shell-browser-host-test
 	./$(BUILD)/shell-browser-host-test
 check: host-shell-browser-test
+
+$(BUILD)/shell-paging-host-test: tests/shell_paging_host_test.c userspace/shell_browser.c userspace/shell_model.c userspace/shell.h kernel/key_decoder.c kernel/key_decoder.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) -std=c11 -Wall -Wextra -Werror -O2 -Iinclude -Iuserspace -Ikernel tests/shell_paging_host_test.c userspace/shell_browser.c userspace/shell_model.c kernel/key_decoder.c -o $@
+.PHONY: host-shell-paging-test
+host-shell-paging-test: $(BUILD)/shell-paging-host-test
+	./$(BUILD)/shell-paging-host-test
+check: host-shell-paging-test

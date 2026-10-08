@@ -37,5 +37,19 @@ class ShellScreenTests(unittest.TestCase):
                             expected(640,480,'Files',entries,selected=1))
         self.assertNotEqual(expected(640,480,'Files',entries),
                             expected(640,480,'Files',entries,preview=b'',filename='EMPTY.TXT'))
+    def test_page_range_is_checked_independently(self):
+        entries=[(f'FILE{i:02d}.TXT',17) for i in range(13,25)]
+        second=expected(640,480,'Files',entries,offset=12,more=True)
+        self.assertNotEqual(second,expected(640,480,'Files',entries,more=True))
+        with TemporaryDirectory() as directory:
+            path=Path(directory)/'page.ppm'
+            path.write_bytes(b'P6\n640 480\n255\n'+second)
+            verify(path,'Files',entries,offset=12,more=True)
+            with self.assertRaises(ValueError): verify(path,'Files',entries,more=True)
+    def test_short_last_page_clears_previous_rows(self):
+        entries=[(f'FILE{i:02d}.TXT',17) for i in range(25,28)]
+        third=expected(640,480,'Files',entries,offset=24)
+        for y in range(232,440):
+            self.assertEqual(third[(y*640+208)*3:(y*640+608)*3],bytes((12,16,24))*400)
 
 if __name__ == '__main__': unittest.main()

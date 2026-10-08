@@ -15,7 +15,8 @@ address or kernel pointer is exposed. Headless boot continues without a shell.
 | Tab / Shift+Tab | Next / previous view |
 | B / D in Files | Read `/boot` / `/disk` |
 | R in Files | Reload the current directory |
-| Up / Down in Files | Select a visible entry |
+| Up / Down in Files | Select an entry, crossing a page boundary as needed |
+| Page Up / Page Down in Files | Previous / next page |
 | Enter / Backspace in Files | Open / parent directory (close a preview first) |
 
 Only an initial key-down activates an action. Releases, auto-repeat and
@@ -37,7 +38,10 @@ switching views. `/disk` is the mounted FAT32 volume. A missing/unmounted volume
 read error, invalid entry or close error becomes a recoverable inline message.
 B, D and R permit another attempt. No create, write, rename or sync is issued.
 
-A snapshot holds at most 12 rows and reads one extra entry to detect truncation.
+A snapshot holds at most 12 rows and reads one extra entry to detect another page.
+The page range is displayed in the title; closing a preview retains the page and
+selection. Page transitions rescan the directory and preserve the visible list
+on failure. A refresh of a vanished page falls back to the beginning.
 Every successful open gets exactly one close attempt, including EOF, errors and
 truncation. Failed snapshots discard partial rows. Metadata is validated before
 rendering. Names display at most 24 ASCII bytes; nonprintable/non-ASCII bytes
@@ -63,7 +67,7 @@ Disk SHA-256 must remain unchanged. Existing storage, graphics, text, keyboard
 editing and cross-process IPC proofs remain separate regression checks.
 
 This is a single PID 1 shell. Display/input service separation, compositor,
-windows, mouse, scrolling, file editing/launching, CJK
+windows, mouse, continuous scrolling, file editing/launching, CJK
 fonts/IME, first-run language selection, settings persistence, networking, JVM
 and the Minecraft launcher remain unfinished. Roadmap 17-3, 17-5, 17-6 and 11-5
 are still partial and are not marked complete.

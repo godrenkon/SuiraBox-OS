@@ -32,7 +32,7 @@ static int fill(const sb_text_renderer_t *r,uint32_t x,uint32_t y,uint32_t w,uin
 int sb_shell_render(const sb_text_renderer_t *r,const sb_shell_state_t *s,
                     const sb_shell_listing_t *l,unsigned keyboard) {
     if(!r || !r->emit || !r->width || !r->height || r->width>4096u || r->height>4096u ||
-       !s || s->view>SB_SHELL_SETTINGS || s->disk>1u || s->preview>1u || s->path_length>SB_SYS_PATH_MAX ||
+       !s || s->view>SB_SHELL_SETTINGS || s->disk>1u || s->preview>1u || s->path_length>SB_SYS_PATH_MAX || s->offset%SB_SHELL_ROWS ||
        !l || l->count>SB_SHELL_ROWS || (l->count && s->selected>=l->count) ||
        (s->preview && (l->content.length>SB_SHELL_PREVIEW_BYTES || !l->count))) return -1;
     /* Validate snapshot metadata before any draw; names are sanitized below. */
@@ -52,7 +52,15 @@ int sb_shell_render(const sb_text_renderer_t *r,const sb_shell_state_t *s,
         if(fill(r,24,88u+i*40u,144,32,color)!=0) return -1;
         TEXT(32,(int32_t)(96u+i*40u),names[i],FG,color,2u);
     }
-    TEXT(208,80,names[s->view],FG,BG,2u);
+    if(s->view==SB_SHELL_FILES && !s->preview && l->count && (s->offset || l->truncated)) {
+        char title[40]; unsigned n=0u;
+        static const char prefix[]="Files ";
+        for(unsigned i=0u;i<sizeof(prefix)-1u;++i) title[n++]=prefix[i];
+        n+=(unsigned)sb_shell_decimal(title+n,(uint64_t)s->offset+1u); title[n++]='-';
+        n+=(unsigned)sb_shell_decimal(title+n,(uint64_t)s->offset+l->count);
+        if(l->truncated) title[n++]='+';
+        title[n]=0; TEXT(208,80,title,FG,BG,n<=24u?2u:1u);
+    } else TEXT(208,80,names[s->view],FG,BG,2u);
     if(s->view==SB_SHELL_HOME) {
         TEXT(208,128,"Welcome to SuiraBox",FG,BG,2u);
         TEXT(208,176,keyboard?"Kernel, storage and keyboard are ready.":"Kernel and storage are ready.",FG,BG,1u);
@@ -98,7 +106,7 @@ int sb_shell_render(const sb_text_renderer_t *r,const sb_shell_state_t *s,
     }
     const char *footer="F1 Home  F2 Files  F3 Settings  Tab cycle  Esc Home";
     if(s->view==SB_SHELL_FILES) {
-        footer=l->truncated?"First 12 only  Up/Down select  Enter open  Backspace up":"Up/Down select  Enter open  Backspace up  B/D root  R reload";
+        footer=s->offset || l->truncated?"PgUp/PgDn pages  Up/Down select  Enter open  Backspace up":"Up/Down select  Enter open  Backspace up  B/D root  R reload";
         if(s->preview) {
             char rows[SB_SHELL_ROWS][SB_SHELL_PREVIEW_COLUMNS+1u]; unsigned clipped;
             sb_shell_preview_lines(&l->content,rows,&clipped);

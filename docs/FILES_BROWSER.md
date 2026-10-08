@@ -6,7 +6,8 @@ file content. It adds no kernel ABI or writes to the selected volume.
 
 | Key in Files | Result |
 | --- | --- |
-| Up / Down | Select a visible entry; stop at either end |
+| Up / Down | Select an entry; cross page boundaries at the first/last row |
+| Page Up / Page Down | Previous/next page, selecting its first entry |
 | Enter | Enter a selected directory or preview a regular file |
 | Backspace | Parent directory; from a preview, return to its list |
 | Escape | Close a preview; from a list, return Home |
@@ -16,7 +17,26 @@ file content. It adds no kernel ABI or writes to the selected volume.
 Only the initial key-down acts; repeats, releases and Ctrl/Alt/Meta chords are
 ignored. Home/Files/Settings navigation remains available. Re-entering Files
 reloads its remembered directory. A root key also resets a nested location when
-that root is already selected. A missing volume shows the existing retry message.
+that root is already selected, and resets a later page to the beginning. A
+missing volume shows the existing retry message.
+
+The list holds twelve entries at a time, without limiting the directory to
+twelve entries. Each page is read from a newly opened directory handle, skipping
+earlier entries, validating copied metadata (including skipped entries), and
+reading one lookahead entry to distinguish a full final page from another page.
+The handle is closed before display/input resumes. The heading shows the ordinal
+range, for example `Files 13-24+`; `+` means a following page exists. Up at the
+first row selects the last entry of the previous page; Down at the last row
+selects the first entry of the next page. Directory/root/parent transitions
+start on the first page. Closing a preview preserves its page and selection.
+
+Failed or vanished page transitions preserve the visible path, entries, offset
+and selection, and display the recovery notice. R refreshes the current page;
+if that page is now empty, it reloads the first page. Enumeration is an ordinal
+snapshot, not a persistent cursor: concurrent directory changes may move entries
+between pages, and R obtains a fresh snapshot. Page loads rescan from the start,
+so large directories can take longer despite constant snapshot memory. Page
+offset arithmetic is checked against the 32-bit entry index before any open.
 
 Locations use at most 255 bytes. Child names are length-delimited, up to 63
 bytes; NUL/control bytes, slash, backslash and lexical `.`/`..` are rejected
@@ -52,6 +72,15 @@ checker compares 26 completed screenshots at every RGB pixel, using the real
 fixture bytes and ELF artifacts as data. The entire disk SHA-256 must remain
 unchanged. The normal shell ISO is retained alongside the CI screen artifacts.
 
+An additional QEMU boot uses a real 27-file FAT32 directory spanning multiple
+clusters. Page Down/Up and arrow boundary transitions visit all three pages,
+preview files 12, 13 and 25, return to the same selections, refresh a later page,
+and return to the parent/root/Home. The independent checker compares 23 complete
+screens and the entire disk SHA-256 remains unchanged. Its tested ISO, disk image,
+seed files, checksum, logs and screen captures are retained together as CI
+artifacts. Host coverage includes exact 12/13-entry boundaries, directory shrink,
+skipped-entry corruption, read/close failures, preview identity and offset overflow.
+
 The ordinary bootstrap directory probe accepts additional regular files and
 directories after its `RUNTIME.TXT` seed, validates their type/name bounds and
 reads through EOF before closing the handle. Its safety limit is 4096 additional
@@ -60,8 +89,8 @@ fixture checks. The browser QEMU check requires the additional-entry marker
 before directory completion and shell readiness, so a multi-entry root cannot
 silently regress to a boot-time stall.
 
-This is still a bounded browser: only the first 12 entries are listed, there is
-no scrolling, search, file editing, launching, Unicode filename display or
+This is still a bounded browser: twelve entries are visible per page, there is
+no continuous scrolling, search, file editing, launching, Unicode filename display or
 Unicode text layout, and only a file's beginning can be inspected. Settings
 persistence, compositor/window support, networking/JVM/Minecraft remain separate
 unfinished foundations.
