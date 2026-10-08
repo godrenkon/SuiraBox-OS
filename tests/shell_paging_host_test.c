@@ -54,10 +54,13 @@ static int key(sb_shell_state_t *s,sb_shell_listing_t *l,unsigned code) {
     return sb_shell_browser_event(s,l,&e);
 }
 static void apply(sb_shell_state_t *s,sb_shell_listing_t *l,fixture_t *f,int action) {
-    assert(sb_shell_browser_action(s,l,action,call,f)==0);
+    int result=sb_shell_browser_action(s,l,action,call,f);
+    if(result!=0) fprintf(stderr,"paging action %d failed: %d (offset %u, rows %u, selected %u)\n",
+                         action,result,s->offset,l->count,s->selected);
+    assert(result==0);
 }
 static void start(sb_shell_state_t *s,sb_shell_listing_t *l,fixture_t *f,unsigned entries) {
-    sb_shell_init(s); s->view=SB_SHELL_FILES; *f=(fixture_t){.entries=entries};
+    sb_shell_init(s); s->view=SB_SHELL_FILES; *l=(sb_shell_listing_t){0}; *f=(fixture_t){.entries=entries};
     apply(s,l,f,SB_SHELL_RELOAD);
     assert(f->acquired==f->closes && !l->error && !s->offset);
 }
