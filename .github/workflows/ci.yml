@@ -295,6 +295,24 @@ jobs:
           python3 tests/shell_image_check.py build/shell
           sha256sum -c build/shell/before.sha256
 
+      - name: Traverse nested directories and preview real VFS files
+        run: |
+          make BUILD=build/browser STORAGE_DURABILITY_PROOF=0 DISPLAY_PROOF=0 INPUT_PROOF=0
+          truncate -s 64M build/browser/runtime.img
+          mformat -i build/browser/runtime.img -F ::
+          mcopy -i build/browser/runtime.img build/runtime.txt ::RUNTIME.TXT
+          mmd -i build/browser/runtime.img ::SAVES ::SAVES/WORLDS
+          python3 tests/browser_fixture.py build/browser
+          mcopy -i build/browser/runtime.img build/browser/LEVEL.TXT ::SAVES/WORLDS/LEVEL.TXT
+          for name in README.TXT EMPTY.TXT LONG.TXT BINARY.DAT; do
+            mcopy -i build/browser/runtime.img build/browser/$name ::SAVES/$name
+          done
+          sha256sum build/browser/runtime.img > build/browser/before.sha256
+          python3 tests/qemu_display_capture.py build/browser --browser
+          python3 tests/qemu_log_check.py build/browser/display.log --shell
+          python3 tests/shell_image_check.py build/browser --browser
+          sha256sum -c build/browser/before.sha256
+
       - name: Upload kernel artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -347,6 +365,14 @@ jobs:
             build/shell/before.sha256
             build/shell/user-hello.elf
             build/shell/user-child.elf
+            build/shell/suirabox.iso
+            build/browser/*.ppm
+            build/browser/*.png
+            build/browser/display.log
+            build/browser/qemu-host.log
+            build/browser/before.sha256
+            build/browser/user-hello.elf
+            build/browser/user-child.elf
 
   ipc-proof:
     needs: kernel

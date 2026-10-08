@@ -8,16 +8,16 @@ import sys
 import time
 
 
-def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: bool = False) -> None:
+def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: bool = False, browser: bool = False) -> None:
     build = build.resolve()
     serial = build / "display.log"
     qmp = build / "qmp.sock"
     # Only this tool's disposable socket is removed; never a user disk path.
     qmp.unlink(missing_ok=True)
     serial.unlink(missing_ok=True)
-    marker = ("Userspace: keyboard demo ready" if keyboard else "Userspace: shell ready" if boot_text or shell
+    marker = ("Userspace: keyboard demo ready" if keyboard else "Userspace: shell ready" if boot_text or shell or browser
               else "Userspace: display surface present and rejection lifecycle OK")
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + (45 if browser else 30)
     with (build / "qemu-host.log").open("wb") as host_log:
         process = subprocess.Popen([
             "qemu-system-x86_64", "-m", "256M", "-boot", "d",
@@ -74,7 +74,7 @@ def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: boo
                     def key(code, down):
                         command("input-send-event", {"events": [{"type":"key", "data": {
                             "down":down, "key":{"type":"qcode", "data":code}}}]})
-                    if shell:
+                    if shell or browser:
                         def capture(name):
                             command("stop")
                             command("screendump", {"filename": str(build / f"{name}.ppm")})
@@ -91,12 +91,38 @@ def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: boo
                                   ("esc", "Home", "home-escape"),
                                   ("f2", "Files /disk", "disk-return"),
                                   ("b", "Files /boot", "boot-return")]
+                        if browser:
+                            stages = [("f2","Files /boot","boot-files"),
+                                      ("d","Files /disk","disk-files"),
+                                      ("down","Files /disk","select-saves"),
+                                      ("ret","Files /disk/SAVES","saves"),
+                                      ("ret","Files /disk/SAVES/WORLDS","worlds"),
+                                      ("ret","Files /disk/SAVES/WORLDS preview","level-preview"),
+                                      ("esc","Files /disk/SAVES/WORLDS","worlds-return"),
+                                      ("backspace","Files /disk/SAVES","saves-return"),
+                                      ("down","Files /disk/SAVES","select-readme"),
+                                      ("ret","Files /disk/SAVES preview","readme-preview"),
+                                      ("esc","Files /disk/SAVES","readme-return"),
+                                      ("down","Files /disk/SAVES","select-empty"),
+                                      ("ret","Files /disk/SAVES preview","empty-preview"),
+                                      ("esc","Files /disk/SAVES","empty-return"),
+                                      ("down","Files /disk/SAVES","select-long"),
+                                      ("ret","Files /disk/SAVES preview","long-preview"),
+                                      ("esc","Files /disk/SAVES","long-return"),
+                                      ("down","Files /disk/SAVES","select-binary"),
+                                      ("ret","Files /disk/SAVES preview","binary-preview"),
+                                      ("esc","Files /disk/SAVES","binary-return"),
+                                      ("backspace","Files /disk","root-return"),
+                                      ("b","Files /boot","boot-return"),
+                                      ("ret","Files /boot preview","elf-preview"),
+                                      ("esc","Files /boot","elf-return"),
+                                      ("esc","Home","home-return")]
                         for number, (code, view, name) in enumerate(stages, 2):
                             if code == "shift-tab":
                                 key("shift", True); key("tab", True); key("tab", False); key("shift", False)
                             else:
                                 key(code, True); key(code, False)
-                            wait_marker(f"Userspace: shell frame {number} {view}")
+                            wait_marker(f"Userspace: shell frame {number} {view}\n")
                             capture(name)
                     if keyboard:
                         command("stop")
@@ -138,4 +164,4 @@ def run(build: Path, boot_text: bool = False, keyboard: bool = False, shell: boo
 
 
 if __name__ == "__main__":
-    run(Path(sys.argv[1]), "--boot-text" in sys.argv[2:], "--input-proof" in sys.argv[2:], "--shell" in sys.argv[2:])
+    run(Path(sys.argv[1]), "--boot-text" in sys.argv[2:], "--input-proof" in sys.argv[2:], "--shell" in sys.argv[2:], "--browser" in sys.argv[2:])
