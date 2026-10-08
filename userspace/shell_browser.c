@@ -35,7 +35,7 @@ int sb_shell_browser_event(sb_shell_state_t *s,const sb_shell_listing_t *l,const
         }
         if(!old_preview && !l->error && l->count) {
             if(e->keycode==SB_KEY_UP && s->selected>0u) { --s->selected; s->error=0; return SB_SHELL_REDRAW; }
-            if(e->keycode==SB_KEY_DOWN && s->selected+1u<l->count) { ++s->selected; s->error=0; return SB_SHELL_REDRAW; }
+            if(e->keycode==SB_KEY_DOWN_ARROW && s->selected+1u<l->count) { ++s->selected; s->error=0; return SB_SHELL_REDRAW; }
             if(e->keycode==SB_KEY_ENTER) return SB_SHELL_OPEN;
         }
     }

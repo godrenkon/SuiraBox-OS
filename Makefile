@@ -532,8 +532,8 @@ check: host-shell-model-test host-shell-view-test
 
 $(USER_SHELL_BROWSER_OBJ): userspace/shell_browser.c userspace/shell.h userspace/text.h include/suirabox/syscall_abi.h include/suirabox/input_abi.h | $(BUILD)
 	$(CC) $(USER_CFLAGS) -c $< -o $@
-$(BUILD)/shell-browser-host-test: tests/shell_browser_host_test.c userspace/shell_browser.c userspace/shell_model.c userspace/shell.h | $(BUILD)
-	$(CC) -std=c11 -Wall -Wextra -Werror -O2 -Iinclude -Iuserspace tests/shell_browser_host_test.c userspace/shell_browser.c userspace/shell_model.c -o $@
+$(BUILD)/shell-browser-host-test: tests/shell_browser_host_test.c userspace/shell_browser.c userspace/shell_model.c userspace/shell.h kernel/key_decoder.c kernel/key_decoder.h include/suirabox/input_abi.h | $(BUILD)
+	$(CC) -std=c11 -Wall -Wextra -Werror -O2 -Iinclude -Iuserspace -Ikernel tests/shell_browser_host_test.c userspace/shell_browser.c userspace/shell_model.c kernel/key_decoder.c -o $@
 .PHONY: host-shell-browser-test
 host-shell-browser-test: $(BUILD)/shell-browser-host-test
 	./$(BUILD)/shell-browser-host-test

@@ -1,4 +1,5 @@
 #include "shell.h"
+#include "key_decoder.h"
 #undef NDEBUG
 #include <assert.h>
 #include <stdio.h>
@@ -40,6 +41,11 @@ static void list(sb_shell_state_t *s,sb_shell_listing_t *l,unsigned type,const c
 }
 static int event(sb_shell_state_t *s,sb_shell_listing_t *l,unsigned k) {
     sb_key_event_t e=key(k); return sb_shell_browser_event(s,l,&e);
+}
+static int arrow(sb_key_decoder_t *d,sb_shell_state_t *s,sb_shell_listing_t *l,unsigned char scan) {
+    sb_key_decoder_feed(d,0xe0); sb_key_decoder_feed(d,scan);
+    sb_key_event_t e; assert(sb_key_decoder_peek(d,&e)); sb_key_decoder_pop(d);
+    return sb_shell_browser_event(s,l,&e);
 }
 int main(void) {
     sb_shell_state_t s; sb_shell_listing_t l; fixture_t f={0};
@@ -86,11 +92,21 @@ int main(void) {
     f=(fixture_t){0}; sb_shell_browser_action(&s,&l,SB_SHELL_OPEN,call,&f); assert(s.error==-1 && !f.opens);
     assert(event(&s,&l,'B')==SB_SHELL_RELOAD && !strcmp(s.path,"/boot"));
     l.count=2u; l.entries[1]=l.entries[0];
-    assert(event(&s,&l,SB_KEY_DOWN)==SB_SHELL_REDRAW && s.selected==1u);
-    assert(event(&s,&l,SB_KEY_DOWN)==SB_SHELL_NONE);
+    assert(event(&s,&l,SB_KEY_DOWN_ARROW)==SB_SHELL_REDRAW && s.selected==1u);
+    assert(event(&s,&l,SB_KEY_DOWN_ARROW)==SB_SHELL_NONE);
     sb_key_event_t e=key(SB_KEY_UP); e.flags|=SB_KEY_REPEAT;
     assert(sb_shell_browser_event(&s,&l,&e)==SB_SHELL_NONE && s.selected==1u);
     assert(event(&s,&l,SB_KEY_UP)==SB_SHELL_REDRAW && s.selected==0u);
+    /* Use hardware scan bytes, independently of the browser's key constants. */
+    sb_key_decoder_t decoder; sb_key_decoder_init(&decoder);
+    l.count=3u;
+    assert(arrow(&decoder,&s,&l,0x50)==SB_SHELL_REDRAW && s.selected==1u);
+    assert(arrow(&decoder,&s,&l,0x50)==SB_SHELL_NONE && s.selected==1u);
+    assert(arrow(&decoder,&s,&l,0xd0)==SB_SHELL_NONE && s.selected==1u);
+    assert(arrow(&decoder,&s,&l,0x50)==SB_SHELL_REDRAW && s.selected==2u);
+    assert(arrow(&decoder,&s,&l,0xd0)==SB_SHELL_NONE && s.selected==2u);
+    assert(arrow(&decoder,&s,&l,0x48)==SB_SHELL_REDRAW && s.selected==1u);
+    assert(arrow(&decoder,&s,&l,0xc8)==SB_SHELL_NONE && s.selected==1u);
     char rows[12][49]; unsigned clipped;
     sb_shell_preview_t p={.length=10u}; memcpy(p.bytes,"A\r\nB\tC\0\xffZ",10u);
     assert(sb_shell_preview_lines(&p,rows,&clipped)==2u && !clipped);

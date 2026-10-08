@@ -42,7 +42,8 @@ sanitization and clipping, so neither binary data nor directory names inject
 renderer control sequences.
 
 Host tests exercise nested transitions, parent/root limits, rejected names and
-devices, selection/repeats, short reads, exact-boundary truncation, empty and
+devices, selection/repeats (including actual PS/2 arrow scan bytes through the
+kernel decoder), short reads, exact-boundary truncation, empty and
 binary content, failures before/after partial reads and close attempts. Existing
 model/view tests and image-checker tests remain regression coverage. QEMU boots
 the ordinary build, visits `/disk/SAVES/WORLDS`, reads actual FAT32 files and a
