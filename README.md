@@ -240,7 +240,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 
 ## 16. Performance / Benchmark Suite
 
-- [ ] **16-1** benchmark framework
+- [*] **16-1** benchmark framework — repeatable raw-sample schema, robust summaries, and compatibility-checked comparison; kernel workload instrumentation pending
 - [ ] **16-2** kernel microbenchmarks
 - [ ] **16-3** scheduler benchmarks
 - [ ] **16-4** memory benchmarks
@@ -249,7 +249,7 @@ Roadmapは、旧来の大項目だけでは現在地が分かりにくいため�
 - [ ] **16-7** graphics benchmarks
 - [ ] **16-8** JVM / Minecraft workloads
 - [ ] **16-9** regression thresholds
-- [ ] **16-10** reproducible performance reports
+- [ ] **16-10** attach reproducible reports to measured kernel and application workloads
 
 ## 17. SB Desktop / System UX
 
